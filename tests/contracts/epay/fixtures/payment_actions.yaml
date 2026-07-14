@@ -1,0 +1,13 @@
+- {id: action-jump, action: jump, category: payment_action}
+- {id: action-html, action: html, category: payment_action}
+- {id: action-qrcode, action: qrcode, category: payment_action}
+- {id: action-urlscheme, action: urlscheme, category: payment_action}
+- {id: action-jsapi, action: jsapi, category: payment_action}
+- {id: action-app, action: app, category: payment_action}
+- {id: action-scan, action: scan, category: payment_action}
+- {id: action-wxplugin, action: wxplugin, category: payment_action}
+- {id: action-wxapp, action: wxapp, category: payment_action}
+- {id: ack-success-fail, action: channel_ack, category: success_fail}
+- {id: ack-ok-fail, action: channel_ack, category: ok_fail}
+- {id: ack-xml, action: channel_ack, category: xml}
+- {id: ack-json, action: channel_ack, category: json}

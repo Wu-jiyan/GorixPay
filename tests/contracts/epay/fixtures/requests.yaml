@@ -1,0 +1,40 @@
+- {id: submit-success, operation: legacy/submit, outcome: success, method: POST, form: {pid: 1001, out_trade_no: T1, notify_url: "https://merchant.test/notify", return_url: "https://merchant.test/return", name: test, money: "1.00", sign: valid}}
+- {id: submit-failure, operation: legacy/submit, outcome: failure, method: GET, query: {pid: 1001}}
+- {id: mapi-success, operation: legacy/mapi, outcome: success, method: POST, form: {pid: 1001, type: alipay, out_trade_no: T2, notify_url: "https://merchant.test/notify", name: test, money: "1.00", clientip: "127.0.0.1", sign: valid}}
+- {id: mapi-failure, operation: legacy/mapi, outcome: failure, method: POST, form: {}}
+- {id: query-success, operation: legacy/query, outcome: success, method: GET, query: {act: query, pid: 1001, key: test}}
+- {id: query-failure, operation: legacy/query, outcome: failure, method: GET, query: {act: query, pid: 1001, key: wrong}}
+- {id: settle-success, operation: legacy/settle, outcome: success, method: GET, query: {act: settle, pid: 1001, key: test, limit: 50, offset: 0}}
+- {id: settle-failure, operation: legacy/settle, outcome: failure, method: GET, query: {act: settle}}
+- {id: order-success, operation: legacy/order, outcome: success, method: GET, query: {act: order, pid: 1001, key: test, out_trade_no: T1}}
+- {id: order-failure, operation: legacy/order, outcome: failure, method: GET, query: {act: order, pid: 1001, key: test}}
+- {id: orders-success, operation: legacy/orders, outcome: success, method: GET, query: {act: orders, pid: 1001, key: test, status: 1}}
+- {id: orders-failure, operation: legacy/orders, outcome: failure, method: GET, query: {act: orders}}
+- {id: refund-success, operation: legacy/refund, outcome: success, method: POST, query: {act: refund}, form: {pid: 1001, key: test, trade_no: "2026071200000000001", money: "1.00"}}
+- {id: refund-failure, operation: legacy/refund, outcome: failure, method: POST, query: {act: refund}, form: {pid: 1001}}
+- {id: refundapi-success, operation: legacy/refundapi, outcome: success, method: POST, query: {act: refundapi}, form: {trade_no: "2026071200000000001", money: "1.00", key: valid}}
+- {id: refundapi-failure, operation: legacy/refundapi, outcome: failure, method: POST, query: {act: refundapi}, form: {trade_no: "2026071200000000001", money: "1.00", key: wrong}}
+- {id: merchant-info-success, operation: v2/merchant/info, outcome: success, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid}}
+- {id: merchant-info-failure, operation: v2/merchant/info, outcome: failure, method: POST, form: {pid: 1001}}
+- {id: merchant-orders-success, operation: v2/merchant/orders, outcome: success, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid, limit: 50}}
+- {id: merchant-orders-failure, operation: v2/merchant/orders, outcome: failure, method: POST, form: {}}
+- {id: pay-submit-success, operation: v2/pay/submit, outcome: success, method: POST, form: {pid: 1001, out_trade_no: T3, notify_url: "https://merchant.test/notify", return_url: "https://merchant.test/return", name: test, money: "1.00", timestamp: 1783860000, sign: valid}}
+- {id: pay-submit-failure, operation: v2/pay/submit, outcome: failure, method: GET, query: {pid: 1001}}
+- {id: pay-create-success, operation: v2/pay/create, outcome: success, method: POST, form: {pid: 1001, type: alipay, out_trade_no: T4, notify_url: "https://merchant.test/notify", name: test, money: "1.00", clientip: "127.0.0.1", timestamp: 1783860000, sign: valid}}
+- {id: pay-create-failure, operation: v2/pay/create, outcome: failure, method: POST, form: {pid: 1001, method: jsapi}}
+- {id: pay-query-success, operation: v2/pay/query, outcome: success, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid, out_trade_no: T4}}
+- {id: pay-query-failure, operation: v2/pay/query, outcome: failure, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid}}
+- {id: pay-refund-success, operation: v2/pay/refund, outcome: success, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid, out_trade_no: T4, money: "1.00"}}
+- {id: pay-refund-failure, operation: v2/pay/refund, outcome: failure, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid}}
+- {id: refundquery-success, operation: v2/pay/refundquery, outcome: success, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid, refund_no: R1}}
+- {id: refundquery-failure, operation: v2/pay/refundquery, outcome: failure, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid}}
+- {id: close-success, operation: v2/pay/close, outcome: success, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid, trade_no: "2026071200000000001"}}
+- {id: close-failure, operation: v2/pay/close, outcome: failure, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid}}
+- {id: transfer-submit-success, operation: v2/transfer/submit, outcome: success, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid, type: alipay, account: user@example.test, money: "1.00"}}
+- {id: transfer-submit-failure, operation: v2/transfer/submit, outcome: failure, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid}}
+- {id: transfer-query-success, operation: v2/transfer/query, outcome: success, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid, out_biz_no: B1}}
+- {id: transfer-query-failure, operation: v2/transfer/query, outcome: failure, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid}}
+- {id: transfer-proof-success, operation: v2/transfer/proof, outcome: success, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid, biz_no: B1}}
+- {id: transfer-proof-failure, operation: v2/transfer/proof, outcome: failure, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid}}
+- {id: transfer-balance-success, operation: v2/transfer/balance, outcome: success, method: POST, form: {pid: 1001, timestamp: 1783860000, sign: valid}}
+- {id: transfer-balance-failure, operation: v2/transfer/balance, outcome: failure, method: POST, form: {pid: 1001}}

@@ -1,0 +1,40 @@
+- {id: submit-success, operation: legacy/submit, outcome: success, format: html, signed: false}
+- {id: submit-failure, operation: legacy/submit, outcome: failure, format: html, signed: false}
+- {id: mapi-success, operation: legacy/mapi, outcome: success, code: 1, format: json, signed: false}
+- {id: mapi-failure, operation: legacy/mapi, outcome: failure, code: -4, format: json, signed: false}
+- {id: query-success, operation: legacy/query, outcome: success, code: 1, format: json, signed: false}
+- {id: query-failure, operation: legacy/query, outcome: failure, code: -3, format: json, signed: false}
+- {id: settle-success, operation: legacy/settle, outcome: success, code: 1, format: json, signed: false}
+- {id: settle-failure, operation: legacy/settle, outcome: failure, code: -3, format: json, signed: false}
+- {id: order-success, operation: legacy/order, outcome: success, code: 1, format: json, signed: false}
+- {id: order-failure, operation: legacy/order, outcome: failure, code: -4, format: json, signed: false}
+- {id: orders-success, operation: legacy/orders, outcome: success, code: 1, format: json, signed: false}
+- {id: orders-failure, operation: legacy/orders, outcome: failure, code: -3, format: json, signed: false}
+- {id: refund-success, operation: legacy/refund, outcome: success, code: 0, format: json, signed: false}
+- {id: refund-failure, operation: legacy/refund, outcome: failure, code: -4, format: json, signed: false}
+- {id: refundapi-success, operation: legacy/refundapi, outcome: success, code: 0, format: json, signed: false}
+- {id: refundapi-failure, operation: legacy/refundapi, outcome: failure, code: -1, format: json, signed: false}
+- {id: merchant-info-success, operation: v2/merchant/info, outcome: success, code: 0, format: json, signed: true}
+- {id: merchant-info-failure, operation: v2/merchant/info, outcome: failure, code: -3, format: json, signed: false}
+- {id: merchant-orders-success, operation: v2/merchant/orders, outcome: success, code: 0, format: json, signed: true}
+- {id: merchant-orders-failure, operation: v2/merchant/orders, outcome: failure, code: -4, format: json, signed: false}
+- {id: pay-submit-success, operation: v2/pay/submit, outcome: success, format: html, signed: false}
+- {id: pay-submit-failure, operation: v2/pay/submit, outcome: failure, format: html, signed: false}
+- {id: pay-create-success, operation: v2/pay/create, outcome: success, code: 0, format: json, signed: true}
+- {id: pay-create-failure, operation: v2/pay/create, outcome: failure, code: -1, format: json, signed: false}
+- {id: pay-query-success, operation: v2/pay/query, outcome: success, code: 0, format: json, signed: true}
+- {id: pay-query-failure, operation: v2/pay/query, outcome: failure, code: -1, format: json, signed: true}
+- {id: pay-refund-success, operation: v2/pay/refund, outcome: success, code: 0, format: json, signed: true}
+- {id: pay-refund-failure, operation: v2/pay/refund, outcome: failure, code: -1, format: json, signed: true}
+- {id: refundquery-success, operation: v2/pay/refundquery, outcome: success, code: 0, format: json, signed: true}
+- {id: refundquery-failure, operation: v2/pay/refundquery, outcome: failure, code: -1, format: json, signed: true}
+- {id: close-success, operation: v2/pay/close, outcome: success, code: 0, format: json, signed: true}
+- {id: close-failure, operation: v2/pay/close, outcome: failure, code: -1, format: json, signed: true}
+- {id: transfer-submit-success, operation: v2/transfer/submit, outcome: success, code: 0, format: json, signed: true}
+- {id: transfer-submit-failure, operation: v2/transfer/submit, outcome: failure, code: -1, format: json, signed: true}
+- {id: transfer-query-success, operation: v2/transfer/query, outcome: success, code: 0, format: json, signed: true}
+- {id: transfer-query-failure, operation: v2/transfer/query, outcome: failure, code: -1, format: json, signed: true}
+- {id: transfer-proof-success, operation: v2/transfer/proof, outcome: success, code: 0, format: json, signed: true}
+- {id: transfer-proof-failure, operation: v2/transfer/proof, outcome: failure, code: -1, format: json, signed: true}
+- {id: transfer-balance-success, operation: v2/transfer/balance, outcome: success, code: 0, format: json, signed: true}
+- {id: transfer-balance-failure, operation: v2/transfer/balance, outcome: failure, code: -3, format: json, signed: false}

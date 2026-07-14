@@ -1,0 +1,9 @@
+environment: development
+http:
+  address: ":8080"
+  public_url: "http://localhost:8080"
+database:
+  driver: sqlite
+  dsn: gorixpay.db
+security:
+  master_key_file: ""

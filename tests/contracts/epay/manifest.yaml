@@ -1,0 +1,278 @@
+version: 1
+source_root: Epay
+compatibility_policy: source_behavior_first
+transport:
+  business_http_status: 200
+  json_request_body_supported: false
+signing:
+  canonicalization:
+    sort: php_ksort_ascending
+    separator: "&"
+    url_encode: false
+    exclude_keys: [sign, sign_type]
+    exclude_values: [array, null, empty_string, whitespace_only_string]
+    preserve_value_whitespace: true
+    source:
+      - Epay/includes/lib/Payment.php:8
+      - Epay/includes/functions.php:495
+  md5:
+    formula: lowercase_hex(md5(sign_content + merchant_key))
+    default_when_sign_type_missing: true
+    uppercase_signature_accepted: false
+    source: Epay/includes/lib/Payment.php:20
+  rsa:
+    algorithm: SHA256WithRSA_PKCS1_v1_5
+    encoding: base64
+    request_key: merchant_private_key
+    verify_key: merchant_public_key
+    response_key: platform_private_key
+    key_size: 2048
+    source:
+      - Epay/includes/lib/Payment.php:24
+      - Epay/includes/lib/Payment.php:37
+      - Epay/includes/functions.php:1384
+  vectors:
+    - id: md5-empty-content
+      merchant_key: "123"
+      params:
+        sign: ignored
+        sign_type: MD5
+        empty: ""
+        spaces: "   "
+        nil: null
+        items: [ignored]
+      sign_content: ""
+      signature: 202cb962ac59075b964b07152d234b70
+    - id: canonicalization-boundaries
+      params:
+        z: last
+        sign: ignored
+        empty: ""
+        arr: [ignored]
+        sign_type: RSA
+        A: upper
+        a: lower
+        amount: "1.00"
+        zero: 0
+        space: " x "
+      sign_content: "A=upper&a=lower&amount=1.00&space= x &z=last&zero=0"
+routes:
+  legacy_submit:
+    path: /submit.php
+    methods: [GET, POST]
+    request_precedence: GET_when_GET_pid_exists_otherwise_POST
+    response: html
+    required: [pid, out_trade_no, notify_url, return_url, name, money, sign]
+    optional: [type, sign_type, param, sitename, channel_id, cert_no, cert_name, min_age]
+    success:
+      type_missing: cashier_javascript_redirect
+      plugin_actions: [jump, html, json, page, qrcode, scheme, return]
+    errors: html_without_business_code
+    source:
+      - Epay/submit.php:1
+      - Epay/includes/lib/api/Pay.php:8
+      - Epay/includes/lib/Payment.php:54
+  legacy_mapi:
+    path: /mapi.php
+    methods: [POST]
+    response: json_with_known_html_edge_case
+    required: [pid, out_trade_no, notify_url, name, money, clientip, sign]
+    conditional:
+      type: required_unless_method_scan
+      sub_openid: required_when_method_jsapi
+      auth_code: required_when_method_scan
+    optional: [return_url, sign_type, device, method, sub_appid, is_applet, param, sitename, channel_id, cert_no, cert_name, min_age]
+    codes:
+      success: 1
+      no_parameters: -4
+      signature_error: -3
+      plugin_error: -2
+      business_error: -1
+    success_fields: [code, trade_no]
+    action_fields: [payurl, html, qrcode, urlscheme]
+    source:
+      - Epay/mapi.php:1
+      - Epay/includes/lib/api/Pay.php:263
+      - Epay/includes/lib/Payment.php:245
+  legacy_api:
+    path: /api.php
+    selector: query_parameter_act
+    operations:
+      query:
+        method: GET
+        auth: plaintext_pid_key_reject_rsa_merchant
+        required: [pid, key]
+        success_code: 1
+        source: Epay/api.php:13
+      settle:
+        method: GET
+        auth: plaintext_pid_key_reject_rsa_merchant
+        required: [pid, key]
+        optional: [limit, offset]
+        max_limit: 50
+        success_code: 1
+        source: Epay/api.php:31
+      order:
+        method: GET
+        auth_modes: [plaintext_pid_key, internal_sys_key_signature]
+        order_selector: trade_no_precedes_out_trade_no
+        success_code: 1
+        source: Epay/api.php:54
+      orders:
+        method: GET
+        auth: plaintext_pid_key_reject_rsa_merchant
+        optional: [limit, offset, status]
+        max_limit: 50
+        success_code: 1
+        source: Epay/api.php:86
+      refund:
+        method: POST
+        act_location: GET
+        auth: plaintext_pid_key_reject_rsa_merchant
+        required: [pid, key, money]
+        order_selector: trade_no_precedes_out_trade_no
+        success_code: 0
+        source: Epay/api.php:116
+      refundapi:
+        method: POST
+        act_location: GET
+        auth: md5_trade_no_sys_key_trade_no
+        required: [trade_no, money, key]
+        success_code: 0
+        source: Epay/api.php:147
+    unknown_act:
+      code: -5
+      msg: No Act!
+  v2_api:
+    path_pattern: /api/{class}/{method}
+    rewrite_target: /api.php?s={class}/{method}
+    method: POST
+    common_required: [pid, timestamp, sign]
+    common_optional: [sign_type]
+    timestamp_tolerance_seconds: 300
+    common_error_codes:
+      no_parameters: -4
+      signature_error: -3
+      business_error: -1
+      route_error: -5
+    response_signing:
+      normal_method_return_arrays: signed_even_when_business_code_negative
+      exceptions: unsigned
+      pay_create_success: signed
+      pay_create_error: unsigned
+      append: [timestamp, sign_type, sign]
+      sign_type: RSA
+      arrays_in_response_signed: false
+    operations:
+      merchant/info:
+        success_code: 0
+        source: Epay/includes/lib/api/Merchant.php:8
+      merchant/orders:
+        optional: [limit, offset, status]
+        max_limit: 50
+        known_quirk: status_detected_in_POST_but_read_from_GET
+        success_code: 0
+        source: Epay/includes/lib/api/Merchant.php:25
+      pay/submit:
+        methods: [GET, POST]
+        response: html
+        source: Epay/includes/lib/api/Pay.php:8
+      pay/create:
+        required: [pid, type, out_trade_no, notify_url, name, money, clientip, timestamp, sign]
+        conditional:
+          type: optional_when_method_scan
+          sub_openid: required_when_method_jsapi
+          auth_code: required_when_method_scan
+        success_code: 0
+        success_fields: [code, trade_no, pay_type, pay_info, timestamp, sign_type, sign]
+        pay_types: [jump, html, qrcode, urlscheme, jsapi, app, scan, wxplugin, wxapp]
+        plugin_error_code: -2
+        source: Epay/includes/lib/api/Pay.php:263
+      pay/query:
+        selector: trade_no_or_out_trade_no
+        success_code: 0
+        source: Epay/includes/lib/api/Pay.php:535
+      pay/refund:
+        selector: trade_no_or_out_trade_no
+        optional: [money, out_refund_no]
+        success_code: 0
+        source: Epay/includes/lib/api/Pay.php:559
+      pay/refundquery:
+        selector: refund_no_or_out_refund_no
+        success_code: 0
+        source: Epay/includes/lib/api/Pay.php:597
+      pay/close:
+        selector: trade_no_or_out_trade_no
+        success_code: 0
+        source: Epay/includes/lib/api/Pay.php:622
+      transfer/submit:
+        required: [type, account, money]
+        optional: [out_biz_no, name, remark, bookid]
+        supported_types: [alipay, wxpay, qqpay, bank]
+        success_code: 0
+        source: Epay/includes/lib/api/Transfer.php:17
+      transfer/query:
+        selector: biz_no_or_out_biz_no
+        success_code: 0
+        source: Epay/includes/lib/api/Transfer.php:42
+      transfer/proof:
+        selector: biz_no_or_out_biz_no
+        known_quirk: out_biz_no_query_uses_biz_no_column
+        source: Epay/includes/lib/api/Transfer.php:94
+      transfer/balance:
+        success_code: 0
+        source: Epay/includes/lib/api/Transfer.php:119
+payment_entry:
+  path_pattern: /pay/{action}/{numeric_trade_no}/
+  actions_dynamic_from_plugin_methods: true
+  common_actions: [submit, notify, return, ok, checkpay]
+  source:
+    - Epay/pay.php:19
+    - Epay/includes/lib/Plugin.php:39
+notifications:
+  merchant_transport: GET
+  success_body_contains_any: [success, SUCCESS, Success]
+  http_status_does_not_determine_success: true
+  v0:
+    sign_type: MD5
+    fields: [pid, trade_no, out_trade_no, type, name, money, trade_status, param]
+  v1:
+    sign_type: RSA
+    fields: [pid, trade_no, out_trade_no, api_trade_no, type, name, money, trade_status, param, buyer, timestamp]
+  retry:
+    created_only_when_first_completion_is_async: true
+    approximate_minutes_after_initial_failure: [1, 3, 19, 55, 115]
+    terminal_notify_value: -1
+    batch_size: 20
+    source:
+      - Epay/includes/functions.php:503
+      - Epay/includes/functions.php:557
+      - Epay/includes/functions.php:687
+      - Epay/cron.php:192
+order_status:
+  0: unpaid
+  1: paid
+  2: refunded
+  3: frozen
+  4: preauthorized
+compatibility_quirks:
+  - legacy_api_uses_plaintext_key
+  - submit_return_url_required_but_not_url_validated
+  - money_validation_does_not_enforce_two_decimal_places
+  - response_arrays_are_excluded_from_rsa_signature
+  - synchronous_first_completion_failed_notify_is_not_scheduled_for_retry
+  - plugin_callback_ack_body_is_plugin_specific
+  - concurrent_callback_accounting_is_not_strictly_atomic_in_epay
+  - legacy_empty_result_arrays_may_be_null_or_warning_dependent
+compatibility_disposition:
+  strict_legacy:
+    - submit_return_url_required_but_not_url_validated
+    - money_validation_does_not_enforce_two_decimal_places
+    - response_arrays_are_excluded_from_rsa_signature
+    - synchronous_first_completion_failed_notify_is_not_scheduled_for_retry
+    - plugin_callback_ack_body_is_plugin_specific
+    - legacy_empty_result_arrays_may_be_null_or_warning_dependent
+  configurable_legacy:
+    - legacy_api_uses_plaintext_key
+  forbidden_in_v1:
+    - concurrent_callback_accounting_is_not_strictly_atomic_in_epay

@@ -1,0 +1,12 @@
+id: test-only-sha256-rsa-pkcs1-v1-5
+private_key: fixtures/test_only_rsa_private.pem
+public_key: fixtures/test_only_rsa_public.pem
+params:
+  pid: 1001
+  out_trade_no: GXP202607120001
+  name: 阶段0测试
+  amount: "1.00"
+  sign_type: RSA
+sign_content: amount=1.00&name=阶段0测试&out_trade_no=GXP202607120001&pid=1001
+signature: MnfQtM+LZbq5z6O4R68lkZ7UF/vwkiQOS/QSisTug2AhOXonVoYB7wVeGsmwOeIIRwEmQ97BxkcWktjVkYuNNc2OxhYJCoGiG1Qp7UTti9CnVP+y+h23hVsiU8o5XR+ZFZj1QHbJkW9LI8Q42ydi07orBjPrAfKnp+1KGoA9OEfvHV9Z4ht5V0t1hKUh3VMfTlZhJxWlQ2WxZV+HJYpJNE9L7jQGB8L+P1AkrDbhg9Ns6sN+4qQWoAfnFbJXoiJ10UzOtGbeeldnqJSNdboPRIa+C/gGyS5cjzBRbooh/iHGx8Y9zRawi6q3r9Nr3e2CGqQF/XF/jdGjvOCGdceawg==
+production_use: forbidden

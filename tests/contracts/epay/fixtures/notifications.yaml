@@ -1,0 +1,5 @@
+- {id: v0-success-lower, version: v0, sign_type: MD5, fields: [pid, trade_no, out_trade_no, type, name, money, trade_status, param], response_body: success, http_status: 200, accepted: true, retry_minutes: [1, 3, 19, 55, 115]}
+- {id: v1-success-upper, version: v1, sign_type: RSA, fields: [pid, trade_no, out_trade_no, api_trade_no, type, name, money, trade_status, param, buyer, timestamp], response_body: SUCCESS, http_status: 200, accepted: true}
+- {id: v1-success-title, version: v1, sign_type: RSA, fields: [pid, trade_no, out_trade_no, api_trade_no, type, name, money, trade_status, param, buyer, timestamp], response_body: Success, http_status: 500, accepted: true}
+- {id: reject-ok, version: v0, sign_type: MD5, fields: [pid], response_body: ok, http_status: 200, accepted: false}
+- {id: reject-empty-200, version: v0, sign_type: MD5, fields: [pid], response_body: "", http_status: 200, accepted: false}

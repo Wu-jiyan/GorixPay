@@ -1,0 +1,36 @@
+# Build output
+gorixpay.exe
+*.exe
+*.test
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Keys and secrets
+master.key
+*.key
+.env
+*.pem
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+
+# Temporary
+tmp/
+temp/
