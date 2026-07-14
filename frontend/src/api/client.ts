@@ -10,8 +10,14 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      const isAdmin = window.location.pathname.startsWith('/admin');
-      if (isAdmin) {
+      const pathname = window.location.pathname;
+      console.log('[401] redirect from', pathname, 'request:', err.config?.url);
+      if (pathname === '/login' || pathname === '/merchant/login') {
+        return Promise.reject(err);
+      }
+      if (pathname.startsWith('/merchant')) {
+        window.location.href = '/merchant/login';
+      } else {
         window.location.href = '/login';
       }
     }

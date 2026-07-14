@@ -8,7 +8,7 @@ const Settings: React.FC = () => {
   const [saving, setSaving] = useState<string | null>(null);
 
   useEffect(() => {
-    adminApi.settings().then((res) => setSettings(res.data)).finally(() => setLoading(false));
+    adminApi.settings().then((res) => { const items = res.data.items; setSettings(items); }).finally(() => setLoading(false));
   }, []);
 
   const save = useCallback(async (key: string, value: string) => {

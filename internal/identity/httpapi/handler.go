@@ -26,6 +26,7 @@ func Register(group *gin.RouterGroup, authService *auth.Service, sessions *sessi
 	handler := &Handler{auth: authService, sessions: sessions}
 	group.POST("/auth/merchant/login", handler.loginMerchant)
 	group.POST("/auth/administrator/login", handler.loginAdministrator)
+	group.POST("/auth/register", handler.registerMerchant)
 	protected := group.Group("/auth", Authenticate(sessions))
 	protected.GET("/me", handler.me)
 	protected.POST("/logout", handler.logout)
@@ -45,6 +46,48 @@ func RequireAdministrator() gin.HandlerFunc {
 type loginRequest struct {
 	Identifier string `json:"identifier" binding:"required"`
 	Password   string `json:"password" binding:"required"`
+}
+
+type registerMerchantRequest struct {
+	Identifier string `json:"identifier" binding:"required"`
+	Password   string `json:"password" binding:"required,min=4"`
+}
+
+func (handler *Handler) registerMerchant(ctx *gin.Context) {
+	var request registerMerchantRequest
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "invalid request"})
+		return
+	}
+	result, err := handler.auth.RegisterMerchant(ctx.Request.Context(), request.Identifier, request.Password, auth.LoginMetadata{
+		IPAddress: ctx.ClientIP(),
+		UserAgent: ctx.Request.UserAgent(),
+	})
+	if err != nil {
+		if errors.Is(err, auth.ErrMerchantExists) {
+			ctx.JSON(http.StatusConflict, gin.H{"code": "merchant_exists", "message": "merchant already exists"})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, gin.H{"code": "internal_error", "message": "internal server error"})
+		return
+	}
+	http.SetCookie(ctx.Writer, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    result.Token,
+		Path:     "/",
+		Expires:  result.Session.ExpiresAt,
+		HttpOnly: true,
+		Secure:   ctx.Request.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+	})
+	ctx.JSON(http.StatusCreated, gin.H{
+		"token":      result.Token,
+		"expires_at": result.Session.ExpiresAt,
+		"merchant": gin.H{
+			"id":           result.Merchant.ID,
+			"display_name": result.Merchant.DisplayName,
+		},
+	})
 }
 
 func (handler *Handler) loginMerchant(ctx *gin.Context) {

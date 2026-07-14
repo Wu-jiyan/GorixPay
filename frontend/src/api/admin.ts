@@ -72,12 +72,10 @@ export interface SystemSetting {
 
 export interface AuditEvent {
   id: string;
-  method: string;
-  path: string;
-  status: number;
-  resource_id: string;
-  request_id: string;
-  principal_id: string;
+  event_type: string;
+  actor_type: string;
+  actor_id: string;
+  payload: Record<string, unknown>;
   created_at: string;
 }
 
@@ -117,6 +115,48 @@ export interface PaginatedResponse<T> {
   page_size: number;
 }
 
+export interface LedgerAccount {
+  id: string;
+  merchant_id: string;
+  type: string;
+  balance: number;
+  frozen: number;
+  created_at: string;
+}
+
+export interface LedgerTransaction {
+  id: string;
+  order_no: string;
+  amount: number;
+  type: string;
+  created_at: string;
+}
+
+export interface LedgerOperation {
+  id: string;
+  merchant_id: string;
+  type: string;
+  amount: number;
+  created_at: string;
+}
+
+export interface OutboxStats {
+  pending: number;
+  processing: number;
+  completed: number;
+  dead: number;
+}
+
+export interface OutboxMessage {
+  id: string;
+  topic: string;
+  payload: string;
+  status: string;
+  retry_count: number;
+  created_at: string;
+  next_retry_at?: string;
+}
+
 export const adminApi = {
   login: (data: AdminLoginRequest) => api.post('/auth/administrator/login', data),
 
@@ -137,7 +177,7 @@ export const adminApi = {
   updateChannel: (id: string, data: ChannelRequest) => api.put(`/admin/channels/${id}`, data),
   updateChannelStatus: (id: string, status: string) => api.patch(`/admin/channels/${id}/status`, { status }),
 
-  settings: () => api.get<SystemSetting[]>('/admin/settings'),
+  settings: () => api.get<{ items: SystemSetting[] }>('/admin/settings'),
   updateSetting: (key: string, value: string) => api.put(`/admin/settings/${key}`, { value }),
 
   auditEvents: (params: { page?: number; page_size?: number }) =>
@@ -154,4 +194,16 @@ export const adminApi = {
   settlement: (id: string) => api.get<Settlement>(`/admin/settlements/${id}`),
   processSettlement: (id: string, data: { action: string; rejection_reason?: string }) =>
     api.post(`/admin/settlements/${id}/process`, data),
+
+  getLedgerAccounts: (params: { page?: number; page_size?: number }) =>
+    api.get<PaginatedResponse<LedgerAccount>>('/admin/ledger/accounts', { params }),
+  getLedgerTransactions: (params: { page?: number; page_size?: number }) =>
+    api.get<PaginatedResponse<LedgerTransaction>>('/admin/ledger/transactions', { params }),
+  getLedgerOperations: (params: { page?: number; page_size?: number }) =>
+    api.get<PaginatedResponse<LedgerOperation>>('/admin/ledger/operations', { params }),
+
+  getOutboxStats: () => api.get<OutboxStats>('/admin/outbox/stats'),
+  getOutboxMessages: (params: { page?: number; page_size?: number; status?: string }) =>
+    api.get<PaginatedResponse<OutboxMessage>>('/admin/outbox/messages', { params }),
+  requeueDeadMessages: () => api.post('/admin/outbox/requeue-dead'),
 };

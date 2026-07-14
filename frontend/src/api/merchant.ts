@@ -1,5 +1,12 @@
 import api from './client';
 
+export interface Credential {
+  id: string;
+  merchant_id: string;
+  public_key: string;
+  created_at: string;
+}
+
 export interface MerchantOrder {
   id: string;
   trade_no: string;
@@ -32,4 +39,7 @@ export const merchantApi = {
   createSettlement: (data: { amount: number; bank_account: string; bank_name: string }) =>
     api.post('/merchant/settlements', data),
   settlement: (id: string) => api.get(`/merchant/settlements/${id}`),
+
+  getCredentials: () => api.get<Credential[]>('/merchant/credentials'),
+  rotateKey: (id: string) => api.post(`/merchant/credentials/${id}/rotate`),
 };

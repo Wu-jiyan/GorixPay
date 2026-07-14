@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Card, Tag } from '@arco-design/web-react';
+import { Card } from '@arco-design/web-react';
 import { adminApi, AuditEvent, PaginatedResponse } from '@/api/admin';
 import DataTable from '@/components/DataTable';
 
@@ -20,17 +20,16 @@ const AuditLogs: React.FC = () => {
 
   useEffect(() => { fetch(); }, [fetch]);
 
-  const methodColors: Record<string, string> = { GET: 'blue', POST: 'green', PUT: 'orange', PATCH: 'purple', DELETE: 'red' };
-
   const columns = [
+    { title: '事件类型', dataIndex: 'event_type', width: 120 },
+    { title: '操作者类型', dataIndex: 'actor_type', width: 100 },
+    { title: '操作者ID', dataIndex: 'actor_id', width: 220, ellipsis: true },
     {
-      title: '方法', dataIndex: 'method', width: 80,
-      render: (_: unknown, r: AuditEvent) => <Tag color={methodColors[r.method] || 'gray'}>{r.method}</Tag>,
+      title: 'Payload', dataIndex: 'payload', width: 300, ellipsis: true,
+      render: (_: unknown, r: AuditEvent) => {
+        try { return JSON.stringify(r.payload); } catch { return '-'; }
+      },
     },
-    { title: '路径', dataIndex: 'path', ellipsis: true },
-    { title: '状态码', dataIndex: 'status', width: 80 },
-    { title: '资源ID', dataIndex: 'resource_id', width: 220, ellipsis: true },
-    { title: '操作者', dataIndex: 'principal_id', width: 220, ellipsis: true },
     {
       title: '时间', dataIndex: 'created_at', width: 180,
       render: (_: unknown, r: AuditEvent) => r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : '-',

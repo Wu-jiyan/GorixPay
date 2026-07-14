@@ -10,7 +10,11 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    adminApi.dashboard().then((res) => setData(res.data)).finally(() => setLoading(false));
+    console.log('[Dashboard] mounting, fetching API...');
+    adminApi.dashboard()
+      .then((res) => { console.log('[Dashboard] API OK:', res.data); setData(res.data); })
+      .catch((err) => { console.error('[Dashboard] API failed:', err?.response?.status, err?.response?.data); })
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <Spin loading style={{ display: 'flex', justifyContent: 'center', marginTop: 100 }} />;
