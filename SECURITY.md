@@ -145,6 +145,6 @@ Epay V1 的 MD5。签名是 `md5(canonical + key)`（`signing/signing.go:34-37`�
 
 邮箱占位 `<security@example.com>`，替换成仓库 owner 的实际地址后生效。
 
-支持版本：`main` 分支是唯一支持版本。`2.0.0` 没有打 tag，报告时附 commit 哈希。更早的快照不承诺修复。
+支持版本：`main` 分支与 `v2.0.0` 标签。`v2` 系列之前没有对外发布过，报告时附 commit 哈希。
 
 报告内容给三样：可复现的步骤、影响面（能否跨商户、能否动资金）、受影响的 commit。响应时限没有对外承诺。
