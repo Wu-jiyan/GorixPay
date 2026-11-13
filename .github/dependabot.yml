@@ -12,6 +12,10 @@ updates:
       go-dependencies:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    # 大版本升级要手工做：Gin、GORM 的主版本都带破坏性变更，自动 PR 只会变成红叉
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: "/frontend"
@@ -25,3 +29,7 @@ updates:
       frontend-dependencies:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    # Vue 3、Naive UI、Vite 的主版本升级要配套改代码，先不自动开 PR
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
