@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="GorixPay" width="100%">
+  <img src="assets/banner.jpg" alt="GorixPay" width="100%">
 </p>
 
 <p align="center">
@@ -7,6 +7,7 @@
   <img alt="Go 1.21+" src="https://img.shields.io/badge/Go-1.21%2B-00ADD8?logo=go&logoColor=white">
   <img alt="Vue 3.5" src="https://img.shields.io/badge/Vue-3.5-42b883?logo=vue.js&logoColor=white">
   <img alt="Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-2563eb">
+  <img alt="Release" src="https://img.shields.io/github/v/release/Wu-jiyan/GorixPay?color=2563eb">
   <img alt="conformance cases" src="https://img.shields.io/badge/Epay%20conformance-109%20cases-0f766e">
 </p>
 
@@ -32,7 +33,7 @@ The PHP original is a monolith: merchant balances stored as columns on the user 
 | Money | Integer-cent double-entry ledger, refunds, settlement, payout, balance top-up, deposit |
 | Reliability | Transactional outbox with lease-based claiming and CAS updates, notification retries, optional Redis |
 | Legacy migration | `cmd/migrate-epay`, MySQL or SQLite into GorixPay, preflight, dry run, idempotent |
-| Releases | No tag yet, `main` is the only branch |
+| Releases | `v2.0.0` (2026-11-13), the first tag |
 
 ## Screenshots
 
@@ -366,7 +367,7 @@ These are the parts that genuinely do not work yet:
 - Upstream's 63 channel plugins are commercial channel relationships rather than protocol, so long-tail channels go through `generic`.
 - The console is a Vue SPA and looks nothing like upstream's 55 `admin/*.php` templates. Only the HTTP surface is aligned; the UI is redrawn. Payout review has a list plus approve and reject, channel onboarding is missing.
 - V1 signature strength is whatever upstream chose: MD5 with a shared key. Switch merchants to V2 credentials if that matters.
-- No tags, no release process. APIs and migrations can still move before 2.0.0.
+- `v2.0.0` is the first tag, with no long-term compatibility promise yet: APIs and migrations can still move within 2.x.
 
 ## Docs
 

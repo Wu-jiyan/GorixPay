@@ -20,7 +20,7 @@
 | [notes/2026-11-login-redirect-loop.md](notes/2026-11-login-redirect-loop.md) | 一次登录后无限刷新的排查记录与三行修复 | 排查前端 401 行为的人 |
 | [../SECURITY.md](../SECURITY.md) | 信任边界、资金校验点、为兼容保留的风险面、漏洞上报方式 | 安全评审、线上运维 |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | 环境准备、测试分层各自防什么、新增插件步骤、迁移文件规则、PR 要求 | 提交代码的人 |
-| [../CHANGELOG.md](../CHANGELOG.md) | 未发布这条线上做了什么，按模块分组 | 升级前想知道改了哪些地方的人 |
+| [../CHANGELOG.md](../CHANGELOG.md) | 2.0.0 交付了什么，按模块分组 | 升级前想知道改了哪些地方的人 |
 
 ## 三条阅读路径
 

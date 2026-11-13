@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="GorixPay" width="100%">
+  <img src="assets/banner.jpg" alt="GorixPay" width="100%">
 </p>
 
 <p align="center">
@@ -7,6 +7,7 @@
   <img alt="Go 1.21+" src="https://img.shields.io/badge/Go-1.21%2B-00ADD8?logo=go&logoColor=white">
   <img alt="Vue 3.5" src="https://img.shields.io/badge/Vue-3.5-42b883?logo=vue.js&logoColor=white">
   <img alt="Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-2563eb">
+  <img alt="Release" src="https://img.shields.io/github/v/release/Wu-jiyan/GorixPay?color=2563eb">
   <img alt="一致性用例" src="https://img.shields.io/badge/%E6%98%93%E6%94%AF%E4%BB%98%E4%B8%80%E8%87%B4%E6%80%A7-109%20%E6%9D%A1%E7%94%A8%E4%BE%8B-0f766e">
 </p>
 
@@ -50,7 +51,7 @@ GorixPay 是彩虹易支付（Epay）的 Go 重写版，验收标准只有一条
 | 资金 | 整数分复式账本、退款、结算、代付、余额充值、保证金 |
 | 可靠性 | Transactional Outbox（租约认领 + CAS 更新），商户通知重试，Redis 可选 |
 | 历史数据迁移 | `cmd/migrate-epay`，从 MySQL 或 SQLite 迁到 GorixPay，预检、dry-run、幂等 |
-| 发版 | 还没有 tag，仓库停在 main |
+| 发版 | `v2.0.0`（2026-11-13），第一个 tag |
 
 ## 界面
 
@@ -387,7 +388,7 @@ go run ./cmd/migrate-epay `
 - 上游 `plugins/` 下 63 个渠道插件是渠道商务关系，不是协议，长尾渠道用 `generic` 配置化接入。
 - 管理后台是 Vue SPA，和上游那 55 个 `admin/*.php` 模板完全不像。只有 HTTP 协议面对齐，页面交互是重画的：代付审核有列表、通过、驳回，渠道进件没有做。
 - V1 的 MD5 签名强度由上游决定。想用 RSA 就把商户切到 V2 凭证。
-- 还没有 tag，也没有发版流程，API 和迁移文件在 2.0.0 之前都可能动。
+- `v2.0.0` 是第一个 tag，还没有长期兼容承诺：2.x 里接口和迁移文件仍可能动。
 
 ## 文档
 
