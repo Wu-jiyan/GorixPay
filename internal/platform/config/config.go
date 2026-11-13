@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 )
@@ -15,6 +16,8 @@ type Config struct {
 	HTTP        HTTPConfig     `yaml:"http"`
 	Database    DatabaseConfig `yaml:"database"`
 	Security    SecurityConfig `yaml:"security"`
+	Redis       RedisConfig    `yaml:"redis"`
+	Sandbox     SandboxConfig  `yaml:"sandbox"`
 }
 
 type HTTPConfig struct {
@@ -31,11 +34,28 @@ type SecurityConfig struct {
 	MasterKeyFile string `yaml:"master_key_file"`
 }
 
+// RedisConfig describes the optional Redis dependency. An empty Addr disables
+// Redis entirely and every dependent feature degrades to its local fallback.
+type RedisConfig struct {
+	Addr     string `yaml:"addr"`
+	Password string `yaml:"password"`
+	DB       int    `yaml:"db"`
+	Prefix   string `yaml:"prefix"`
+}
+
+// SandboxConfig enables the local sandbox payment channel. It defaults to true
+// in development so the full payment loop can be exercised locally; Validate
+// forces it off in production regardless of configuration input.
+type SandboxConfig struct {
+	Enabled bool `yaml:"enabled"`
+}
+
 func Load(args []string, getenv func(string) string) (Config, error) {
 	cfg := Config{
 		Environment: "development",
 		HTTP:        HTTPConfig{Address: ":8080", PublicURL: "http://localhost:8080"},
 		Database:    DatabaseConfig{Driver: "sqlite", DSN: "gorixpay.db"},
+		Sandbox:     SandboxConfig{Enabled: true},
 	}
 	configPath := flagValue(args, "config")
 	if configPath != "" {
@@ -57,6 +77,8 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 	flags.StringVar(&cfg.Database.Driver, "database-driver", cfg.Database.Driver, "database driver")
 	flags.StringVar(&cfg.Database.DSN, "database-dsn", cfg.Database.DSN, "database DSN")
 	flags.StringVar(&cfg.Security.MasterKeyFile, "master-key-file", cfg.Security.MasterKeyFile, "master key file")
+	flags.StringVar(&cfg.Redis.Addr, "redis-addr", cfg.Redis.Addr, "Redis address (empty disables Redis)")
+	flags.BoolVar(&cfg.Sandbox.Enabled, "sandbox-enabled", cfg.Sandbox.Enabled, "enable the sandbox payment channel")
 	if err := flags.Parse(args); err != nil {
 		return Config{}, err
 	}
@@ -66,7 +88,7 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 	return cfg, nil
 }
 
-func (c Config) Validate() error {
+func (c *Config) Validate() error {
 	switch c.Database.Driver {
 	case "sqlite", "mysql", "postgres":
 	default:
@@ -82,6 +104,12 @@ func (c Config) Validate() error {
 	if c.Environment == "production" && c.Security.MasterKeyFile == "" {
 		return errors.New("production requires a master key file")
 	}
+	if c.Environment == "production" {
+		c.Sandbox.Enabled = false
+	}
+	if c.Redis.DB < 0 {
+		return errors.New("redis DB index must not be negative")
+	}
 	return nil
 }
 
@@ -92,11 +120,34 @@ func applyEnvironment(cfg *Config, getenv func(string) string) {
 	applyString(&cfg.Database.Driver, getenv("GORIXPAY_DATABASE_DRIVER"))
 	applyString(&cfg.Database.DSN, getenv("GORIXPAY_DATABASE_DSN"))
 	applyString(&cfg.Security.MasterKeyFile, getenv("GORIXPAY_MASTER_KEY_FILE"))
+	applyString(&cfg.Redis.Addr, getenv("GORIXPAY_REDIS_ADDR"))
+	applyString(&cfg.Redis.Password, getenv("GORIXPAY_REDIS_PASSWORD"))
+	applyInt(&cfg.Redis.DB, getenv("GORIXPAY_REDIS_DB"))
+	applyString(&cfg.Redis.Prefix, getenv("GORIXPAY_REDIS_PREFIX"))
+	applyBool(&cfg.Sandbox.Enabled, getenv("GORIXPAY_SANDBOX_ENABLED"))
 }
 
 func applyString(target *string, value string) {
 	if value != "" {
 		*target = value
+	}
+}
+
+func applyBool(target *bool, value string) {
+	if value == "" {
+		return
+	}
+	if parsed, err := strconv.ParseBool(value); err == nil {
+		*target = parsed
+	}
+}
+
+func applyInt(target *int, value string) {
+	if value == "" {
+		return
+	}
+	if parsed, err := strconv.Atoi(value); err == nil {
+		*target = parsed
 	}
 }
 

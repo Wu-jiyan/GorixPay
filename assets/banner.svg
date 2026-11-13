@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 400" width="1600" height="400" role="img" aria-label="GorixPay: 易支付兼容聚合支付网关">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="0.55" stop-color="#0a0e18"/>
+      <stop offset="1" stop-color="#070a11"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2563eb" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#3b82f6" stop-opacity="0.35"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#2563eb" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#2563eb" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#1e293b" stroke-width="1" stroke-opacity="0.55"/>
+    </pattern>
+    <clipPath id="frame">
+      <rect x="0" y="0" width="1600" height="400" rx="0"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <rect width="1600" height="400" fill="url(#bg)"/>
+    <rect width="1600" height="400" fill="url(#grid)"/>
+    <ellipse cx="1290" cy="200" rx="360" ry="260" fill="url(#glow)"/>
+
+    <g font-family="Inter, 'Segoe UI', 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">
+      <text x="96" y="176" font-size="104" font-weight="700" fill="#f8fafc" letter-spacing="-2">GorixPay</text>
+      <text x="100" y="228" font-size="32" font-weight="500" fill="#93a3b8" letter-spacing="0.5">易支付兼容聚合支付网关</text>
+      <rect x="100" y="264" width="56" height="3" fill="#2563eb"/>
+      <text x="100" y="308" font-size="21" fill="#64748b" letter-spacing="0.6">EPAY V1 / V2 协议 · 10 个支付渠道插件 · 复式账本 · Go + Vue 3</text>
+    </g>
+
+    <g>
+      <rect x="1010" y="112" width="420" height="44" rx="22" fill="#111a2e" stroke="#1e2b45"/>
+      <rect x="1010" y="112" width="150" height="44" rx="22" fill="url(#bar)"/>
+      <circle cx="1430" cy="134" r="6" fill="#3b82f6"/>
+
+      <rect x="1010" y="178" width="420" height="44" rx="22" fill="#111a2e" stroke="#1e2b45"/>
+      <rect x="1010" y="178" width="268" height="44" rx="22" fill="url(#bar)"/>
+      <circle cx="1430" cy="200" r="6" fill="#3b82f6"/>
+
+      <rect x="1010" y="244" width="420" height="44" rx="22" fill="#111a2e" stroke="#1e2b45"/>
+      <rect x="1010" y="244" width="96" height="44" rx="22" fill="url(#bar)"/>
+      <circle cx="1430" cy="266" r="6" fill="#3b82f6"/>
+
+      <path d="M1430 156V178M1430 222V244" stroke="#243149" stroke-width="2"/>
+      <path d="M960 200H1000" stroke="#243149" stroke-width="2"/>
+      <path d="M966 194L976 200L966 206" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </g>
+</svg>

@@ -18,28 +18,29 @@ import (
 )
 
 var (
-	ErrInvalidRequest      = errors.New("invalid finance request")
-	ErrNotFound            = errors.New("finance order not found")
-	ErrPaymentNotPaid      = errors.New("payment order is not paid")
+	ErrInvalidRequest       = errors.New("invalid finance request")
+	ErrNotFound             = errors.New("finance order not found")
+	ErrPaymentNotPaid       = errors.New("payment order is not paid")
 	ErrRefundAmountExceeded = errors.New("refund amount exceeds payment amount")
-	ErrStateConflict       = errors.New("finance order state conflict")
-	ErrIdempotencyConflict = errors.New("finance idempotency conflict")
+	ErrStateConflict        = errors.New("finance order state conflict")
+	ErrIdempotencyConflict  = errors.New("finance idempotency conflict")
+	ErrRefundNotSale        = errors.New("refund is only allowed for sale orders")
 )
 
 type CreateRefundRequest struct {
-	MerchantID      string
-	PaymentOrderID  string
-	OutRefundNo     string
-	Amount          int64
-	Reason          string
+	MerchantID     string
+	PaymentOrderID string
+	OutRefundNo    string
+	Amount         int64
+	Reason         string
 }
 
 type CreateSettlementRequest struct {
-	MerchantID       string
-	OutSettlementNo  string
-	Amount           int64
-	Currency         string
-	Destination      string
+	MerchantID      string
+	OutSettlementNo string
+	Amount          int64
+	Currency        string
+	Destination     string
 }
 
 type ProcessRequest struct {
@@ -101,6 +102,11 @@ func (service *Service) CreateRefund(ctx context.Context, request CreateRefundRe
 		}
 		if order.Status != paymentmodel.StatusPaid {
 			return ErrPaymentNotPaid
+		}
+		// Recharge and deposit orders are account funding, not merchant sales:
+		// paying them back through the refund flow would mint balance.
+		if !order.IsSale() {
+			return ErrRefundNotSale
 		}
 		var reserved int64
 		if err := tx.Model(&financemodel.Refund{}).Where("payment_order_id = ? AND status <> ?", order.ID, financemodel.StatusRejected).Select("COALESCE(SUM(amount), 0)").Scan(&reserved).Error; err != nil {

@@ -39,15 +39,21 @@ type Administrator struct {
 }
 
 type Merchant struct {
-	ID           string    `gorm:"type:varchar(36);primaryKey"`
-	LegacyUID    *int64    `gorm:"uniqueIndex"`
-	Email        *string   `gorm:"type:varchar(191);uniqueIndex"`
-	Phone        *string   `gorm:"type:varchar(32);uniqueIndex"`
-	PasswordHash *string   `gorm:"type:varchar(255)"`
-	DisplayName  string    `gorm:"type:varchar(128);not null"`
-	Status       Status    `gorm:"type:varchar(20);not null"`
-	CreatedAt    time.Time `gorm:"not null"`
-	UpdatedAt    time.Time `gorm:"not null"`
+	ID           string  `gorm:"type:varchar(36);primaryKey"`
+	LegacyUID    *int64  `gorm:"uniqueIndex"`
+	Email        *string `gorm:"type:varchar(191);uniqueIndex"`
+	Phone        *string `gorm:"type:varchar(32);uniqueIndex"`
+	PasswordHash *string `gorm:"type:varchar(255)"`
+	DisplayName  string  `gorm:"type:varchar(128);not null"`
+	// SettleType and SettleAccount mirror pre_user.settle_id/account: the payout
+	// channel the merchant chose and the account it pays into.
+	SettleType    int       `gorm:"not null;default:0"`
+	SettleAccount *string   `gorm:"type:varchar(128)"`
+	Status        Status    `gorm:"type:varchar(20);not null"`
+	InvitedBy     *string   `gorm:"type:varchar(36);index"`
+	InviteCode    *string   `gorm:"type:varchar(32);uniqueIndex"`
+	CreatedAt     time.Time `gorm:"not null"`
+	UpdatedAt     time.Time `gorm:"not null"`
 }
 
 type Role struct {

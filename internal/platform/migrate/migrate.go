@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"regexp"
 	"sort"
 	"time"
 
@@ -65,7 +66,7 @@ func (r Runner) Up(ctx context.Context) error {
 			return err
 		}
 		if err := r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			if err := tx.Exec(string(content)).Error; err != nil {
+			if err := tx.Exec(prepareMigration(tx.Dialector.Name(), string(content))).Error; err != nil {
 				return fmt.Errorf("apply migration %s: %w", name, err)
 			}
 			return tx.Create(&migrationRecord{Version: name, Checksum: checksum, AppliedAt: time.Now().UTC()}).Error
@@ -74,4 +75,16 @@ func (r Runner) Up(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+var mysqlIndexGuard = regexp.MustCompile(`(?i)CREATE\s+(UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS`)
+
+// prepareMigration rewrites statements MySQL cannot parse. MySQL has no
+// CREATE INDEX IF NOT EXISTS, and migrations run once per version, so the guard
+// can be dropped safely for that dialect only.
+func prepareMigration(dialect, content string) string {
+	if dialect != "mysql" {
+		return content
+	}
+	return mysqlIndexGuard.ReplaceAllString(content, "CREATE ${1}INDEX")
 }

@@ -1,0 +1,56 @@
+name: 功能请求
+description: 提出需要新增或调整的能力
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先描述问题，再说想要什么。只写解决方案、不写场景的请求很难评估。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的现实问题
+      description: 现在卡在哪里，谁在什么场景下遇到，现在怎么绕过。
+      placeholder: 例如：代付审核只能逐单点开，日均 200 笔时运营要翻页 40 次，目前靠导出账本手工对账。
+    validations:
+      required: true
+
+  - type: textarea
+    id: modules
+    attributes:
+      label: 影响模块
+      description: 列出涉及的包、接口或页面，不确定就写猜测的范围。
+      placeholder: 例如：internal/transfer、internal/ledger/query、frontend/src/pages/admin/Transfers.vue
+    validations:
+      required: true
+
+  - type: dropdown
+    id: protocol
+    attributes:
+      label: 是否改对外协议
+      description: 改动会不会影响商户已有的 SDK、签名或回调。
+      options:
+        - 不改对外协议
+        - 改 V1 易支付协议
+        - 改 V2 协议
+        - V1 与 V2 都改
+        - 未确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议做法
+      description: 可选。如果有明确的实现思路、数据模型或接口形状，写在这里。
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 怎么算做完
+      description: 可选。能验证的验收方式，例如某条命令、某个接口的响应、某张页面的表现。
+    validations:
+      required: false

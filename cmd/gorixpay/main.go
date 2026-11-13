@@ -86,6 +86,8 @@ func runAdminCreate(args []string) int {
 	flags.SetOutput(os.Stderr)
 	username := flags.String("username", "", "administrator username")
 	displayName := flags.String("display-name", "", "administrator display name")
+	passwordValue := flags.String("password", "", "administrator password (non-interactive; avoid in shared shells)")
+	passwordEnv := flags.String("password-env", "", "name of an environment variable that holds the administrator password")
 	if err := flags.Parse(commandArgs); err != nil {
 		return 2
 	}
@@ -95,34 +97,52 @@ func runAdminCreate(args []string) int {
 		fmt.Fprintln(os.Stderr, "--username and --display-name are required")
 		return 2
 	}
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		fmt.Fprintln(os.Stderr, "password input requires an interactive terminal")
-		return 2
+	var plain []byte
+	switch {
+	case strings.TrimSpace(*passwordValue) != "":
+		plain = []byte(*passwordValue)
+	case strings.TrimSpace(*passwordEnv) != "":
+		value, ok := os.LookupEnv(*passwordEnv)
+		if !ok || value == "" {
+			fmt.Fprintf(os.Stderr, "environment variable %s is empty\n", *passwordEnv)
+			return 2
+		}
+		plain = []byte(value)
+	default:
+		if !term.IsTerminal(int(os.Stdin.Fd())) {
+			fmt.Fprintln(os.Stderr, "password input requires an interactive terminal, or use --password-env / --password")
+			return 2
+		}
+		fmt.Fprint(os.Stderr, "Password: ")
+		entered, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Fprintln(os.Stderr)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "read password:", err)
+			return 1
+		}
+		fmt.Fprint(os.Stderr, "Confirm password: ")
+		confirmation, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Fprintln(os.Stderr)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "read password confirmation:", err)
+			return 1
+		}
+		if string(entered) != string(confirmation) {
+			fmt.Fprintln(os.Stderr, "passwords do not match")
+			return 2
+		}
+		for index := range confirmation {
+			confirmation[index] = 0
+		}
+		plain = entered
 	}
-	fmt.Fprint(os.Stderr, "Password: ")
-	plain, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Fprintln(os.Stderr)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "read password:", err)
-		return 1
-	}
-	fmt.Fprint(os.Stderr, "Confirm password: ")
-	confirmation, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Fprintln(os.Stderr)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "read password confirmation:", err)
-		return 1
-	}
-	if string(plain) != string(confirmation) {
-		fmt.Fprintln(os.Stderr, "passwords do not match")
+	if len(plain) < 8 {
+		fmt.Fprintln(os.Stderr, "administrator password must be at least 8 characters")
 		return 2
 	}
 	hash, err := password.Hash(string(plain))
 	for index := range plain {
 		plain[index] = 0
-	}
-	for index := range confirmation {
-		confirmation[index] = 0
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hash password:", err)
@@ -158,11 +178,12 @@ func runAdminCreate(args []string) int {
 }
 
 func splitAdminCreateArgs(args []string) ([]string, []string, error) {
-	commandArgs := make([]string, 0, 4)
+	commandArgs := make([]string, 0, 8)
 	configArgs := make([]string, 0, len(args))
+	commandFlags := map[string]bool{"--username": true, "--display-name": true, "--password": true, "--password-env": true}
 	for index := 0; index < len(args); index++ {
 		value := args[index]
-		if value == "--username" || value == "--display-name" {
+		if commandFlags[value] {
 			if index+1 >= len(args) {
 				return nil, nil, errors.New(value + " requires a value")
 			}
@@ -170,8 +191,15 @@ func splitAdminCreateArgs(args []string) ([]string, []string, error) {
 			index++
 			continue
 		}
-		if strings.HasPrefix(value, "--username=") || strings.HasPrefix(value, "--display-name=") {
-			commandArgs = append(commandArgs, value)
+		matched := false
+		for flag := range commandFlags {
+			if strings.HasPrefix(value, flag+"=") {
+				commandArgs = append(commandArgs, value)
+				matched = true
+				break
+			}
+		}
+		if matched {
 			continue
 		}
 		configArgs = append(configArgs, value)

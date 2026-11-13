@@ -6,4 +6,11 @@ database:
   driver: sqlite
   dsn: gorixpay.db
 security:
-  master_key_file: ""
+  master_key_file: "master.key"
+redis:
+  addr: ""
+  password: ""
+  db: 0
+  prefix: "gorixpay:"
+sandbox:
+  enabled: true

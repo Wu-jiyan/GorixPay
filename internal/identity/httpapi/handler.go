@@ -51,6 +51,7 @@ type loginRequest struct {
 type registerMerchantRequest struct {
 	Identifier string `json:"identifier" binding:"required"`
 	Password   string `json:"password" binding:"required,min=4"`
+	Invite     string `json:"invite"`
 }
 
 func (handler *Handler) registerMerchant(ctx *gin.Context) {
@@ -59,7 +60,7 @@ func (handler *Handler) registerMerchant(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "invalid request"})
 		return
 	}
-	result, err := handler.auth.RegisterMerchant(ctx.Request.Context(), request.Identifier, request.Password, auth.LoginMetadata{
+	result, err := handler.auth.RegisterMerchantWithInvite(ctx.Request.Context(), request.Identifier, request.Password, request.Invite, auth.LoginMetadata{
 		IPAddress: ctx.ClientIP(),
 		UserAgent: ctx.Request.UserAgent(),
 	})
@@ -85,7 +86,9 @@ func (handler *Handler) registerMerchant(ctx *gin.Context) {
 		"expires_at": result.Session.ExpiresAt,
 		"merchant": gin.H{
 			"id":           result.Merchant.ID,
+			"legacy_uid":   result.Merchant.LegacyUID,
 			"display_name": result.Merchant.DisplayName,
+			"invite_code":  auth.InviteCodeOf(result.Merchant),
 		},
 	})
 }
@@ -122,7 +125,9 @@ func (handler *Handler) loginMerchant(ctx *gin.Context) {
 		"expires_at": result.Session.ExpiresAt,
 		"merchant": gin.H{
 			"id":           result.Merchant.ID,
+			"legacy_uid":   result.Merchant.LegacyUID,
 			"display_name": result.Merchant.DisplayName,
+			"invite_code":  auth.InviteCodeOf(result.Merchant),
 		},
 	})
 }

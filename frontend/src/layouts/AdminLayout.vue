@@ -1,0 +1,168 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import {
+  NAvatar,
+  NButton,
+  NDropdown,
+  NLayout,
+  NLayoutContent,
+  NLayoutHeader,
+  NLayoutSider,
+  NMenu,
+  NSpace,
+  NTooltip,
+  useMessage,
+} from 'naive-ui';
+import { useAuthStore } from '@/stores/auth';
+
+const router = useRouter();
+const route = useRoute();
+const message = useMessage();
+const auth = useAuthStore();
+const collapsed = ref(false);
+
+const menuOptions = [
+  { label: '数据概览', key: '/admin' },
+  { label: '商户管理', key: '/admin/merchants' },
+  { label: '实名审核', key: '/admin/certifications' },
+  { label: '域名审核', key: '/admin/domains' },
+  { label: '订单管理', key: '/admin/orders' },
+  { label: '支付渠道', key: '/admin/channels' },
+  { label: '插件管理', key: '/admin/plugins' },
+  { label: '退款管理', key: '/admin/refunds' },
+  { label: '结算管理', key: '/admin/settlements' },
+  { label: '代付管理', key: '/admin/transfers' },
+  { label: '返佣记录', key: '/admin/invites' },
+  { label: '风控与黑名单', key: '/admin/risk' },
+  { label: '资金账本', key: '/admin/ledger' },
+  { label: '消息队列', key: '/admin/outbox' },
+  { label: '公告管理', key: '/admin/announcements' },
+  { label: '系统设置', key: '/admin/settings' },
+  { label: '审计日志', key: '/admin/audit' },
+];
+
+const activeKey = computed(() => (route.path === '/admin/' ? '/admin' : route.path));
+
+const userOptions = [
+  { label: '返回官网', key: 'home' },
+  { label: '退出登录', key: 'logout' },
+];
+
+async function handleUserSelect(key: string) {
+  if (key === 'logout') {
+    await auth.logout();
+    message.success('已退出登录');
+    router.replace('/admin/login');
+    return;
+  }
+  router.push('/');
+}
+
+onMounted(() => {
+  if (!auth.administrator) {
+    auth.loadSession();
+  }
+});
+</script>
+
+<template>
+  <n-layout has-sider class="admin-shell">
+    <n-layout-sider
+      bordered
+      collapse-mode="width"
+      :collapsed-width="0"
+      :width="220"
+      :collapsed="collapsed"
+      show-trigger="bar"
+      @collapse="collapsed = true"
+      @expand="collapsed = false"
+    >
+      <div class="brand">
+        <div class="brand-mark">G</div>
+        <div v-if="!collapsed" class="brand-text">
+          <strong>GorixPay</strong>
+          <span>运营后台</span>
+        </div>
+      </div>
+      <n-menu
+        :value="activeKey"
+        :options="menuOptions"
+        :collapsed="collapsed"
+        :collapsed-width="64"
+        :collapsed-icon-size="18"
+        @update:value="(key: string) => router.push(key)"
+      />
+    </n-layout-sider>
+    <n-layout>
+      <n-layout-header bordered class="topbar">
+        <n-space align="center">
+          <n-button text @click="collapsed = !collapsed">☰</n-button>
+          <div class="topbar-title">{{ route.meta.title ?? '运营后台' }}</div>
+        </n-space>
+        <n-dropdown :options="userOptions" trigger="click" @select="handleUserSelect">
+          <n-space align="center" style="cursor: pointer">
+            <n-avatar round size="small" color="#2563eb">
+              {{ auth.displayName.slice(0, 1) }}
+            </n-avatar>
+            <span class="topbar-user">{{ auth.displayName }}</span>
+          </n-space>
+        </n-dropdown>
+      </n-layout-header>
+      <n-layout-content class="content" content-style="min-height: calc(100vh - 56px);">
+        <router-view />
+      </n-layout-content>
+    </n-layout>
+  </n-layout>
+</template>
+
+<style scoped>
+.admin-shell {
+  min-height: 100vh;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 18px 12px;
+}
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #2563eb, #06b6d4);
+  color: #fff;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+.brand-text span {
+  font-size: 11px;
+  color: #94a3b8;
+}
+.topbar {
+  height: 56px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+}
+.topbar-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+.topbar-user {
+  font-size: 13px;
+  color: #475569;
+}
+.content {
+  background: #f5f7fb;
+}
+</style>

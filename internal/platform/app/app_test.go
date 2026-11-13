@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,7 +54,9 @@ func TestNewBuildsReadyApplicationWithSQLite(t *testing.T) {
 	}
 	response = httptest.NewRecorder()
 	application.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/mapi.php", nil))
-	if response.Code != http.StatusUnauthorized {
+	// Epay answers HTTP 200 with a JSON envelope for every failure, including a
+	// request without pid (Epay/mapi.php:2-5 -> {"code":-4,"msg":"未传入任何参数"}).
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"code":-4`) {
 		t.Fatalf("Epay API status = %d, body = %s", response.Code, response.Body.String())
 	}
 	if !application.DB().Migrator().HasTable("system_settings") {

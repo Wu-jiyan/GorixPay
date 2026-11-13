@@ -93,7 +93,7 @@ func TestMiddlewareRejectsInvalidSignatureAndDisabledMerchant(t *testing.T) {
 		request := httptest.NewRequest(http.MethodPost, "/mapi.php", strings.NewReader(form.Encode()))
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		router.ServeHTTP(response, request)
-		if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), `"code":-3`) {
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"code":-3`) {
 			t.Fatalf("response: %d %s", response.Code, response.Body.String())
 		}
 	}

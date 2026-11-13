@@ -40,9 +40,65 @@ type channelRequest struct {
 	Priority    int                  `json:"priority"`
 	Weight      int                  `json:"weight"`
 	Status      channelrouter.Status `json:"status"`
-	APIURL      string               `json:"api_url" binding:"required"`
-	PID         string               `json:"pid" binding:"required"`
-	Key         string               `json:"key" binding:"required"`
+	APIURL      string               `json:"api_url"`
+	PID         string               `json:"pid"`
+	Key         string               `json:"key"`
+	// Config carries plugin-specific settings (app_id, private_key, mch_id, ...)
+	// and is merged with the legacy api_url/pid/key fields before encryption.
+	Config map[string]string `json:"config"`
+}
+
+// channelConfig builds the configuration that is stored encrypted: the legacy
+// triple keeps working for epay-style plugins, Config covers everything else.
+func (request channelRequest) channelConfig() channelconfig.Config {
+	configuration := channelconfig.Config{APIURL: request.APIURL, PID: request.PID, Key: request.Key}
+	if request.PluginCode == "sandbox" {
+		if configuration.APIURL == "" {
+			configuration.APIURL = "http://sandbox.local"
+		}
+		if configuration.PID == "" {
+			configuration.PID = "sandbox"
+		}
+		if configuration.Key == "" {
+			configuration.Key = "sandbox"
+		}
+	}
+	extra := make(map[string]string, len(request.Config)+3)
+	for name, value := range map[string]string{"api_url": request.APIURL, "pid": request.PID, "key": request.Key} {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			extra[name] = trimmed
+		}
+	}
+	for name, value := range request.Config {
+		trimmedName := strings.TrimSpace(name)
+		trimmedValue := strings.TrimSpace(value)
+		if trimmedName == "" || trimmedValue == "" {
+			continue
+		}
+		// An explicit config entry overrides the same-named legacy field.
+		extra[trimmedName] = trimmedValue
+	}
+	if len(extra) > 0 {
+		configuration.Extra = extra
+	}
+	return configuration
+}
+
+func (request channelRequest) validate() bool {
+	if request.PluginCode == "sandbox" {
+		return true
+	}
+	if strings.TrimSpace(request.APIURL) != "" && strings.TrimSpace(request.PID) != "" && strings.TrimSpace(request.Key) != "" {
+		return true
+	}
+	// Plugins that only read plugin-specific settings (alipay, wechatpayv3, ...)
+	// need nothing more than one non-blank config entry.
+	for name, value := range request.Config {
+		if strings.TrimSpace(name) != "" && strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func Register(group *gin.RouterGroup, db *gorm.DB, sessions gin.HandlerFunc, configs *channelconfig.Service, ledger *ledgerquery.Service, ledgerWriter *ledgerservice.Service, finance *financeservice.Service, outboxQuery *outbox.QueryService) {
@@ -141,6 +197,22 @@ func (handler *Handler) orders(ctx *gin.Context) {
 		like := "%" + keyword + "%"
 		query = query.Where("trade_no LIKE ? OR out_trade_no LIKE ? OR name LIKE ?", like, like, like)
 	}
+	if value := strings.TrimSpace(ctx.Query("created_from")); value != "" {
+		parsed, err := time.Parse(time.RFC3339, value)
+		if err != nil {
+			invalidRequest(ctx)
+			return
+		}
+		query = query.Where("created_at >= ?", parsed.UTC())
+	}
+	if value := strings.TrimSpace(ctx.Query("created_to")); value != "" {
+		parsed, err := time.Parse(time.RFC3339, value)
+		if err != nil {
+			invalidRequest(ctx)
+			return
+		}
+		query = query.Where("created_at <= ?", parsed.UTC())
+	}
 	var total int64
 	query.Count(&total)
 	var items []paymentmodel.Order
@@ -187,13 +259,13 @@ func (handler *Handler) channels(ctx *gin.Context) {
 
 func (handler *Handler) createChannel(ctx *gin.Context) {
 	var request channelRequest
-	if ctx.ShouldBindJSON(&request) != nil || request.Weight <= 0 {
+	if ctx.ShouldBindJSON(&request) != nil || request.Weight <= 0 || !request.validate() {
 		invalidRequest(ctx)
 		return
 	}
 	now := time.Now().UTC()
 	channel := channelrouter.Channel{ID: uuid.NewString(), Name: request.Name, PluginCode: request.PluginCode, PaymentType: request.PaymentType, Priority: request.Priority, Weight: request.Weight, Status: normalizeChannelStatus(request.Status), CreatedAt: now, UpdatedAt: now}
-	encrypted, err := handler.configs.Encrypt(channel.ID, channelconfig.Config{APIURL: request.APIURL, PID: request.PID, Key: request.Key})
+	encrypted, err := handler.configs.Encrypt(channel.ID, request.channelConfig())
 	if err != nil {
 		invalidRequest(ctx)
 		return
@@ -208,11 +280,11 @@ func (handler *Handler) createChannel(ctx *gin.Context) {
 
 func (handler *Handler) updateChannel(ctx *gin.Context) {
 	var request channelRequest
-	if ctx.ShouldBindJSON(&request) != nil || request.Weight <= 0 {
+	if ctx.ShouldBindJSON(&request) != nil || request.Weight <= 0 || !request.validate() {
 		invalidRequest(ctx)
 		return
 	}
-	encrypted, err := handler.configs.Encrypt(ctx.Param("id"), channelconfig.Config{APIURL: request.APIURL, PID: request.PID, Key: request.Key})
+	encrypted, err := handler.configs.Encrypt(ctx.Param("id"), request.channelConfig())
 	if err != nil {
 		invalidRequest(ctx)
 		return
@@ -427,54 +499,87 @@ func normalizeChannelStatus(status channelrouter.Status) channelrouter.Status {
 func (handler *Handler) refunds(ctx *gin.Context) {
 	page, size := pagination(ctx)
 	items, total, err := handler.finance.Refunds(ctx.Request.Context(), financeservice.Filter{MerchantID: ctx.Query("merchant_id"), Status: financemodel.Status(ctx.Query("status")), Keyword: ctx.Query("keyword")}, financeservice.Page{Number: page, Size: size})
-	if err != nil { internalError(ctx); return }
+	if err != nil {
+		internalError(ctx)
+		return
+	}
 	ctx.JSON(http.StatusOK, gin.H{"items": items, "total": total, "page": page, "page_size": size})
 }
 
 func (handler *Handler) refund(ctx *gin.Context) {
 	item, err := handler.finance.Refund(ctx.Request.Context(), "", ctx.Param("id"))
-	if err != nil { financeError(ctx, err); return }
+	if err != nil {
+		financeError(ctx, err)
+		return
+	}
 	ctx.JSON(http.StatusOK, item)
 }
 
 func (handler *Handler) processRefund(ctx *gin.Context) {
-	var request struct { Action string `json:"action" binding:"required"`; RejectionReason string `json:"rejection_reason"` }
-	if ctx.ShouldBindJSON(&request) != nil { invalidRequest(ctx); return }
+	var request struct {
+		Action          string `json:"action" binding:"required"`
+		RejectionReason string `json:"rejection_reason"`
+	}
+	if ctx.ShouldBindJSON(&request) != nil {
+		invalidRequest(ctx)
+		return
+	}
 	principal := identityhttp.MustSession(ctx)
 	item, err := handler.finance.ProcessRefund(ctx.Request.Context(), financeservice.ProcessRequest{ID: ctx.Param("id"), Action: request.Action, ProcessedBy: principal.PrincipalID, RejectionReason: request.RejectionReason})
-	if err != nil { financeError(ctx, err); return }
+	if err != nil {
+		financeError(ctx, err)
+		return
+	}
 	ctx.JSON(http.StatusOK, item)
 }
 
 func (handler *Handler) settlements(ctx *gin.Context) {
 	page, size := pagination(ctx)
 	items, total, err := handler.finance.Settlements(ctx.Request.Context(), financeservice.Filter{MerchantID: ctx.Query("merchant_id"), Status: financemodel.Status(ctx.Query("status")), Keyword: ctx.Query("keyword")}, financeservice.Page{Number: page, Size: size})
-	if err != nil { internalError(ctx); return }
+	if err != nil {
+		internalError(ctx)
+		return
+	}
 	ctx.JSON(http.StatusOK, gin.H{"items": items, "total": total, "page": page, "page_size": size})
 }
 
 func (handler *Handler) settlement(ctx *gin.Context) {
 	item, err := handler.finance.Settlement(ctx.Request.Context(), "", ctx.Param("id"))
-	if err != nil { financeError(ctx, err); return }
+	if err != nil {
+		financeError(ctx, err)
+		return
+	}
 	ctx.JSON(http.StatusOK, item)
 }
 
 func (handler *Handler) processSettlement(ctx *gin.Context) {
-	var request struct { Action string `json:"action" binding:"required"`; RejectionReason string `json:"rejection_reason"` }
-	if ctx.ShouldBindJSON(&request) != nil { invalidRequest(ctx); return }
+	var request struct {
+		Action          string `json:"action" binding:"required"`
+		RejectionReason string `json:"rejection_reason"`
+	}
+	if ctx.ShouldBindJSON(&request) != nil {
+		invalidRequest(ctx)
+		return
+	}
 	principal := identityhttp.MustSession(ctx)
 	item, err := handler.finance.ProcessSettlement(ctx.Request.Context(), financeservice.ProcessRequest{ID: ctx.Param("id"), Action: request.Action, ProcessedBy: principal.PrincipalID, RejectionReason: request.RejectionReason})
-	if err != nil { financeError(ctx, err); return }
+	if err != nil {
+		financeError(ctx, err)
+		return
+	}
 	ctx.JSON(http.StatusOK, item)
 }
 
 func financeError(ctx *gin.Context, err error) {
 	switch {
-	case errors.Is(err, financeservice.ErrInvalidRequest): invalidRequest(ctx)
-	case errors.Is(err, financeservice.ErrNotFound): notFound(ctx)
+	case errors.Is(err, financeservice.ErrInvalidRequest):
+		invalidRequest(ctx)
+	case errors.Is(err, financeservice.ErrNotFound):
+		notFound(ctx)
 	case errors.Is(err, financeservice.ErrPaymentNotPaid), errors.Is(err, financeservice.ErrRefundAmountExceeded), errors.Is(err, financeservice.ErrStateConflict), errors.Is(err, financeservice.ErrIdempotencyConflict):
 		ctx.JSON(http.StatusConflict, gin.H{"code": "finance_conflict", "message": err.Error()})
-	default: internalError(ctx)
+	default:
+		internalError(ctx)
 	}
 }
 

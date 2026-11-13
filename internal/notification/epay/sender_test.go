@@ -2,7 +2,6 @@ package epay
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"gorixpay/internal/compat/epay/signing"
+	epayv2 "gorixpay/internal/compat/epay/v2"
 	identitymodel "gorixpay/internal/identity/model"
 	"gorixpay/internal/merchant/credential"
 	"gorixpay/internal/outbox"
@@ -22,11 +22,12 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestSenderPostsSignedEpayNotificationAndAcceptsSuccessBody(t *testing.T) {
+func TestSenderGetsSignedEpayNotificationAndAcceptsSuccessBody(t *testing.T) {
 	var received url.Values
+	var method string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		body, _ := io.ReadAll(request.Body)
-		received, _ = url.ParseQuery(string(body))
+		method = request.Method
+		received = request.URL.Query()
 		writer.WriteHeader(http.StatusInternalServerError)
 		_, _ = writer.Write([]byte("SUCCESS"))
 	}))
@@ -36,6 +37,9 @@ func TestSenderPostsSignedEpayNotificationAndAcceptsSuccessBody(t *testing.T) {
 	message := outbox.Message{Topic: "merchant.payment.notify", AggregateID: order.ID, Payload: `{"order_id":"` + order.ID + `"}`}
 	if err := sender.Handle(context.Background(), message); err != nil {
 		t.Fatal(err)
+	}
+	if method != http.MethodGet {
+		t.Fatalf("notification method = %s, want GET (Epay/includes/functions.php:522)", method)
 	}
 	if received.Get("trade_no") != order.TradeNo || received.Get("out_trade_no") != order.OutTradeNo || received.Get("trade_status") != "TRADE_SUCCESS" || received.Get("money") != "1.00" {
 		t.Fatalf("received=%v", received)
@@ -96,7 +100,7 @@ func senderDatabase(t *testing.T, name, notifyURL string) (*gorm.DB, *credential
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&identitymodel.Merchant{}, &identitymodel.MerchantCredential{}, &paymentmodel.Order{}); err != nil {
+	if err := db.AutoMigrate(&identitymodel.Merchant{}, &identitymodel.MerchantCredential{}, &paymentmodel.Order{}, &epayv2.PlatformSetting{}); err != nil {
 		t.Fatal(err)
 	}
 	uid := int64(1001)
@@ -123,4 +127,101 @@ func senderDatabase(t *testing.T, name, notifyURL string) (*gorm.DB, *credential
 		t.Fatal(err)
 	}
 	return db, credentials, order, key
+}
+
+func TestSenderUsesPlatformRSAForV2Merchants(t *testing.T) {
+	var received url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		received = request.URL.Query()
+		_, _ = writer.Write([]byte("SUCCESS"))
+	}))
+	defer server.Close()
+	db, credentials, order, key := senderDatabase(t, "notify-v2", server.URL)
+	if _, _, err := credentials.CreateRSA(context.Background(), order.MerchantID); err != nil {
+		t.Fatal(err)
+	}
+	// Only orders created through the V2 API are version 1 and get the RSA
+	// payload (Epay/includes/lib/api/Pay.php:171, Epay/includes/functions.php:503).
+	if err := db.Model(&paymentmodel.Order{}).Where("id = ?", order.ID).Update("version", 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	channelTradeNo := "CH-2026"
+	if err := db.Model(&paymentmodel.Order{}).Where("id = ?", order.ID).Update("channel_trade_no", channelTradeNo).Error; err != nil {
+		t.Fatal(err)
+	}
+	cipher, err := secret.NewCipher([]byte("01234567890123456789012345678901"), "v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := epayv2.LoadSigner(context.Background(), db, cipher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sender := NewSenderWithSigner(db, credentials, server.Client(), signer)
+	if err := sender.Handle(context.Background(), outbox.Message{Topic: "merchant.payment.notify", AggregateID: order.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if received.Get("sign_type") != "RSA" || received.Get("api_trade_no") != channelTradeNo || received.Get("trade_status") != "TRADE_SUCCESS" {
+		t.Fatalf("received=%v", received)
+	}
+	if received.Get("timestamp") == "" || received.Get("money") != "1.00" || received.Get("pid") != "1001" {
+		t.Fatalf("received=%v", received)
+	}
+	params := make(map[string]any, len(received))
+	for name := range received {
+		params[name] = received.Get(name)
+	}
+	publicKey, err := signing.ParseRSAPublicKeyPEM(signer.PublicKeyPEM())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !signing.VerifyRSA(params, publicKey, received.Get("sign")) {
+		t.Fatal("v2 notification signature is invalid")
+	}
+	if signing.VerifyMD5(params, key, received.Get("sign")) {
+		t.Fatal("v2 notification must not be signed with the merchant md5 key")
+	}
+}
+
+// TestSenderKeepsLegacyMd5ForV1OrdersWhenMerchantHasRsa locks the upstream rule
+// that the notification generation comes from the order version, not from the
+// merchant's credential set: a merchant with an RSA key still gets MD5 payloads
+// for orders created by the legacy V1 entrypoints.
+func TestSenderKeepsLegacyMd5ForV1OrdersWhenMerchantHasRsa(t *testing.T) {
+	var received url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		received = request.URL.Query()
+		_, _ = writer.Write([]byte("success"))
+	}))
+	defer server.Close()
+	db, credentials, order, key := senderDatabase(t, "notify-v1-with-rsa", server.URL)
+	if _, _, err := credentials.CreateRSA(context.Background(), order.MerchantID); err != nil {
+		t.Fatal(err)
+	}
+	cipher, err := secret.NewCipher([]byte("01234567890123456789012345678901"), "v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := epayv2.LoadSigner(context.Background(), db, cipher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := NewSenderWithSigner(db, credentials, server.Client(), signer).Handle(context.Background(), outbox.Message{
+		Topic: "merchant.payment.notify", AggregateID: order.ID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if received.Get("sign_type") != "MD5" {
+		t.Fatalf("v1 order notification sign_type = %q, want MD5", received.Get("sign_type"))
+	}
+	if received.Get("timestamp") != "" || received.Get("api_trade_no") != "" {
+		t.Fatalf("v1 notification must not carry v2 fields: %v", received)
+	}
+	params := make(map[string]any, len(received))
+	for name := range received {
+		params[name] = received.Get(name)
+	}
+	if !signing.VerifyMD5(params, key, received.Get("sign")) {
+		t.Fatal("v1 notification signature does not verify with the merchant md5 key")
+	}
 }

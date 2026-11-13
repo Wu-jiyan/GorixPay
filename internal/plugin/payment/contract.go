@@ -3,6 +3,7 @@ package payment
 import (
 	"context"
 	"errors"
+	"net/http"
 	"net/url"
 	"regexp"
 )
@@ -13,6 +14,12 @@ var (
 	ErrPluginNotFound        = errors.New("payment plugin not found")
 	ErrUnsupportedCapability = errors.New("payment plugin capability is unsupported")
 	ErrInvalidAction         = errors.New("invalid payment action")
+	// ErrInvalidConfiguration marks a channel configuration that is missing a
+	// field the plugin cannot work without.
+	ErrInvalidConfiguration = errors.New("invalid channel configuration")
+	// ErrCallbackRejected marks an asynchronous notification that failed
+	// signature verification or carried an unusable payload.
+	ErrCallbackRejected = errors.New("payment callback rejected")
 )
 
 type Capability string
@@ -72,9 +79,20 @@ type Action struct {
 
 func (action Action) Validate() error {
 	switch action.Type {
-	case ActionJump, ActionQRCode:
+	case ActionJump:
 		parsed, err := url.ParseRequestURI(action.URL)
 		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return ErrInvalidAction
+		}
+	case ActionQRCode:
+		// A QR payload is not always an http URL: WeChat Pay hands out
+		// weixin://wxpay/bizpayurl?pr=... and other acquirers use their own
+		// schemes, so any absolute URI is accepted here.
+		parsed, err := url.ParseRequestURI(action.URL)
+		if err != nil || parsed.Scheme == "" {
+			return ErrInvalidAction
+		}
+		if (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host == "" {
 			return ErrInvalidAction
 		}
 	case ActionURLScheme:
@@ -94,6 +112,55 @@ func (action Action) Validate() error {
 		return ErrInvalidAction
 	}
 	return nil
+}
+
+// ConfigField describes one key of a plugin's channel configuration so the
+// administration UI can render a form without hard-coded knowledge of the
+// plugin. Secret fields are never echoed back by the API.
+type ConfigField struct {
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Type     string `json:"type"`
+	Required bool   `json:"required"`
+	Secret   bool   `json:"secret"`
+}
+
+// Field types understood by the administration UI.
+const (
+	ConfigFieldText     = "text"
+	ConfigFieldPassword = "password"
+	ConfigFieldURL      = "url"
+	ConfigFieldTextarea = "textarea"
+	ConfigFieldSelect   = "select"
+)
+
+// Configurable is the optional capability of a plugin that publishes the shape
+// of its channel configuration. Plugins that predate it keep working untouched.
+type Configurable interface {
+	ConfigFields() []ConfigField
+}
+
+// CallbackResult is the normalized outcome of an upstream notification. Amount
+// is expressed in the smallest currency unit (cents) like every other amount in
+// the platform, so the handler can compare it with the stored order directly.
+type CallbackResult struct {
+	TradeNo        string
+	ChannelTradeNo string
+	Amount         int64
+	Paid           bool
+	Raw            map[string]string
+	// Ack is the exact body the upstream expects to stop retrying. Empty means
+	// the generic "success" acknowledgement. Gateways with a proprietary
+	// acknowledgement (Huifu wants RECV_ORD_ID_<trade_no>) set it here.
+	Ack string
+}
+
+// CallbackVerifier is implemented by plugins that can authenticate and decode
+// asynchronous notifications. The handler hands over the untouched request so
+// each plugin keeps using its own header or form conventions; the raw body is
+// still readable because the handler rewinds it.
+type CallbackVerifier interface {
+	VerifyCallback(ctx context.Context, r *http.Request, config map[string]string) (CallbackResult, error)
 }
 
 func validMetadata(metadata Metadata) bool {

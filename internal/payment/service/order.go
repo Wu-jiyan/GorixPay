@@ -23,7 +23,10 @@ type PublicOrder struct {
 	Currency    string
 	PaymentType string
 	Status      paymentmodel.Status
+	Kind        paymentmodel.Kind
+	ReturnURL   *string
 	ExpiresAt   time.Time
+	CreatedAt   time.Time
 }
 
 func (service *Service) Find(ctx context.Context, merchantID, tradeNo, outTradeNo string) (paymentmodel.Order, error) {
@@ -92,6 +95,7 @@ func (service *Service) FindPublic(ctx context.Context, tradeNo string) (PublicO
 	}
 	return PublicOrder{
 		TradeNo: found.TradeNo, Name: found.Name, Amount: found.Amount, Currency: found.Currency,
-		PaymentType: found.PaymentType, Status: found.Status, ExpiresAt: found.ExpiresAt,
+		PaymentType: found.PaymentType, Status: found.Status, Kind: found.Kind,
+		ReturnURL: found.ReturnURL, ExpiresAt: found.ExpiresAt, CreatedAt: found.CreatedAt,
 	}, nil
 }

@@ -2,7 +2,7 @@
 
 ## 目的
 
-本文件记录 GroixPay 必须兼容的 Epay 源码行为。机器可读事实源位于 `tests/contracts/epay/manifest.yaml`。当公开文档与源码冲突时，以当前 `Epay/` 源码实际行为为准；历史缺陷先在兼容入口保留，GroixPay 自有 `/api/v1/` 不继承这些缺陷。
+本文件记录 GroixPay 必须兼容的 Epay 源码行为。机器可读事实源位于 `tests/contracts/epay/manifest.yaml`。当公开文档与源码冲突时，以上游源码实际行为为准；历史缺陷先在兼容入口保留，GroixPay 自有 `/api/v1/` 不继承这些缺陷。
 
 ## 入口矩阵
 

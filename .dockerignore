@@ -4,6 +4,10 @@
 Epay
 data
 *.db
+*.db-shm
+*.db-wal
 *.log
-web/node_modules
-web/dist
+master.key
+*.key
+frontend/node_modules
+frontend/dist

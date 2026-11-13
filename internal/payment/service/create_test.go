@@ -72,6 +72,56 @@ func TestCreateOrderValidatesCommand(t *testing.T) {
 	}
 }
 
+func TestCreateOrderStampsFundingKind(t *testing.T) {
+	db := testDatabase(t, "create-kind")
+	service := New(db, time.Now)
+	command := CreateCommand{
+		MerchantID: "merchant-1", OutTradeNo: "ORDER-KIND", PaymentType: "cashier",
+		Name: "保证金", Amount: 2000, NotifyURL: "https://gorix.example/api/v1/funding/notify",
+		Kind: paymentmodel.KindDeposit,
+	}
+	order, created, err := service.Create(context.Background(), command)
+	if err != nil || !created {
+		t.Fatalf("created=%v err=%v", created, err)
+	}
+	if order.Kind != paymentmodel.KindDeposit || order.IsSale() {
+		t.Fatalf("order kind=%q", order.Kind)
+	}
+	var stored paymentmodel.Order
+	if err := db.First(&stored, "id = ?", order.ID).Error; err != nil || stored.Kind != paymentmodel.KindDeposit {
+		t.Fatalf("stored kind=%q err=%v", stored.Kind, err)
+	}
+	sale, _, err := service.Create(context.Background(), CreateCommand{
+		MerchantID: "merchant-1", OutTradeNo: "ORDER-SALE", PaymentType: "alipay",
+		Name: "sale", Amount: 100, NotifyURL: "https://merchant.example/notify",
+	})
+	if err != nil || sale.Kind != paymentmodel.KindSale || !sale.IsSale() {
+		t.Fatalf("sale kind=%q err=%v", sale.Kind, err)
+	}
+	command.OutTradeNo = "ORDER-BAD-KIND"
+	command.Kind = "mystery"
+	if _, _, err := service.Create(context.Background(), command); !errors.Is(err, ErrInvalidCommand) {
+		t.Fatalf("unknown kind accepted: %v", err)
+	}
+}
+
+func TestCreateOrderKindIsPartOfIdempotencyComparison(t *testing.T) {
+	db := testDatabase(t, "create-kind-conflict")
+	service := New(db, time.Now)
+	command := CreateCommand{
+		MerchantID: "merchant-1", OutTradeNo: "ORDER-1", PaymentType: "cashier",
+		Name: "充值", Amount: 100, NotifyURL: "https://gorix.example/api/v1/funding/notify",
+		Kind: paymentmodel.KindRecharge,
+	}
+	if _, _, err := service.Create(context.Background(), command); err != nil {
+		t.Fatal(err)
+	}
+	command.Kind = paymentmodel.KindDeposit
+	if _, _, err := service.Create(context.Background(), command); !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("kind change accepted: %v", err)
+	}
+}
+
 func testDatabase(t *testing.T, name string) *gorm.DB {
 	t.Helper()
 	db, _, err := database.Open(context.Background(), config.DatabaseConfig{Driver: "sqlite", DSN: "file:" + name + "?mode=memory&cache=shared"})

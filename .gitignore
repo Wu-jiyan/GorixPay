@@ -34,3 +34,14 @@ Thumbs.db
 # Temporary
 tmp/
 temp/
+
+# 本地通道凭据（含私钥，禁止提交）
+*.local.ps1
+
+# 部署密钥（compose 的 secrets 挂载点）
+deploy/secrets/*
+!deploy/secrets/.gitkeep
+deploy/.env
+
+# 上游易支付源码（只读参照，不进仓库；用 EPAY_UPSTREAM_DIR 指向它的位置）
+Epay/

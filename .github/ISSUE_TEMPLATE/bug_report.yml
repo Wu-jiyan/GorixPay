@@ -1,0 +1,92 @@
+name: Bug 报告
+description: 报告可复现的功能错误或行为偏差
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先用最新 main 复现一次。能贴命令、请求和日志原文的就贴原文，密钥与 Cookie 打码。
+        一条报告最好只装一个问题，方便定位和关闭。
+
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 现象
+      description: 一句话说清发生了什么，涉及哪个入口或页面。
+      placeholder: 例如：mapi.php 下单返回 code=1，但收银台打不开，状态停在 processing。
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 从干净数据库开始的最小步骤，写清请求方法、路径和关键参数。
+      placeholder: |
+        1. go run ./cmd/gorixpay --config deploy/config.yaml
+        2. 注册商户并生成 MD5 密钥
+        3. POST /mapi.php，参数 pid、out_trade_no、money、sign
+        4. 打开返回的 pay_info 地址
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+      description: 按协议或文档，这里应该发生什么。
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+      description: 实际返回的内容、状态码、页面表现，和期望的差别。
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本或 commit
+      description: 出问题的 commit sha、镜像 tag 或分支名，写完整。
+      placeholder: 例如：0f3c9a1 或 main@2026-11-13
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统
+      description: 系统与版本，WSL 或容器请写宿主。
+      placeholder: 例如：Windows 11 24H2、Ubuntu 24.04
+    validations:
+      required: true
+
+  - type: input
+    id: database
+    attributes:
+      label: 数据库
+      description: 驱动与版本，SQLite 写文件路径外的版本号。
+      placeholder: 例如：SQLite 3.45、MySQL 8.0.36、PostgreSQL 16.2
+    validations:
+      required: true
+
+  - type: input
+    id: redis
+    attributes:
+      label: Redis
+      description: 未配置 Redis 就写未配置，配置了就写版本。
+      placeholder: 例如：未配置、Redis 7.2.4
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志
+      description: 服务端日志、请求与响应原文、失败用例输出。密钥、Cookie、会话 token 打码。
+      render: text
+    validations:
+      required: true

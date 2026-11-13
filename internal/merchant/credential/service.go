@@ -19,6 +19,7 @@ var ErrCredentialNotFound = errors.New("active credential not found")
 type Resolved struct {
 	Credential model.MerchantCredential
 	Secret     string
+	PublicKey  string
 }
 
 type Service struct {

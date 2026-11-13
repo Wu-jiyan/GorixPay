@@ -6,6 +6,8 @@ import (
 	"errors"
 	"time"
 
+	ledgermodel "gorixpay/internal/ledger/model"
+	ledgerservice "gorixpay/internal/ledger/service"
 	"gorixpay/internal/outbox"
 	paymentmodel "gorixpay/internal/payment/model"
 
@@ -43,15 +45,36 @@ func (Record) TableName() string {
 }
 
 type Service struct {
-	db  *gorm.DB
-	now func() time.Time
+	db     *gorm.DB
+	now    func() time.Time
+	ledger *ledgerservice.Service
+	hooks  []PostPaymentHook
+}
+
+// PostPaymentHook runs inside the payment-completion transaction after the
+// order is marked paid. It is used for invite rebates and deposit accounting.
+type PostPaymentHook interface {
+	OnPayment(ctx context.Context, tx *gorm.DB, order paymentmodel.Order) error
 }
 
 func New(db *gorm.DB, now func() time.Time) *Service {
+	return NewWithLedger(db, now, nil)
+}
+
+// NewWithLedger wires the double-entry ledger so a successful payment credits
+// the merchant balance in the same transaction that flips the order to paid.
+func NewWithLedger(db *gorm.DB, now func() time.Time, ledger *ledgerservice.Service) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{db: db, now: now}
+	return &Service{db: db, now: now, ledger: ledger}
+}
+
+// WithHooks returns a copy of the service with post-payment hooks attached.
+func (service *Service) WithHooks(hooks ...PostPaymentHook) *Service {
+	copied := *service
+	copied.hooks = append([]PostPaymentHook{}, hooks...)
+	return &copied
 }
 
 func (service *Service) Complete(ctx context.Context, completion Completion) (paymentmodel.Order, bool, error) {
@@ -120,21 +143,36 @@ func (service *Service) Complete(ctx context.Context, completion Completion) (pa
 		if update.RowsAffected != 1 {
 			return ErrOrderNotPayable
 		}
-		payload, err := json.Marshal(map[string]any{
-			"order_id": result.ID, "merchant_id": result.MerchantID, "trade_no": result.TradeNo,
-			"out_trade_no": result.OutTradeNo, "channel_trade_no": completion.ChannelTradeNo,
-			"amount": result.Amount, "paid_at": now,
-		})
-		if err != nil {
-			return err
+		if result.IsSale() {
+			payload, err := json.Marshal(map[string]any{
+				"order_id": result.ID, "merchant_id": result.MerchantID, "trade_no": result.TradeNo,
+				"out_trade_no": result.OutTradeNo, "channel_trade_no": completion.ChannelTradeNo,
+				"amount": result.Amount, "paid_at": now,
+			})
+			if err != nil {
+				return err
+			}
+			message := outbox.Message{
+				ID: uuid.NewString(), Topic: "merchant.payment.notify", AggregateID: result.ID,
+				IdempotencyKey: "merchant-payment-notify:" + result.ID, Payload: string(payload),
+				Status: outbox.StatusPending, AvailableAt: now, CreatedAt: now, UpdatedAt: now,
+			}
+			if err := tx.Create(&message).Error; err != nil {
+				return err
+			}
 		}
-		message := outbox.Message{
-			ID: uuid.NewString(), Topic: "merchant.payment.notify", AggregateID: result.ID,
-			IdempotencyKey: "merchant-payment-notify:" + result.ID, Payload: string(payload),
-			Status: outbox.StatusPending, AvailableAt: now, CreatedAt: now, UpdatedAt: now,
+		if result.IsSale() || result.Kind == paymentmodel.KindRecharge {
+			if err := service.postIncome(tx, result); err != nil {
+				return err
+			}
 		}
-		if err := tx.Create(&message).Error; err != nil {
-			return err
+		for _, hook := range service.hooks {
+			if hook == nil {
+				continue
+			}
+			if err := hook.OnPayment(ctx, tx, result); err != nil {
+				return err
+			}
 		}
 		result.Status = paymentmodel.StatusPaid
 		result.ChannelTradeNo = &completion.ChannelTradeNo
@@ -144,4 +182,38 @@ func (service *Service) Complete(ctx context.Context, completion Completion) (pa
 		return nil
 	})
 	return result, applied, err
+}
+
+// postIncome credits the merchant's available balance and debits the platform
+// clearing account in the same transaction. The idempotency key is derived from
+// the order id, so a replayed callback can never double-credit.
+func (service *Service) postIncome(tx *gorm.DB, order paymentmodel.Order) error {
+	if service.ledger == nil || order.Amount <= 0 {
+		return nil
+	}
+	merchantAccount, err := service.ledger.CreateAccountInTransaction(tx, ledgerservice.AccountRequest{
+		OwnerType: "merchant", OwnerID: order.MerchantID, Purpose: "balance",
+		Category: ledgermodel.CategoryLiability, Currency: order.Currency,
+	})
+	if err != nil {
+		return err
+	}
+	platformAccount, err := service.ledger.CreateAccountInTransaction(tx, ledgerservice.AccountRequest{
+		OwnerType: "platform", OwnerID: "platform", Purpose: "cash",
+		Category: ledgermodel.CategoryAsset, Currency: order.Currency,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = service.ledger.PostInTransaction(tx, ledgerservice.TransactionRequest{
+		IdempotencyKey: "payment:" + order.ID,
+		ReferenceType:  "payment",
+		ReferenceID:    order.ID,
+		Description:    "merchant payment income",
+		Postings: []ledgerservice.Posting{
+			{AccountID: merchantAccount.ID, Direction: ledgermodel.DirectionCredit, Bucket: ledgermodel.BucketAvailable, Amount: order.Amount},
+			{AccountID: platformAccount.ID, Direction: ledgermodel.DirectionDebit, Bucket: ledgermodel.BucketAvailable, Amount: order.Amount},
+		},
+	})
+	return err
 }

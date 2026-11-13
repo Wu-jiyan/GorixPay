@@ -36,10 +36,19 @@ func (auditEvent) TableName() string {
 }
 
 var allowedSettings = map[string]bool{
-	"site.name":                         true,
-	"site.logo_url":                     true,
-	"payment.order_expiry_minutes":      true,
-	"notification.max_attempts":         true,
+	"site.name":                          true,
+	"site.logo_url":                      true,
+	"payment.order_expiry_minutes":       true,
+	"payment.domain_whitelist_required":  true,
+	"certification.required":             true,
+	"certification.fee_cents":            true,
+	"invite.enabled":                     true,
+	"invite.rate_bp":                     true,
+	"risk.daily_amount_limit_cents":      true,
+	"risk.daily_order_limit":             true,
+	"risk.ip_daily_limit":                true,
+	"merchant.deposit_required_cents":    true,
+	"notification.max_attempts":          true,
 	"notification.poll_interval_seconds": true,
 }
 
@@ -70,7 +79,7 @@ func (handler *Handler) updateSetting(ctx *gin.Context) {
 		return
 	}
 	var request struct {
-		Value any `json:"value" binding:"required"`
+		Value any `json:"value"`
 	}
 	if ctx.ShouldBindJSON(&request) != nil {
 		invalidRequest(ctx)
@@ -99,6 +108,10 @@ func (handler *Handler) auditEvents(ctx *gin.Context) {
 	if actorID := strings.TrimSpace(ctx.Query("actor_id")); actorID != "" {
 		query = query.Where("actor_id = ?", actorID)
 	}
+	if keyword := strings.TrimSpace(ctx.Query("keyword")); keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where("event_type LIKE ? OR actor_id LIKE ? OR payload LIKE ?", like, like, like)
+	}
 	var total int64
 	query.Count(&total)
 	var items []auditEvent
@@ -116,11 +129,11 @@ func (handler *Handler) audit(ctx *gin.Context) {
 	}
 	identity := identityhttp.MustSession(ctx)
 	payload, err := json.Marshal(map[string]any{
-		"method": ctx.Request.Method,
-		"path": ctx.FullPath(),
-		"status": ctx.Writer.Status(),
+		"method":      ctx.Request.Method,
+		"path":        ctx.FullPath(),
+		"status":      ctx.Writer.Status(),
 		"resource_id": ctx.Param("id"),
-		"request_id": ctx.GetHeader("X-Request-ID"),
+		"request_id":  ctx.GetHeader("X-Request-ID"),
 	})
 	if err != nil {
 		return

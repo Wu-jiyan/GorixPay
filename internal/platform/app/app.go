@@ -9,13 +9,20 @@ import (
 	"time"
 
 	adminhttp "gorixpay/internal/admin/httpapi"
+	"gorixpay/internal/announcement"
+	"gorixpay/internal/certification"
 	channelconfig "gorixpay/internal/channel/config"
 	channelrouter "gorixpay/internal/channel/router"
+	epaypage "gorixpay/internal/compat/epay/page"
 	epaypayment "gorixpay/internal/compat/epay/payment"
+	epayv2 "gorixpay/internal/compat/epay/v2"
+	"gorixpay/internal/domainauth"
 	financeservice "gorixpay/internal/finance/service"
+	"gorixpay/internal/funding"
 	"gorixpay/internal/identity/auth"
 	identityhttp "gorixpay/internal/identity/httpapi"
 	"gorixpay/internal/identity/session"
+	"gorixpay/internal/invite"
 	ledgerquery "gorixpay/internal/ledger/query"
 	ledgerservice "gorixpay/internal/ledger/service"
 	"gorixpay/internal/merchant/credential"
@@ -23,6 +30,7 @@ import (
 	epaynotification "gorixpay/internal/notification/epay"
 	"gorixpay/internal/outbox"
 	paymentcallback "gorixpay/internal/payment/callback"
+	"gorixpay/internal/payment/cashier"
 	paymentorchestrator "gorixpay/internal/payment/orchestrator"
 	paymentquery "gorixpay/internal/payment/query"
 	paymentservice "gorixpay/internal/payment/service"
@@ -31,9 +39,21 @@ import (
 	"gorixpay/internal/platform/health"
 	"gorixpay/internal/platform/httpserver"
 	"gorixpay/internal/platform/migrate"
+	redisx "gorixpay/internal/platform/redis"
 	"gorixpay/internal/platform/secret"
 	pluginpayment "gorixpay/internal/plugin/payment"
+	"gorixpay/internal/plugin/payment/alipay"
 	epayplugin "gorixpay/internal/plugin/payment/epay"
+	"gorixpay/internal/plugin/payment/generic"
+	"gorixpay/internal/plugin/payment/huifu"
+	"gorixpay/internal/plugin/payment/jeepay"
+	"gorixpay/internal/plugin/payment/qqpay"
+	sandboxplugin "gorixpay/internal/plugin/payment/sandbox"
+	"gorixpay/internal/plugin/payment/unionpay"
+	"gorixpay/internal/plugin/payment/usdt"
+	"gorixpay/internal/plugin/payment/wechatpayv3"
+	"gorixpay/internal/risk"
+	"gorixpay/internal/transfer"
 	"gorixpay/migrations"
 
 	"github.com/gin-gonic/gin"
@@ -44,6 +64,7 @@ type App struct {
 	cfg          config.Config
 	db           *gorm.DB
 	router       *gin.Engine
+	redis        *redisx.Client
 	workerCancel context.CancelFunc
 	workerDone   <-chan struct{}
 }
@@ -73,37 +94,131 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	sessions := session.NewService(db, time.Now)
 	identityhttp.Register(router.Group("/api/v1"), auth.NewService(db, sessions), sessions)
 	application := &App{cfg: cfg, db: db, router: router}
+
+	redisClient, redisErr := redisx.Open(redisx.Config{
+		Addr: cfg.Redis.Addr, Password: cfg.Redis.Password, DB: cfg.Redis.DB, Prefix: cfg.Redis.Prefix,
+	})
+	if redisErr != nil {
+		logger.Warn("redis unavailable, continuing without it", "error", redisErr)
+		redisClient = nil
+	}
+	application.redis = redisClient
+
 	if cfg.Security.MasterKeyFile != "" {
 		key, err := secret.LoadKeyFile(cfg.Security.MasterKeyFile)
 		if err != nil {
-			closeDatabase(db)
+			application.closeResources()
 			return nil, err
 		}
 		cipher, err := secret.NewCipher(key, "v1")
 		if err != nil {
-			closeDatabase(db)
+			application.closeResources()
 			return nil, err
 		}
 		credentials := credential.NewService(db, cipher, time.Now)
 		channelConfigs := channelconfig.NewService(cipher)
+		ledgerWriter := ledgerservice.New(db, time.Now)
+		certService := certification.New(db, cipher, ledgerWriter, time.Now)
+		domainService := domainauth.New(db, time.Now)
+		inviteService := invite.New(db, ledgerWriter, cfg.HTTP.PublicURL, time.Now)
+		riskService := risk.New(db, time.Now)
+		fundingService := funding.New(db, ledgerWriter, cfg.HTTP.PublicURL)
+		orders := paymentservice.New(db, time.Now).WithGuards(
+			certService.Guard(), domainService.Guard(), riskService.Guard(), fundingService.Guard(),
+		)
+		callbacks := paymentcallback.NewWithLedger(db, time.Now, ledgerWriter).
+			WithHooks(fundingService, inviteService.Hook())
+
 		plugins := pluginpayment.NewRegistry()
 		if err := plugins.Register(epayplugin.New(nil)); err != nil {
-			closeDatabase(db)
+			application.closeResources()
 			return nil, err
+		}
+		for _, plugin := range []pluginpayment.Plugin{
+			alipay.New(nil), wechatpayv3.New(nil), jeepay.New(nil), generic.New(nil), huifu.New(nil), usdt.New(nil),
+			qqpay.New(nil), unionpay.New(nil),
+		} {
+			if err := plugins.Register(plugin); err != nil {
+				application.closeResources()
+				return nil, err
+			}
+		}
+		sandboxEnabled := cfg.Sandbox.Enabled && cfg.Environment != "production"
+		if sandboxEnabled {
+			if err := plugins.Register(sandboxplugin.New()); err != nil {
+				application.closeResources()
+				return nil, err
+			}
 		}
 		channels := channelrouter.New(db, plugins, nil)
 		orchestrator := paymentorchestrator.NewConfigured(db, channels, time.Now, channelConfigs, cfg.HTTP.PublicURL)
-		ledgerWriter := ledgerservice.New(db, time.Now)
 		finance := financeservice.New(db, ledgerWriter, time.Now)
+		transferService := transfer.New(db, ledgerWriter, time.Now)
 		outboxQuery := outbox.NewQuery(db)
+
 		merchant := merchanthttp.Register(router.Group("/api/v1/merchant"), sessions, credentials)
 		merchanthttp.RegisterOrders(merchant, paymentquery.New(db))
 		merchanthttp.RegisterFinance(merchant, finance)
+		merchanthttp.RegisterProfile(merchant, db)
+
+		adminGroup := router.Group("/api/v1/admin", identityhttp.Authenticate(sessions), identityhttp.RequireAdministrator())
 		adminhttp.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions), channelConfigs, ledgerquery.New(db), ledgerWriter, finance, outboxQuery)
-		epaypayment.Register(router, db, credentials, paymentservice.New(db, time.Now), cfg.HTTP.PublicURL, orchestrator)
-		paymentcallback.RegisterEpay(router, db, channelConfigs, paymentcallback.New(db, time.Now))
+		adminhttp.RegisterExtras(adminGroup, db)
+
+		epaypayment.Register(router, db, credentials, orders, cfg.HTTP.PublicURL, orchestrator)
+		paymentcallback.RegisterEpay(router, db, channelConfigs, callbacks)
+
+		transfer.RegisterMerchant(merchant, transferService)
+		transfer.RegisterAdmin(adminGroup, transferService)
+		announcement.Register(router, merchant, adminGroup, announcement.New(db))
+
+		certification.RegisterMerchant(merchant, certService)
+		certification.RegisterAdmin(adminGroup, certService)
+		domainauth.RegisterMerchant(merchant, domainService)
+		domainauth.RegisterAdmin(adminGroup, domainService)
+		invite.RegisterMerchant(merchant, inviteService)
+		invite.RegisterAdmin(adminGroup, inviteService)
+		risk.RegisterMerchant(merchant, riskService)
+		risk.RegisterAdmin(adminGroup, riskService)
+		funding.RegisterMerchant(merchant, fundingService)
+		funding.RegisterAdmin(adminGroup, fundingService)
+		adminhttp.RegisterPlugins(adminGroup, db, channelConfigs, plugins)
+		paymentcallback.RegisterPlugins(router, db, channelConfigs, callbacks, plugins)
+
+		signer, signerErr := epayv2.LoadSigner(ctx, db, cipher)
+		if signerErr != nil {
+			logger.Warn("load epay v2 platform signer", "error", signerErr)
+			signer = nil
+		}
+		var replay epayv2.ReplayStore
+		if redisClient != nil {
+			replay = redisClient
+		}
+		v2Deps := epayv2.Deps{
+			DB: db, Credentials: credentials, Orders: orders, Finance: finance,
+			Transfers: transferService, Starter: orchestrator, SiteURL: cfg.HTTP.PublicURL,
+			Cipher: cipher, Replay: replay,
+		}
+		if err := epayv2.Register(router, v2Deps); err != nil {
+			application.closeResources()
+			return nil, err
+		}
+		epayv2.RegisterMerchantRoutes(merchant, v2Deps)
+		epaypayment.RegisterAPI(router, db, credentials, orders, finance)
+
+		var limiter cashier.Limiter
+		if redisClient != nil {
+			limiter = redisClient
+		}
+		cashier.Register(router, cashier.Deps{
+			DB: db, Orders: orders, Starter: orchestrator, Callbacks: callbacks,
+			Limiter: limiter, SandboxEnabled: sandboxEnabled,
+		})
+
 		router.NoRoute(serveSPA(cfg.HTTP.PublicURL))
-		worker := outbox.NewWorker(db, epaynotification.NewSender(db, credentials, nil), time.Now, outbox.Options{})
+		notifier := epaynotification.NewSenderWithSigner(db, credentials, nil, signer)
+		epaypage.Register(router, db, cfg.HTTP.PublicURL, notifier)
+		worker := outbox.NewWorker(db, notifier, time.Now, outbox.Options{})
 		workerContext, workerCancel := context.WithCancel(context.Background())
 		workerDone := make(chan struct{})
 		application.workerCancel = workerCancel
@@ -116,6 +231,14 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		}()
 	}
 	return application, nil
+}
+
+func (a *App) closeResources() {
+	if a.redis != nil {
+		_ = a.redis.Close()
+		a.redis = nil
+	}
+	closeDatabase(a.db)
 }
 
 func closeDatabase(db *gorm.DB) {
@@ -141,6 +264,9 @@ func (a *App) Close() error {
 	if a.workerCancel != nil {
 		a.workerCancel()
 		<-a.workerDone
+	}
+	if a.redis != nil {
+		_ = a.redis.Close()
 	}
 	sqlDB, err := a.db.DB()
 	if err != nil {

@@ -1,0 +1,154 @@
+version: 1
+# Contract manifest for the first batch of official payment plugins.
+# The Go test next to this file builds the real registry and asserts that every
+# plugin below matches this declaration: codes, capabilities, whether it can
+# verify notifications, and its published configuration schema.
+callback_route: /api/v1/payment/callback/{plugin}/{channel_id}
+admin_routes:
+  plugins: /api/v1/admin/plugins
+  channel_test: /api/v1/admin/channels/{id}/test
+plugins:
+  - code: alipay
+    name: 支付宝当面付
+    capabilities: [payment]
+    callback_verifier: true
+    upstream:
+      create_path: gateway (alipay.trade.precreate)
+      signature: SHA256withRSA (RSA2)
+      notification: form, RSA2 over sorted values excluding sign/sign_type
+    action_types: [qrcode]
+    config_fields:
+      - {key: app_id, type: text, required: true, secret: false}
+      - {key: private_key, type: textarea, required: true, secret: true}
+      - {key: alipay_public_key, type: textarea, required: true, secret: true}
+      - {key: gateway_url, type: url, required: false, secret: false}
+    amount_unit: fen from total_amount
+  - code: wechatpayv3
+    name: 微信支付 V3
+    capabilities: [payment]
+    callback_verifier: true
+    upstream:
+      create_path: /v3/pay/transactions/{native,jsapi,h5}
+      signature: WECHATPAY2-SHA256-RSA2048
+      notification: Aead_Aes_256_Gcm resource + platform certificate signature
+    action_types: [qrcode, jsapi, jump]
+    config_fields:
+      - {key: mch_id, type: text, required: true, secret: false}
+      - {key: app_id, type: text, required: true, secret: false}
+      - {key: serial_no, type: text, required: true, secret: false}
+      - {key: private_key, type: textarea, required: true, secret: true}
+      - {key: api_v3_key, type: password, required: true, secret: true}
+      - {key: platform_public_key, type: textarea, required: false, secret: true}
+      - {key: platform_serial, type: text, required: false, secret: false}
+      - {key: api_base_url, type: url, required: false, secret: false}
+    amount_unit: fen (amount.total)
+  - code: jeepay
+    name: Jeepay 聚合支付
+    capabilities: [payment]
+    callback_verifier: true
+    upstream:
+      create_path: /api/pay/unifiedOrder
+      signature: MD5(sorted params + &key=KEY, upper case)
+      notification: JSON with sign field
+    action_types: [qrcode, jump, html]
+    config_fields:
+      - {key: api_url, type: url, required: true, secret: false}
+      - {key: mch_no, type: text, required: true, secret: false}
+      - {key: app_id, type: text, required: true, secret: false}
+      - {key: key, type: password, required: true, secret: true}
+      - {key: way_code, type: text, required: false, secret: false}
+    amount_unit: fen (amount)
+  - code: generic
+    name: 通用 HTTP 上游
+    capabilities: [payment]
+    callback_verifier: true
+    upstream:
+      create_path: configurable api_url + param_template
+      signature: md5 (epay canonical) or none
+      notification: form or flat JSON
+    action_types: [qrcode, jump, urlscheme, html, jsapi, app, scan, wxplugin, wxapp]
+    config_fields:
+      - {key: api_url, type: url, required: true, secret: false}
+      - {key: method, type: text, required: false, secret: false}
+      - {key: param_template, type: textarea, required: false, secret: false}
+      - {key: sign_type, type: select, required: false, secret: false}
+      - {key: key, type: password, required: false, secret: true}
+    amount_unit: fen (money/amount placeholder)
+  - code: usdt
+    name: USDT (Epusdt)
+    capabilities: [payment]
+    callback_verifier: true
+    upstream:
+      create_path: /api/v1/pay/create
+      signature: md5(order_id + amount + key)
+      notification: JSON or form, md5(trade_id + order_id + amount + key)
+    action_types: [jump, qrcode]
+    config_fields:
+      - {key: api_url, type: url, required: true, secret: false}
+      - {key: key, type: password, required: true, secret: true}
+      - {key: action, type: select, required: false, secret: false}
+      - {key: notify_url, type: url, required: false, secret: false}
+    amount_unit: fen (amount string with two decimals)
+  - code: epay
+    name: Epay
+    capabilities: [payment]
+    # The epay notification is handled by the dedicated /callback/epay/:channel
+    # handler, not through the CallbackVerifier interface.
+    callback_verifier: false
+    upstream:
+      create_path: /mapi.php
+      signature: MD5(canonical + key)
+      notification: handled by RegisterEpay (/callback/epay/:channel_id)
+    action_types: [jump, qrcode, urlscheme, html, jsapi, app, scan, wxplugin, wxapp]
+    config_fields: []
+    amount_unit: fen (money)
+  - code: qqpay
+    name: QQ 钱包
+    capabilities: [payment]
+    callback_verifier: true
+    upstream:
+      create_path: /cgi-bin/pay/qpay_unified_order.cgi (flat XML body)
+      signature: MD5(sorted k=v& + "&key=" + KEY, upper case)
+      notification: XML document, sign covers every non-empty field
+    action_types: [qrcode]
+    config_fields:
+      - {key: mch_id, type: text, required: true, secret: false}
+      - {key: app_id, type: text, required: true, secret: false}
+      - {key: key, type: password, required: true, secret: true}
+      - {key: api_url, type: url, required: false, secret: false}
+    amount_unit: fen (total_fee)
+  - code: unionpay
+    name: 银联全渠道
+    capabilities: [payment]
+    callback_verifier: true
+    upstream:
+      create_path: 5.1.0 frontTransReq (auto-submitting form rendered locally)
+      signature: SHA256withRSA over sorted "k=v&" with trailing '&'
+      notification: form post, sign excluded from the signature string
+    action_types: [html, jump]
+    config_fields:
+      - {key: mer_id, type: text, required: true, secret: false}
+      - {key: cert_id, type: text, required: true, secret: false}
+      - {key: private_key, type: textarea, required: true, secret: true}
+      - {key: unionpay_public_key, type: textarea, required: true, secret: true}
+      - {key: api_url, type: url, required: false, secret: false}
+      - {key: front_url, type: url, required: false, secret: false}
+      - {key: submit_mode, type: select, required: false, secret: false}
+    amount_unit: fen (txnAmt)
+  - code: huifu
+    name: 汇付斗拱
+    capabilities: [payment]
+    callback_verifier: true
+    upstream:
+      create_path: /v3/trade/payment/jspay
+      signature: SHA256withRSA over PHP json_encode(ksort(data), UNESCAPED_SLASHES|UNESCAPED_UNICODE)
+      notification: form resp_data + sign (RSA over the raw resp_data string), ack RECV_ORD_ID_<trade_no>
+      response_signature: data re-canonicalized and verified with the Huifu public key
+    action_types: [qrcode, jsapi]
+    config_fields:
+      - {key: sys_id, type: text, required: true, secret: false}
+      - {key: product_id, type: text, required: true, secret: false}
+      - {key: private_key, type: textarea, required: true, secret: true}
+      - {key: huifu_public_key, type: textarea, required: true, secret: true}
+      - {key: huifu_id, type: text, required: false, secret: false}
+    amount_unit: fen (converted to the yuan string trans_amt)

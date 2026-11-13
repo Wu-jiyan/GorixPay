@@ -11,7 +11,6 @@ import (
 	"gorixpay/internal/identity/password"
 	"gorixpay/internal/identity/session"
 
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -83,57 +82,6 @@ func (service *Service) LoginMerchant(ctx context.Context, identifier, secret st
 		}
 		merchant.PasswordHash = &upgraded
 	}
-	token, created, err := service.sessions.Create(ctx, model.PrincipalMerchant, merchant.ID, 7*24*time.Hour, metadata.IPAddress, metadata.UserAgent)
-	if err != nil {
-		return MerchantLogin{}, err
-	}
-	return MerchantLogin{Token: token, Merchant: merchant, Session: created}, nil
-}
-
-func (service *Service) RegisterMerchant(ctx context.Context, identifier, secret string, metadata LoginMetadata) (MerchantLogin, error) {
-	identifier = strings.TrimSpace(identifier)
-	if identifier == "" || secret == "" {
-		return MerchantLogin{}, errors.New("identifier and password are required")
-	}
-
-	var count int64
-	if err := service.db.WithContext(ctx).Model(&model.Merchant{}).
-		Where("email = ? OR phone = ?", identifier, identifier).
-		Count(&count).Error; err != nil {
-		return MerchantLogin{}, err
-	}
-	if count > 0 {
-		return MerchantLogin{}, ErrMerchantExists
-	}
-
-	hash, err := password.Hash(secret)
-	if err != nil {
-		return MerchantLogin{}, err
-	}
-
-	var email *string
-	var phone *string
-	if strings.Contains(identifier, "@") {
-		email = &identifier
-	} else {
-		phone = &identifier
-	}
-
-	now := time.Now().UTC()
-	merchant := model.Merchant{
-		ID:           uuid.NewString(),
-		Email:        email,
-		Phone:        phone,
-		PasswordHash: &hash,
-		DisplayName:  identifier,
-		Status:       model.StatusActive,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}
-	if err := service.db.WithContext(ctx).Create(&merchant).Error; err != nil {
-		return MerchantLogin{}, err
-	}
-
 	token, created, err := service.sessions.Create(ctx, model.PrincipalMerchant, merchant.ID, 7*24*time.Hour, metadata.IPAddress, metadata.UserAgent)
 	if err != nil {
 		return MerchantLogin{}, err

@@ -1,0 +1,149 @@
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
+
+const routes: RouteRecordRaw[] = [
+  {
+    path: '/',
+    component: () => import('@/pages/public/Landing.vue'),
+    meta: { title: 'GorixPay 支付系统' },
+  },
+  {
+    path: '/register',
+    component: () => import('@/pages/public/Register.vue'),
+    meta: { title: '商户注册' },
+  },
+  {
+    path: '/login',
+    component: () => import('@/pages/public/Login.vue'),
+    meta: { title: '商户登录' },
+  },
+  {
+    path: '/admin/login',
+    component: () => import('@/pages/public/AdminLogin.vue'),
+    meta: { title: '运营登录' },
+  },
+  {
+    path: '/doc',
+    component: () => import('@/pages/public/Docs.vue'),
+    meta: { title: '开发文档' },
+  },
+  {
+    path: '/cashier.php',
+    component: () => import('@/pages/cashier/Cashier.vue'),
+    meta: { title: '收银台' },
+  },
+  {
+    path: '/pay/:tradeNo',
+    redirect: (to) => ({ path: '/cashier.php', query: { trade_no: String(to.params.tradeNo) } }),
+  },
+  {
+    path: '/pay/sandbox/:tradeNo',
+    component: () => import('@/pages/cashier/Sandbox.vue'),
+    meta: { title: '沙箱支付' },
+  },
+  {
+    path: '/merchant',
+    component: () => import('@/layouts/MerchantLayout.vue'),
+    meta: { requiresAuth: 'merchant' },
+    children: [
+      { path: '', component: () => import('@/pages/merchant/Dashboard.vue'), meta: { title: '商户概览' } },
+      { path: 'orders', component: () => import('@/pages/merchant/Orders.vue'), meta: { title: '我的订单' } },
+      { path: 'refunds', component: () => import('@/pages/merchant/Refunds.vue'), meta: { title: '退款记录' } },
+      {
+        path: 'settlements',
+        component: () => import('@/pages/merchant/Settlements.vue'),
+        meta: { title: '结算记录' },
+      },
+      { path: 'transfers', component: () => import('@/pages/merchant/Transfers.vue'), meta: { title: '代付申请' } },
+      {
+        path: 'certification',
+        component: () => import('@/pages/merchant/Certification.vue'),
+        meta: { title: '实名认证' },
+      },
+      { path: 'domains', component: () => import('@/pages/merchant/Domains.vue'), meta: { title: '支付域名' } },
+      { path: 'invite', component: () => import('@/pages/merchant/Invite.vue'), meta: { title: '邀请返佣' } },
+      { path: 'recharge', component: () => import('@/pages/merchant/Recharge.vue'), meta: { title: '余额充值' } },
+      {
+        path: 'credentials',
+        component: () => import('@/pages/merchant/Credentials.vue'),
+        meta: { title: '密钥管理' },
+      },
+      { path: 'profile', component: () => import('@/pages/merchant/Profile.vue'), meta: { title: '账户资料' } },
+    ],
+  },
+  {
+    path: '/admin',
+    component: () => import('@/layouts/AdminLayout.vue'),
+    meta: { requiresAuth: 'administrator' },
+    children: [
+      { path: '', component: () => import('@/pages/admin/Dashboard.vue'), meta: { title: '数据概览' } },
+      { path: 'merchants', component: () => import('@/pages/admin/Merchants.vue'), meta: { title: '商户管理' } },
+      { path: 'orders', component: () => import('@/pages/admin/Orders.vue'), meta: { title: '订单管理' } },
+      { path: 'channels', component: () => import('@/pages/admin/Channels.vue'), meta: { title: '支付渠道' } },
+      { path: 'refunds', component: () => import('@/pages/admin/Refunds.vue'), meta: { title: '退款管理' } },
+      {
+        path: 'settlements',
+        component: () => import('@/pages/admin/Settlements.vue'),
+        meta: { title: '结算管理' },
+      },
+      { path: 'transfers', component: () => import('@/pages/admin/Transfers.vue'), meta: { title: '代付管理' } },
+      {
+        path: 'certifications',
+        component: () => import('@/pages/admin/Certifications.vue'),
+        meta: { title: '实名审核' },
+      },
+      { path: 'domains', component: () => import('@/pages/admin/Domains.vue'), meta: { title: '域名审核' } },
+      { path: 'risk', component: () => import('@/pages/admin/Risk.vue'), meta: { title: '风控与黑名单' } },
+      { path: 'plugins', component: () => import('@/pages/admin/Plugins.vue'), meta: { title: '插件与渠道' } },
+      { path: 'invites', component: () => import('@/pages/admin/Invites.vue'), meta: { title: '返佣记录' } },
+      { path: 'ledger', component: () => import('@/pages/admin/Ledger.vue'), meta: { title: '资金账本' } },
+      { path: 'outbox', component: () => import('@/pages/admin/Outbox.vue'), meta: { title: '消息队列' } },
+      {
+        path: 'announcements',
+        component: () => import('@/pages/admin/Announcements.vue'),
+        meta: { title: '公告管理' },
+      },
+      { path: 'settings', component: () => import('@/pages/admin/Settings.vue'), meta: { title: '系统设置' } },
+      { path: 'audit', component: () => import('@/pages/admin/Audit.vue'), meta: { title: '审计日志' } },
+    ],
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    component: () => import('@/pages/NotFound.vue'),
+    meta: { title: '页面不存在' },
+  },
+];
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes,
+  scrollBehavior: () => ({ top: 0 }),
+});
+
+router.beforeEach((to) => {
+  const auth = useAuthStore();
+  const required = to.meta.requiresAuth as string | undefined;
+  if (required && !auth.isLoggedIn) {
+    return required === 'administrator' ? '/admin/login' : '/login';
+  }
+  if (required === 'administrator' && auth.principalType === 'merchant') {
+    return '/merchant';
+  }
+  if (required === 'merchant' && auth.principalType === 'administrator') {
+    return '/admin';
+  }
+  if (to.path === '/login' && auth.principalType === 'merchant' && auth.isLoggedIn) {
+    return '/merchant';
+  }
+  if (to.path === '/admin/login' && auth.principalType === 'administrator' && auth.isLoggedIn) {
+    return '/admin';
+  }
+  return true;
+});
+
+router.afterEach((to) => {
+  const title = to.meta.title as string | undefined;
+  document.title = title ? `${title} - GorixPay` : 'GorixPay 支付系统';
+});
+
+export default router;

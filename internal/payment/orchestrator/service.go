@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -46,6 +47,25 @@ func NewConfigured(db *gorm.DB, router *channelrouter.Router, now func() time.Ti
 }
 
 func (service *Service) Start(ctx context.Context, tradeNo string) (Result, error) {
+	return service.StartWithOptions(ctx, tradeNo, StartOptions{})
+}
+
+// StartOptions carries the per-request payment hints the V1/V2 entrypoints accept
+// and upstream keeps in the request scope while it starts the channel
+// (Epay/includes/lib/api/Pay.php:296-310): the payment method
+// (web/jump/jsapi/scan), the device class, and the jsapi/scan parameters.
+type StartOptions struct {
+	Method    string
+	Device    string
+	SubOpenID string
+	SubAppID  string
+	AuthCode  string
+	IsApplet  bool
+}
+
+// StartWithOptions starts (or resumes) a payment with request hints. Start keeps
+// the old signature so every existing caller behaves the same.
+func (service *Service) StartWithOptions(ctx context.Context, tradeNo string, options StartOptions) (Result, error) {
 	var order paymentmodel.Order
 	if err := service.db.WithContext(ctx).Where("trade_no = ?", tradeNo).First(&order).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -66,7 +86,9 @@ func (service *Service) Start(ctx context.Context, tradeNo string) (Result, erro
 		if err != nil {
 			return Result{}, err
 		}
-		configuration = map[string]string{"api_url": decoded.APIURL, "pid": decoded.PID, "key": decoded.Key}
+		// api_url/pid/key stay available for epay-style plugins; Extra carries the
+		// plugin-specific settings and overrides a same-named legacy key.
+		configuration = decoded.Values()
 	}
 	attempt, err := service.claim(ctx, order.ID, channel.ID)
 	if err != nil {
@@ -85,7 +107,9 @@ func (service *Service) Start(ctx context.Context, tradeNo string) (Result, erro
 		NotifyURL:     notifyURL,
 		ReturnURL:     stringValue(order.ReturnURL),
 		ClientIP:      stringValue(order.ClientIP),
+		Method:        strings.ToLower(strings.TrimSpace(options.Method)),
 		Configuration: configuration,
+		Extra:         requestExtra(service.publicURL, order, options),
 	})
 	if pluginErr == nil {
 		pluginErr = action.Validate()
@@ -111,7 +135,12 @@ func (service *Service) Start(ctx context.Context, tradeNo string) (Result, erro
 	now := service.now().UTC()
 	err = service.db.WithContext(ctx).Model(&paymentmodel.Attempt{}).
 		Where("id = ? AND status = ?", attempt.ID, paymentmodel.AttemptCreating).
-		Updates(map[string]any{"status": paymentmodel.AttemptSucceeded, "updated_at": now}).Error
+		Updates(map[string]any{
+			"status":         paymentmodel.AttemptSucceeded,
+			"action_type":    string(action.Type),
+			"action_payload": encodeAction(action),
+			"updated_at":     now,
+		}).Error
 	if err != nil {
 		return Result{}, err
 	}
@@ -151,4 +180,40 @@ func stringValue(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+// encodeAction serializes the plugin action so the cashier can replay a started
+// payment without calling the upstream channel again. A non-serializable action
+// degrades to an empty payload instead of failing an otherwise valid payment.
+func encodeAction(action pluginpayment.Action) string {
+	encoded, err := json.Marshal(action)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+// requestExtra merges the request hints into the plugin Extra map. Empty values
+// stay out so a plugin can tell "not supplied" from "supplied empty", and the
+// buyer falls back to the persisted order field for cashier-started payments.
+func requestExtra(siteURL string, order paymentmodel.Order, options StartOptions) map[string]string {
+	extra := map[string]string{"site_url": siteURL}
+	set := func(key, value string) {
+		if strings.TrimSpace(value) != "" {
+			extra[key] = value
+		}
+	}
+	set("device", strings.ToLower(strings.TrimSpace(options.Device)))
+	set("method", strings.ToLower(strings.TrimSpace(options.Method)))
+	buyer := options.SubOpenID
+	if strings.TrimSpace(buyer) == "" {
+		buyer = stringValue(order.Buyer)
+	}
+	set("sub_openid", buyer)
+	set("sub_appid", options.SubAppID)
+	set("auth_code", options.AuthCode)
+	if options.IsApplet {
+		extra["is_applet"] = "1"
+	}
+	return extra
 }

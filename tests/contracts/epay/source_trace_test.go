@@ -3,8 +3,26 @@ package epay
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+// upstreamRoot returns the local checkout of the upstream Epay source. It is not
+// part of this repository: point EPAY_UPSTREAM_DIR at one, or drop a checkout at
+// <repo>/Epay.
+func upstreamRoot(repositoryRoot string) string {
+	if configured := os.Getenv("EPAY_UPSTREAM_DIR"); configured != "" {
+		return configured
+	}
+	return filepath.Join(repositoryRoot, "Epay")
+}
+
+// upstreamFile maps a manifest source path such as
+// Epay/includes/lib/Payment.php onto the local checkout.
+func upstreamFile(root, sourcePath string) string {
+	relative := strings.TrimPrefix(filepath.ToSlash(sourcePath), "Epay/")
+	return filepath.Join(root, filepath.FromSlash(relative))
+}
 
 func TestSourceTraceFilesAndLinesExist(t *testing.T) {
 	manifest, err := LoadManifest("manifest.yaml")
@@ -12,8 +30,12 @@ func TestSourceTraceFilesAndLinesExist(t *testing.T) {
 		t.Fatal(err)
 	}
 	repositoryRoot := filepath.Clean(filepath.Join("..", "..", ".."))
+	root := upstreamRoot(repositoryRoot)
+	if _, err := os.Stat(filepath.Join(root, "includes", "lib", "Payment.php")); err != nil {
+		t.Skip("upstream Epay source not found, set EPAY_UPSTREAM_DIR to a checkout: " + err.Error())
+	}
 	for _, source := range manifest.Sources() {
-		path := filepath.Join(repositoryRoot, source.Path)
+		path := upstreamFile(root, source.Path)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Errorf("source %s: %v", source.Raw, err)
