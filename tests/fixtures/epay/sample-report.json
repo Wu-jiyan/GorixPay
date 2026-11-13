@@ -1,0 +1,185 @@
+{
+  "tool": "1.0",
+  "generated_at": "2026-11-13T10:23:37.2817275Z",
+  "duration_ms": 230,
+  "mode": "apply",
+  "dry_run": false,
+  "source": {
+    "driver": "sqlite",
+    "dsn": "epay-source.db",
+    "tables": [
+      "pre_blacklist",
+      "pre_config",
+      "pre_domain",
+      "pre_order",
+      "pre_refundorder",
+      "pre_settle",
+      "pre_transfer",
+      "pre_type",
+      "pre_user"
+    ],
+    "missing_tables": []
+  },
+  "target": {
+    "driver": "sqlite",
+    "dsn": "gorixpay.db",
+    "opened": true,
+    "writable": true,
+    "migrations_applied": 13
+  },
+  "preflight": {
+    "ok": true,
+    "required_tables": {
+      "pre_blacklist": true,
+      "pre_config": true,
+      "pre_domain": true,
+      "pre_order": true,
+      "pre_refundorder": true,
+      "pre_settle": true,
+      "pre_user": true
+    },
+    "missing_tables": null,
+    "optional_tables": {
+      "pre_transfer": true,
+      "pre_type": true
+    },
+    "config_keys": {
+      "sitename": "Epay Fixture 支付平台",
+      "version": "2055"
+    },
+    "blocking_count": 0,
+    "warning_count": 0
+  },
+  "tables": [
+    {
+      "name": "merchants",
+      "source_table": "pre_user",
+      "target_table": "merchants",
+      "source": 2,
+      "inserted": 2,
+      "skipped": 0,
+      "failed": 0,
+      "source_amount_cents": 0,
+      "target_amount_cents": 0,
+      "amount_diff_cents": 0,
+      "amount_comparable": false
+    },
+    {
+      "name": "payment_orders",
+      "source_table": "pre_order",
+      "target_table": "payment_orders",
+      "source": 3,
+      "inserted": 3,
+      "skipped": 0,
+      "failed": 0,
+      "source_amount_cents": 3249,
+      "target_amount_cents": 3249,
+      "amount_diff_cents": 0,
+      "amount_comparable": true
+    },
+    {
+      "name": "refund_orders",
+      "source_table": "pre_refundorder",
+      "target_table": "refund_orders",
+      "source": 1,
+      "inserted": 1,
+      "skipped": 0,
+      "failed": 0,
+      "source_amount_cents": 100,
+      "target_amount_cents": 100,
+      "amount_diff_cents": 0,
+      "amount_comparable": true
+    },
+    {
+      "name": "settlement_orders",
+      "source_table": "pre_settle",
+      "target_table": "settlement_orders",
+      "source": 1,
+      "inserted": 1,
+      "skipped": 0,
+      "failed": 0,
+      "source_amount_cents": 1000,
+      "target_amount_cents": 1000,
+      "amount_diff_cents": 0,
+      "amount_comparable": true
+    },
+    {
+      "name": "transfer_orders",
+      "source_table": "pre_transfer",
+      "target_table": "transfer_orders",
+      "source": 1,
+      "inserted": 1,
+      "skipped": 0,
+      "failed": 0,
+      "source_amount_cents": 500,
+      "target_amount_cents": 500,
+      "amount_diff_cents": 0,
+      "amount_comparable": true
+    },
+    {
+      "name": "merchant_domains",
+      "source_table": "pre_domain",
+      "target_table": "merchant_domains",
+      "source": 1,
+      "inserted": 1,
+      "skipped": 0,
+      "failed": 0,
+      "source_amount_cents": 0,
+      "target_amount_cents": 0,
+      "amount_diff_cents": 0,
+      "amount_comparable": false
+    },
+    {
+      "name": "blacklist_entries",
+      "source_table": "pre_blacklist",
+      "target_table": "blacklist_entries",
+      "source": 1,
+      "inserted": 1,
+      "skipped": 0,
+      "failed": 0,
+      "source_amount_cents": 0,
+      "target_amount_cents": 0,
+      "amount_diff_cents": 0,
+      "amount_comparable": false
+    },
+    {
+      "name": "system_settings",
+      "source_table": "pre_config",
+      "target_table": "system_settings",
+      "source": 7,
+      "inserted": 1,
+      "skipped": 6,
+      "failed": 0,
+      "skip_reasons": {
+        "not_whitelisted": 6
+      },
+      "source_amount_cents": 0,
+      "target_amount_cents": 0,
+      "amount_diff_cents": 0,
+      "amount_comparable": false,
+      "note": "只迁移安全白名单键：sitename → site.name；其余键跳过"
+    }
+  ],
+  "balances": {
+    "merchants": 2,
+    "posted": 2,
+    "skipped": 0,
+    "failed": 0,
+    "source_total_cents": 15629,
+    "target_total_cents": 15629,
+    "diff_cents": 0,
+    "comparable": true
+  },
+  "warnings": [],
+  "blocking": [],
+  "amounts_equal": true,
+  "exit_code": 0,
+  "known_limitations": [
+    "pre_plugin / pre_channel / pre_wx* 的插件与渠道配置不迁移（含密钥），需在运营后台重新配置。",
+    "商户 API 密钥（pre_user.key）与 RSA 公钥不迁移，上线后由商户重新签发。",
+    "pre_user 的邀请关系、消息模板、打印配置，以及 pre_order 的分润、子单、退款流水不做映射。",
+    "pre_user.deposit（保证金）不迁移，只迁移 money 作为可用余额期初。",
+    "源库时间无时区，按 UTC 写入；通知重试状态（pre_order.notify）不迁移。",
+    "pre_config 只迁移安全白名单键（sitename → site.name），其余键在报告中列为跳过。"
+  ]
+}

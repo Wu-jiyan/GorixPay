@@ -44,4 +44,9 @@ deploy/secrets/*
 deploy/.env
 
 # 上游易支付源码（只读参照，不进仓库；用 EPAY_UPSTREAM_DIR 指向它的位置）
-Epay/
+# 必须锚定仓库根：不锚定会连带忽略 internal/**/epay/ 这类同名目录
+/Epay/
+
+# 契约夹具里的固定 RSA 密钥对，只用于测试向量，不是真实凭据
+!tests/contracts/epay/fixtures/test_only_rsa_private.pem
+!tests/contracts/epay/fixtures/test_only_rsa_public.pem
