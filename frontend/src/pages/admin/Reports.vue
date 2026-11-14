@@ -3,7 +3,7 @@ import { computed, h, onMounted, ref } from 'vue';
 import { useMessage } from 'naive-ui';
 import type { DataTableColumns } from 'naive-ui';
 import { exportCsvUrl, reportsApi } from '@/api/reports';
-import type { ReportQuery, ReportRow } from '@/api/reports';
+import type { ExportQuery, ReportQuery, ReportRow } from '@/api/reports';
 import { errorMessage } from '@/api/client';
 import MoneyText from '@/components/MoneyText.vue';
 import PageHeader from '@/components/PageHeader.vue';
@@ -52,7 +52,7 @@ function queryOf(keyword: string, range: [number, number] | null, page: number, 
   };
 }
 
-function exportQuery(keyword: string, range: [number, number] | null): ReportQuery {
+function exportQuery(keyword: string, range: [number, number] | null): ExportQuery {
   return {
     keyword: keyword.trim() || undefined,
     created_from: range ? toISOString(range[0]) : undefined,

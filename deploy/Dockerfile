@@ -27,7 +27,8 @@ COPY migrations ./migrations
 RUN GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/gorixpay ./cmd/gorixpay
 
 FROM alpine:3.20
-RUN addgroup -S gorixpay && adduser -S -G gorixpay gorixpay
+# Pin the UID/GID so a bind mount can be chowned to a documented number.
+RUN addgroup -S -g 10001 gorixpay && adduser -S -u 10001 -G gorixpay gorixpay
 WORKDIR /app
 COPY --from=builder /out/gorixpay /usr/local/bin/gorixpay
 COPY --from=web /web/dist /app/frontend/dist

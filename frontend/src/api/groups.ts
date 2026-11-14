@@ -45,6 +45,15 @@ export const groupsApi = {
   async setPrice(id: string, priceCents: number) {
     await http.patch(`/admin/groups/${id}/price`, { price_cents: priceCents });
   },
+  /** 把商户归到某个组；groupId 传 null 表示移出所有组 */
+  async assignMerchant(merchantId: string, groupId: string | null) {
+    const { data } = await http.patch<{
+      merchant_id?: string;
+      group_id?: string | null;
+      settle_mode?: string;
+    }>(`/admin/merchants/${merchantId}/group`, { group_id: groupId });
+    return data;
+  },
   async remove(id: string) {
     await http.delete(`/admin/groups/${id}`);
   },

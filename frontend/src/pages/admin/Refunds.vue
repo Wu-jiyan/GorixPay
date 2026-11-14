@@ -4,12 +4,13 @@ import { NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { adminApi } from '@/api';
 import type { Refund } from '@/api';
+import { exportCsvUrl } from '@/api/reports';
 import { errorMessage } from '@/api/client';
 import MoneyText from '@/components/MoneyText.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusTag from '@/components/StatusTag.vue';
 import { formatDateTime } from '@/utils/format';
-import { useServerPaging } from './shared';
+import { usePendingAction, useServerPaging } from './shared';
 
 const message = useMessage();
 
@@ -23,6 +24,8 @@ const processing = ref(false);
 const showReject = ref(false);
 const rejectTarget = ref<Refund | null>(null);
 const rejectionReason = ref('');
+
+const actions = usePendingAction();
 
 const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } = useServerPaging(load);
 
@@ -64,14 +67,27 @@ function resetFilters() {
   void load();
 }
 
+function exportCsv() {
+  window.open(
+    exportCsvUrl('refunds', {
+      status: status.value ?? undefined,
+      keyword: keyword.value.trim() || undefined,
+      merchant_id: merchantId.value.trim() || undefined,
+    }),
+    '_blank',
+  );
+}
+
 async function approve(row: Refund) {
-  try {
-    await adminApi.processRefund(row.id, 'approve');
-    message.success('退款已通过并处理');
-    await load();
-  } catch (error) {
-    message.error(errorMessage(error));
-  }
+  await actions.run(`approve:${row.id}`, async () => {
+    try {
+      await adminApi.processRefund(row.id, 'approve');
+      message.success('退款已通过并处理');
+      await load();
+    } catch (error) {
+      message.error(errorMessage(error));
+    }
+  });
 }
 
 function openReject(row: Refund) {
@@ -100,7 +116,9 @@ async function submitReject() {
   }
 }
 
-const columns = computed<DataTableColumns<Refund>>(() => [
+const columns = computed<DataTableColumns<Refund>>(() => {
+  const pendingSet = actions.pending.value;
+  return [
   {
     title: '退款单号',
     key: 'refund_no',
@@ -155,6 +173,7 @@ const columns = computed<DataTableColumns<Refund>>(() => [
     fixed: 'right',
     render: (row) => {
       if (row.status !== 'pending') return h('span', { class: 'muted' }, '已处理');
+      const approving = pendingSet.has(`approve:${row.id}`);
       return h(
         NSpace,
         { size: 4, wrap: false },
@@ -165,13 +184,23 @@ const columns = computed<DataTableColumns<Refund>>(() => [
               { onPositiveClick: () => approve(row) },
               {
                 trigger: () =>
-                  h(NButton, { size: 'tiny', quaternary: true, type: 'primary' }, { default: () => '通过' }),
+                  h(
+                    NButton,
+                    { size: 'tiny', quaternary: true, type: 'primary', loading: approving, disabled: approving },
+                    { default: () => '通过' },
+                  ),
                 default: () => '确认通过该退款申请？资金将按账本规则退回。',
               },
             ),
             h(
               NButton,
-              { size: 'tiny', quaternary: true, type: 'error', onClick: () => openReject(row) },
+              {
+                size: 'tiny',
+                quaternary: true,
+                type: 'error',
+                disabled: approving,
+                onClick: () => openReject(row),
+              },
               { default: () => '驳回' },
             ),
           ],
@@ -179,7 +208,8 @@ const columns = computed<DataTableColumns<Refund>>(() => [
       );
     },
   },
-]);
+  ];
+});
 
 onMounted(load);
 </script>
@@ -189,6 +219,7 @@ onMounted(load);
     <PageHeader title="退款管理" subtitle="审核商户退款申请，通过后由账本完成资金回退">
       <template #actions>
         <n-button secondary :loading="loading" @click="load">刷新</n-button>
+        <n-button secondary @click="exportCsv">导出 CSV</n-button>
       </template>
     </PageHeader>
 

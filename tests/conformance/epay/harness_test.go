@@ -64,8 +64,11 @@ func newEnvironment(t *testing.T) *environment {
 		Environment: "test",
 		HTTP:        config.HTTPConfig{Address: ":0", PublicURL: "http://pay.example"},
 		Database:    config.DatabaseConfig{Driver: "sqlite", DSN: "file:" + name + "?mode=memory&cache=shared"},
-		Security:    config.SecurityConfig{MasterKeyFile: keyPath},
-		Sandbox:     config.SandboxConfig{Enabled: true},
+		// The upstream fixture and the merchant receiver both live on loopback,
+		// which the outbound guard blocks by default; a conformance harness
+		// deliberately uses a local receiver.
+		Security: config.SecurityConfig{MasterKeyFile: keyPath, AllowPrivateNotifyHosts: true},
+		Sandbox:  config.SandboxConfig{Enabled: true},
 	}
 	application, err := app.New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {

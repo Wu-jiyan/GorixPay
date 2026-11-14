@@ -6,6 +6,7 @@ import (
 	"time"
 
 	financemodel "gorixpay/internal/finance/model"
+	"gorixpay/internal/money"
 	paymentmodel "gorixpay/internal/payment/model"
 
 	"gorm.io/gorm"
@@ -219,7 +220,7 @@ func loadMerchantStats(ctx context.Context, db *gorm.DB, filter merchantFilter, 
 			OrderCount:   aggregate.OrderCount,
 			PaidAmount:   aggregate.PaidAmount,
 			RefundAmount: refundByMerchant[aggregate.MerchantID],
-			FeeAmount:    aggregate.PaidAmount * int64(rateBp) / 10000,
+			FeeAmount:    money.ApplyBasisPoints(aggregate.PaidAmount, rateBp),
 		})
 	}
 	return items, total, nil

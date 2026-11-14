@@ -395,6 +395,23 @@ func (service *Service) Freeze(ctx context.Context, request FreezeRequest) (ledg
 func (service *Service) Release(ctx context.Context, businessKey string) (ledgermodel.Freeze, error) {
 	var freeze ledgermodel.Freeze
 	err := service.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		freeze, err = service.ReleaseInTransaction(tx, businessKey)
+		return err
+	})
+	return freeze, err
+}
+
+// ReleaseInTransaction releases a freeze on a caller supplied transaction so the
+// release, the payout posting and the transfer status change commit or roll back
+// together. Releasing in its own transaction and only afterwards updating the
+// transfer row leaves a debited merchant account behind any later failure.
+func (service *Service) ReleaseInTransaction(tx *gorm.DB, businessKey string) (ledgermodel.Freeze, error) {
+	var freeze ledgermodel.Freeze
+	if tx == nil {
+		return freeze, ErrInvalidRequest
+	}
+	err := func() error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("business_key = ?", strings.TrimSpace(businessKey)).First(&freeze).Error; err != nil {
 			return ErrFreezeNotFound
 		}
@@ -414,7 +431,7 @@ func (service *Service) Release(ctx context.Context, businessKey string) (ledger
 		freeze.ReleaseTransactionID = &result.Transaction.ID
 		freeze.ReleasedAt = &now
 		return tx.Model(&ledgermodel.Freeze{}).Where("id = ? AND status = ?", freeze.ID, ledgermodel.FreezeActive).Updates(map[string]any{"status": freeze.Status, "release_transaction_id": result.Transaction.ID, "released_at": now}).Error
-	})
+	}()
 	return freeze, err
 }
 

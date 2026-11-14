@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: gorixpay
       POSTGRES_USER: gorixpay
@@ -16,6 +17,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
@@ -29,6 +31,12 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    # The payment process has background workers; give them time to finish the
+    # notification in flight before the container is killed.
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
     environment:
       GORIXPAY_ENVIRONMENT: production
       GORIXPAY_HTTP_ADDRESS: :8080

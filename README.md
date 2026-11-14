@@ -47,7 +47,7 @@ GorixPay 是彩虹易支付（Epay）的 Go 重写版，验收标准只有一条
 | 易支付 V1：`submit.php`、`mapi.php`、`api.php?act=query\|order\|orders\|refund\|refundapi\|settle`、`submit2.php`、`/pay/{action}/{trade_no}/` | 完成，109 条一致性用例 |
 | 易支付 V2：`pay/*`、`merchant/*`、`transfer/*` 共 12 个方法，`/api.php?s=class/method` 与路径等价 | 完成，含响应签名与防重放 |
 | 支付渠道 | 10 个插件，其中汇付斗拱在真实网关下过 0.01 元订单 |
-| 全站前端 | 36 个 Vue 页面（官网、收银台、商户中心、运营后台），Naive UI |
+| 全站前端 | 59 个页面（官网、收银台、商户中心、运营后台），Naive UI |
 | 资金 | 整数分复式账本、退款、结算、代付、余额充值、保证金 |
 | 结算自动化 | 结算规则（最低金额、费率、周期）、按规则生成结算单、批量审核、审核通过后自动打款；后台每分钟巡检，同日幂等 |
 | 分账与红包 | 分账接收方与费率、支付成功同事务分账（内部接收方走账本）、失败重试；红包按批次创建，金额随机且合计守恒 |
@@ -64,7 +64,7 @@ GorixPay 是彩虹易支付（Epay）的 Go 重写版，验收标准只有一条
 | 运营补口 | 后台手动与批量付款（批量失败整批回滚）、注册邀请码（并发不超发）、客诉自动规则（自动回复与超时关闭）、聚合收款码（真 QR）、商户自助测试支付、插件定时钩子 |
 | 可靠性 | Transactional Outbox（租约认领 + CAS 更新），商户通知重试，Redis 可选 |
 | 历史数据迁移 | `cmd/migrate-epay`，从 MySQL 或 SQLite 迁到 GorixPay，预检、dry-run、幂等 |
-| 发版 | `v2.0.0`（2026-11-13），第一个 tag |
+| 发版 | `v2.2.1`（2026-11-14）：首个 tag 是 2026-11-13 的 `v2.0.0` |
 
 ## 界面
 
@@ -382,8 +382,11 @@ Compose 起三个服务：`postgres:16-alpine`、`redis:7-alpine`、`gorixpay`�
 | `GORIXPAY_REDIS_ADDR` | 留空则关闭 Redis |
 | `GORIXPAY_REDIS_PASSWORD` / `_DB` / `_PREFIX` | Redis 认证、库号与键前缀 |
 | `GORIXPAY_SANDBOX_ENABLED` | 沙箱渠道开关，production 下强制关闭 |
+| `GORIXPAY_TRUSTED_PROXIES` | 逗号分隔的反代地址（如 `127.0.0.1,::1`）。留空则不信任任何 `X-Forwarded-For`，`ClientIP` 取 socket 对端地址 |
+| `GORIXPAY_ALLOW_PRIVATE_NOTIFY_HOSTS` | 允许商户 `notify_url` 指向内网/本机（同机部署常需要）。默认关：默认只允许公网地址，且 `169.254.169.254` 这类元数据地址永远拒绝 |
+| `GORIXPAY_NOTIFY_TIMEOUT_SECONDS` | 单次商户通知超时，默认 15 秒，上限 300 |
 
-迁移文件是版本化 SQL，三种数据库共用一份，执行器在 MySQL 下会自动去掉它不支持的 `CREATE INDEX IF NOT EXISTS`。
+迁移文件是版本化 SQL，三种数据库共用一份，执行器按方言改写 MySQL 不支持的 `CREATE INDEX IF NOT EXISTS`、逐条执行语句（MySQL 默认禁用多语句），并在 PostgreSQL/MySQL 上先取咨询锁再迁移，两个实例同时启动不会互相踩。
 
 ## 从易支付迁移数据
 

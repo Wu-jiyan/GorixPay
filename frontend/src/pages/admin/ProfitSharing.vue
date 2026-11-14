@@ -34,6 +34,7 @@ const editingId = ref<string | null>(null);
 const editingStatus = ref('active');
 const formRef = ref<FormInst | null>(null);
 const retryingId = ref('');
+const removingId = ref('');
 
 const form = reactive<ReceiverForm>({
   merchant_id: '',
@@ -188,12 +189,16 @@ async function submit() {
 }
 
 async function removeReceiver(row: ProfitReceiver) {
+  if (removingId.value === row.id) return;
+  removingId.value = row.id;
   try {
     await profitSharingApi.deleteReceiver(row.id);
     message.success('接收方已删除');
     await loadReceivers();
   } catch (error) {
     message.error(errorMessage(error));
+  } finally {
+    removingId.value = '';
   }
 }
 

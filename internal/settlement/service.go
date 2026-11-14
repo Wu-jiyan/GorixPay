@@ -14,6 +14,7 @@ import (
 	financeservice "gorixpay/internal/finance/service"
 	identitymodel "gorixpay/internal/identity/model"
 	ledgermodel "gorixpay/internal/ledger/model"
+	"gorixpay/internal/money"
 	transferservice "gorixpay/internal/transfer"
 
 	"gorm.io/gorm"
@@ -41,26 +42,30 @@ func New(db *gorm.DB, finance *financeservice.Service, transfers *transferservic
 	return &Service{db: db, finance: finance, transfers: transfers, feeResolver: feeResolver, now: now}
 }
 
-// Start launches the scheduled loop. It runs once immediately, then every
-// interval, and re-entry is blocked by an in-process guard. Multiple replicas
-// coordinate through the settle_rules.last_run_at conditional update.
+// Start launches the scheduled loop in the background. Callers that own the
+// lifecycle (the wiring layer) use Run instead so they can wait for it.
 func (service *Service) Start(ctx context.Context, interval time.Duration) {
+	go service.Run(ctx, interval)
+}
+
+// Run blocks until ctx is done. It runs once immediately, then every interval,
+// and re-entry is blocked by an in-process guard. Multiple replicas coordinate
+// through the settle_rules.last_run_at conditional update.
+func (service *Service) Run(ctx context.Context, interval time.Duration) {
 	if interval <= 0 {
 		interval = time.Hour
 	}
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		service.runScheduled(ctx)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				service.runScheduled(ctx)
-			}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	service.runScheduled(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			service.runScheduled(ctx)
 		}
-	}()
+	}
 }
 
 func (service *Service) runScheduled(ctx context.Context) {
@@ -238,7 +243,7 @@ func (service *Service) feeFor(ctx context.Context, rule Rule, merchantID string
 	if rate <= 0 {
 		return 0
 	}
-	return amount * int64(rate) / 10000
+	return money.ApplyBasisPoints(amount, rate)
 }
 
 // TransferResult reports what AutoTransfer did for one settlement.
@@ -287,13 +292,21 @@ func (service *Service) AutoTransfer(ctx context.Context, settlementID string) (
 		return TransferResult{}, err
 	}
 	outTransferNo := autoOutTransferNo(settlement.SettlementNo)
-	order, _, err := service.transfers.Create(ctx, transferservice.Request{
-		MerchantID:    settlement.MerchantID,
-		OutTransferNo: outTransferNo,
-		Amount:        settlement.Amount,
-		Currency:      settlement.Currency,
-		AccountName:   merchant.DisplayName,
-		AccountNo:     accountNo,
+	ledgerTransactionID := ""
+	if settlement.LedgerTransactionID != nil {
+		ledgerTransactionID = *settlement.LedgerTransactionID
+	}
+	// The approval already debited the merchant balance, so the payout row is
+	// documentation of the bank transfer, not a second ledger movement.
+	order, _, err := service.transfers.CreateSettled(ctx, transferservice.SettledRequest{
+		MerchantID:          settlement.MerchantID,
+		OutTransferNo:       outTransferNo,
+		Amount:              settlement.Amount,
+		Currency:            settlement.Currency,
+		AccountName:         merchant.DisplayName,
+		AccountNo:           accountNo,
+		LedgerTransactionID: ledgerTransactionID,
+		Remark:              "auto transfer for settlement " + settlement.SettlementNo,
 	})
 	if err != nil {
 		return service.failTransfer(ctx, &settlement, err.Error())

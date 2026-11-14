@@ -35,11 +35,14 @@ export const reportsApi = {
   },
 };
 
+/** 导出查询参数：与列表页的过滤条件同名（status/keyword/merchant_id/created_from…） */
+export type ExportQuery = Record<string, string | number | boolean | undefined | null>;
+
 /**
  * 拼导出地址：CSV 下载用 window.open 直连后端，不走 axios（避免把二进制塞进 JS 内存）。
  * 同源请求会带上会话 Cookie，导出权限与后台一致。
  */
-export function exportCsvUrl(kind: ExportKind, query: ReportQuery = {}): string {
+export function exportCsvUrl(kind: ExportKind, query: ExportQuery = {}): string {
   const base = http.defaults.baseURL || '/api/v1';
   const params = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {

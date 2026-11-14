@@ -130,6 +130,49 @@ func TestPluginCallbackCompletesPaidOrder(t *testing.T) {
 	}
 }
 
+// TestPluginCallbackRejectsCallbackFromAnotherChannel pins the fix for the
+// cross-channel confirmation hole: the callback used to be matched on trade_no
+// alone, so a channel that never processed the order could book it.
+func TestPluginCallbackRejectsCallbackFromAnotherChannel(t *testing.T) {
+	db, order := pluginCallbackDatabase(t, "callback-plugin-cross-channel")
+	configs := pluginCallbackChannel(t, db, "stubpay", channelrouter.StatusActive)
+	// A second, perfectly valid channel of the same plugin. The order never went
+	// to it.
+	encrypted := pluginCallbackEncrypt(t, "channel-2", "marker-2")
+	other := channelrouter.Channel{
+		ID: "channel-2", Name: "stubpay-2", PluginCode: "stubpay", PaymentType: "alipay",
+		Weight: 1, Status: channelrouter.StatusActive, ConfigEncrypted: encrypted,
+	}
+	if err := db.Create(&other).Error; err != nil {
+		t.Fatal(err)
+	}
+	plugins := pluginpayment.NewRegistry()
+	if err := plugins.Register(verifierPlugin{verify: func(_ context.Context, _ *http.Request, _ map[string]string) (pluginpayment.CallbackResult, error) {
+		return pluginpayment.CallbackResult{
+			TradeNo: order.TradeNo, ChannelTradeNo: "STUB-OTHER", Amount: order.Amount, Paid: true,
+			Raw: map[string]string{"trade_status": "SUCCESS"},
+		}, nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	router := pluginCallbackRouter(t, db, configs, plugins)
+	response := performCallback(t, router, "/api/v1/payment/callback/stubpay/channel-2", "trade_status=SUCCESS")
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("cross-channel callback status=%d body=%q, want 400", response.Code, response.Body.String())
+	}
+	assertOrderPending(t, db, order.ID)
+	var records int64
+	if err := db.Model(&Record{}).Count(&records).Error; err != nil || records != 0 {
+		t.Fatalf("callbacks=%d err=%v, want 0", records, err)
+	}
+
+	// The channel the order was actually routed to still works.
+	response = performCallback(t, router, "/api/v1/payment/callback/stubpay/channel-1", "trade_status=SUCCESS")
+	if response.Code != http.StatusOK {
+		t.Fatalf("own-channel callback status=%d body=%q", response.Code, response.Body.String())
+	}
+}
+
 func TestPluginCallbackIsIdempotent(t *testing.T) {
 	db, order := pluginCallbackDatabase(t, "callback-plugin-idempotent")
 	configs := pluginCallbackChannel(t, db, "stubpay", channelrouter.StatusActive)
@@ -279,7 +322,7 @@ func pluginCallbackDatabase(t *testing.T, name string) (*gorm.DB, paymentmodel.O
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&identitymodel.Merchant{}, &channelrouter.Channel{}, &paymentmodel.Order{}, &Record{}, &outbox.Message{}); err != nil {
+	if err := db.AutoMigrate(&identitymodel.Merchant{}, &channelrouter.Channel{}, &paymentmodel.Order{}, &paymentmodel.Attempt{}, &Record{}, &outbox.Message{}); err != nil {
 		t.Fatal(err)
 	}
 	merchant := identitymodel.Merchant{ID: "merchant-1", DisplayName: "merchant", Status: identitymodel.StatusActive}
@@ -294,6 +337,16 @@ func pluginCallbackDatabase(t *testing.T, name string) (*gorm.DB, paymentmodel.O
 		ExpiresAt: now.Add(10 * time.Minute), CreatedAt: now, UpdatedAt: now,
 	}
 	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+	// The order went to channel-1. A callback from any other channel must be
+	// refused, so the fixture records the attempt the gateway would have made.
+	channelOne := "channel-1"
+	attempt := paymentmodel.Attempt{
+		ID: "attempt-1", OrderID: order.ID, ChannelID: &channelOne, AttemptNo: 1,
+		Status: paymentmodel.AttemptSucceeded, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := db.Create(&attempt).Error; err != nil {
 		t.Fatal(err)
 	}
 	return db, order

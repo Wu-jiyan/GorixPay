@@ -64,7 +64,7 @@ plugins:
     callback_verifier: true
     upstream:
       create_path: configurable api_url + param_template
-      signature: md5 (epay canonical) or none
+      signature: md5 for callbacks (always verified); sign_type=none only makes the create request unsigned
       notification: form or flat JSON
     action_types: [qrcode, jump, urlscheme, html, jsapi, app, scan, wxplugin, wxapp]
     config_fields:
@@ -72,7 +72,7 @@ plugins:
       - {key: method, type: text, required: false, secret: false}
       - {key: param_template, type: textarea, required: false, secret: false}
       - {key: sign_type, type: select, required: false, secret: false}
-      - {key: key, type: password, required: false, secret: true}
+      - {key: key, type: password, required: true, secret: true}
     amount_unit: fen (money/amount placeholder)
   - code: usdt
     name: USDT (Epusdt)

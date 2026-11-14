@@ -149,7 +149,17 @@ func TestTOTPHTTPFlow(t *testing.T) {
 	if disableWrong.Code != http.StatusBadRequest {
 		t.Fatalf("disable wrong status=%d", disableWrong.Code)
 	}
-	disable := request(t, router, http.MethodPost, "/api/v1/admin/security/totp/disable", token, map[string]string{"code": code})
+	// The enrollment code is spent; disabling needs the next step's code.
+	reused := request(t, router, http.MethodPost, "/api/v1/admin/security/totp/disable", token, map[string]string{"code": code})
+	if reused.Code != http.StatusBadRequest || !strings.Contains(reused.Body.String(), "totp_reused") {
+		t.Fatalf("disable with a spent code status=%d body=%s", reused.Code, reused.Body.String())
+	}
+	fixture.advance(30 * time.Second)
+	disableCode, err := TOTPCode(setupBody.Secret, fixture.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disable := request(t, router, http.MethodPost, "/api/v1/admin/security/totp/disable", token, map[string]string{"code": disableCode})
 	if disable.Code != http.StatusOK || !strings.Contains(disable.Body.String(), `"enabled":false`) {
 		t.Fatalf("disable status=%d body=%s", disable.Code, disable.Body.String())
 	}
@@ -227,6 +237,19 @@ func TestLoginHTTPCodesForCaptchaAndTOTP(t *testing.T) {
 	}
 	validTOTP := request(t, router, http.MethodPost, "/api/v1/auth/administrator/login", "", map[string]string{
 		"identifier": testUsername, "password": testPassword, "totp_code": code,
+	})
+	if validTOTP.Code != http.StatusUnauthorized || !strings.Contains(validTOTP.Body.String(), "totp_invalid") {
+		t.Fatalf("spent totp status=%d body=%s, want totp_invalid", validTOTP.Code, validTOTP.Body.String())
+	}
+	// A replay of the enrollment code is refused above; the next step's code
+	// logs in normally.
+	fixture.advance(30 * time.Second)
+	loginCode, err := TOTPCode(secretValue, fixture.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validTOTP = request(t, router, http.MethodPost, "/api/v1/auth/administrator/login", "", map[string]string{
+		"identifier": testUsername, "password": testPassword, "totp_code": loginCode,
 	})
 	if validTOTP.Code != http.StatusOK {
 		t.Fatalf("valid totp status=%d body=%s", validTOTP.Code, validTOTP.Body.String())

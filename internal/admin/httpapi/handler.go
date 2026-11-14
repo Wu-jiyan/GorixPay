@@ -182,6 +182,18 @@ func (handler *Handler) merchantStatus(ctx *gin.Context) {
 		notFound(ctx)
 		return
 	}
+	if request.Status == identitymodel.StatusDisabled {
+		// A disabled merchant must lose access immediately: the session check does
+		// not re-read the merchant row, so without this the old cookie keeps
+		// working for up to the seven day session lifetime.
+		if err := handler.db.WithContext(ctx.Request.Context()).Model(&identitymodel.Session{}).
+			Where("principal_type = ? AND principal_id = ? AND revoked_at IS NULL",
+				identitymodel.PrincipalMerchant, ctx.Param("id")).
+			Update("revoked_at", time.Now().UTC()).Error; err != nil {
+			internalError(ctx)
+			return
+		}
+	}
 	ctx.Status(http.StatusNoContent)
 }
 

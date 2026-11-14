@@ -228,3 +228,29 @@ func jeepayNotification(fields map[string]any) string {
 	}
 	return string(encoded)
 }
+
+// The constant-time comparison normalizes case and trims padding; a gateway that
+// sends a lower-case or space padded signature must still verify, while a
+// truncated or wrong-key signature must not.
+func TestVerifyAcceptsLowercaseAndPaddedSignature(t *testing.T) {
+	values := map[string]string{"payOrderId": "P-1", "mchOrderNo": "T1", "amount": "100", "state": "2"}
+	expected := sign(values, "jeepay-key")
+	if !verify(values, "jeepay-key", expected) {
+		t.Fatal("canonical signature rejected")
+	}
+	if !verify(values, "jeepay-key", strings.ToLower(expected)) {
+		t.Fatal("lower-case signature rejected")
+	}
+	if !verify(values, "jeepay-key", "  "+expected+"  ") {
+		t.Fatal("padded signature rejected")
+	}
+	if verify(values, "jeepay-key", expected[:len(expected)-1]) {
+		t.Fatal("truncated signature accepted")
+	}
+	if verify(values, "other-key", expected) {
+		t.Fatal("signature verified with the wrong key")
+	}
+	if verify(values, "jeepay-key", "") {
+		t.Fatal("empty signature accepted")
+	}
+}

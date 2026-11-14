@@ -129,3 +129,19 @@ func (registry *Registry) ConfigFields(code string) []ConfigField {
 	}
 	return configurable.ConfigFields()
 }
+
+// ValidateConfiguration asks the plugin behind code whether a channel
+// configuration is complete enough to use. Plugins that do not implement
+// ConfigValidator accept any configuration, so the call stays optional for the
+// channel administration; an unknown code reports ErrPluginNotFound.
+func (registry *Registry) ValidateConfiguration(code string, config map[string]string) error {
+	plugin, exists := registry.Lookup(code)
+	if !exists {
+		return fmt.Errorf("%w: %s", ErrPluginNotFound, code)
+	}
+	validator, ok := plugin.(ConfigValidator)
+	if !ok {
+		return nil
+	}
+	return validator.ValidateConfiguration(config)
+}

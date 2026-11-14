@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { useMessage, type FormInst, type FormRules } from 'naive-ui';
 import { authApi } from '@/api';
@@ -8,6 +8,7 @@ import { errorMessage } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 import { siteLogo, siteName } from '@/stores/site';
 
+const route = useRoute();
 const router = useRouter();
 const message = useMessage();
 const auth = useAuthStore();
@@ -20,6 +21,15 @@ const rules: FormRules = {
   username: [{ required: true, message: '请输入运营账号', trigger: ['blur', 'input'] }],
   password: [{ required: true, message: '请输入登录密码', trigger: ['blur', 'input'] }],
 };
+
+/** 登录成功后回跳 ?next=，只接受站内路径 */
+function nextTarget(fallback: string): string {
+  const raw = route.query.next;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) return fallback;
+  if (value === '/login' || value === '/admin/login') return fallback;
+  return value;
+}
 
 async function handleSubmit() {
   if (submitting.value) return;
@@ -36,9 +46,9 @@ async function handleSubmit() {
       message.error('登录成功但未返回管理员信息，请联系平台运维');
       return;
     }
-    auth.setAdminLogin(res.token, res.expires_at, res.administrator);
+    auth.setAdminLogin(res.administrator);
     message.success('登录成功');
-    await router.replace('/admin');
+    await router.replace(nextTarget('/admin'));
   } catch (err) {
     if (axios.isAxiosError(err) && err.response?.status === 401) {
       message.error('账号或密码错误');

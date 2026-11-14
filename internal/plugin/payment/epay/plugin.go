@@ -29,11 +29,10 @@ type createResponse struct {
 	PayInfo string `json:"pay_info"`
 }
 
+// New builds the plugin. A nil client gets the shared default with a timeout:
+// http.DefaultClient has none and would let a hung upstream pin a worker.
 func New(client *http.Client) *Plugin {
-	if client == nil {
-		client = http.DefaultClient
-	}
-	return &Plugin{client: client}
+	return &Plugin{client: pluginpayment.OrDefaultClient(client)}
 }
 
 func (*Plugin) Metadata() pluginpayment.Metadata {

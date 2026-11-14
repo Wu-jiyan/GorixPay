@@ -8,7 +8,7 @@ import { errorMessage } from '@/api/client';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusTag from '@/components/StatusTag.vue';
 import { formatDateTime } from '@/utils/format';
-import { httpStatus, itemsOf, numberOr, useServerPaging } from './shared';
+import { httpStatus, itemsOf, numberOr, usePendingAction, useServerPaging } from './shared';
 
 const message = useMessage();
 
@@ -21,6 +21,8 @@ const processing = ref(false);
 const showReject = ref(false);
 const rejectTarget = ref<MerchantDomain | null>(null);
 const rejectionReason = ref('');
+
+const actions = usePendingAction();
 
 const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } = useServerPaging(load);
 
@@ -67,13 +69,15 @@ function resetFilters() {
 }
 
 async function approve(row: MerchantDomain) {
-  try {
-    await adminApi.reviewDomain(row.id, 'approve');
-    message.success('域名已通过');
-    await load();
-  } catch (error) {
-    message.error(errorMessage(error));
-  }
+  await actions.run(`approve:${row.id}`, async () => {
+    try {
+      await adminApi.reviewDomain(row.id, 'approve');
+      message.success('域名已通过');
+      await load();
+    } catch (error) {
+      message.error(errorMessage(error));
+    }
+  });
 }
 
 function openReject(row: MerchantDomain) {
@@ -102,7 +106,9 @@ async function submitReject() {
   }
 }
 
-const columns = computed<DataTableColumns<MerchantDomain>>(() => [
+const columns = computed<DataTableColumns<MerchantDomain>>(() => {
+  const pendingSet = actions.pending.value;
+  return [
   {
     title: '商户 ID',
     key: 'merchant_id',
@@ -143,6 +149,7 @@ const columns = computed<DataTableColumns<MerchantDomain>>(() => [
     fixed: 'right',
     render: (row) => {
       if (row.status !== 'pending') return h('span', { class: 'muted' }, '已处理');
+      const approving = pendingSet.has(`approve:${row.id}`);
       return h(NSpace, { size: 4, wrap: false }, {
         default: () => [
           h(
@@ -150,20 +157,31 @@ const columns = computed<DataTableColumns<MerchantDomain>>(() => [
             { onPositiveClick: () => approve(row) },
             {
               trigger: () =>
-                h(NButton, { size: 'tiny', quaternary: true, type: 'primary' }, { default: () => '通过' }),
+                h(
+                  NButton,
+                  { size: 'tiny', quaternary: true, type: 'primary', loading: approving, disabled: approving },
+                  { default: () => '通过' },
+                ),
               default: () => '确认通过该支付域名？通过后下单可校验该域名。',
             },
           ),
           h(
             NButton,
-            { size: 'tiny', quaternary: true, type: 'error', onClick: () => openReject(row) },
+            {
+              size: 'tiny',
+              quaternary: true,
+              type: 'error',
+              disabled: approving,
+              onClick: () => openReject(row),
+            },
             { default: () => '驳回' },
           ),
         ],
       });
     },
   },
-]);
+  ];
+});
 
 onMounted(load);
 </script>

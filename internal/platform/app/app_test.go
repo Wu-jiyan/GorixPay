@@ -104,7 +104,9 @@ func TestNewProcessesMerchantNotificationOutbox(t *testing.T) {
 		Environment: "test",
 		HTTP:        config.HTTPConfig{Address: ":0"},
 		Database:    config.DatabaseConfig{Driver: "sqlite", DSN: "file:app-worker?mode=memory&cache=shared"},
-		Security:    config.SecurityConfig{MasterKeyFile: keyPath},
+		// The worker notifies an httptest server on 127.0.0.1, which the
+		// outbound guard blocks by default; the test opts in explicitly.
+		Security: config.SecurityConfig{MasterKeyFile: keyPath, AllowPrivateNotifyHosts: true},
 	}
 	application, err := New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {

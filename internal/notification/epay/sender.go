@@ -17,6 +17,7 @@ import (
 	"gorixpay/internal/merchant/credential"
 	"gorixpay/internal/outbox"
 	paymentmodel "gorixpay/internal/payment/model"
+	"gorixpay/internal/platform/netguard"
 
 	"gorm.io/gorm"
 )
@@ -42,7 +43,10 @@ func NewSender(db *gorm.DB, credentials *credential.Service, client *http.Client
 // the remaining merchants keep the MD5 format unchanged.
 func NewSenderWithSigner(db *gorm.DB, credentials *credential.Service, client *http.Client, signer *epayv2.Signer) *Sender {
 	if client == nil {
-		client = http.DefaultClient
+		// A nil client used to fall back to http.DefaultClient, which has no
+		// timeout: one merchant that accepts the connection and never answers
+		// parked the single outbox worker until restart.
+		client = netguard.Client(netguard.Options{})
 	}
 	return &Sender{db: db, credentials: credentials, client: client, signer: signer}
 }
@@ -86,8 +90,12 @@ func (sender *Sender) Handle(ctx context.Context, message outbox.Message) error 
 	if len(body) > maxResponseBytes {
 		return errors.New("notification response exceeds limit")
 	}
-	acknowledgement := string(body)
-	if !strings.Contains(acknowledgement, "success") && !strings.Contains(acknowledgement, "SUCCESS") && !strings.Contains(acknowledgement, "Success") {
+	acknowledgement := strings.TrimSpace(string(body))
+	// EpayCore::creat_callback accepts exactly 'success' (includes/functions.php).
+	// A loose contains() check marked "failed successfully" style error pages as
+	// delivered, so the merchant never received the notification and the outbox
+	// message was retired anyway.
+	if !strings.EqualFold(acknowledgement, "success") {
 		return errors.New("notification acknowledgement not accepted")
 	}
 	return nil

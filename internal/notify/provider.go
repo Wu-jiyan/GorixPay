@@ -43,6 +43,32 @@ func (sender *logSender) SendMail(_ context.Context, to, subject, body string) e
 	return err
 }
 
+// suppressedSender replaces the log sender in deployments that must not print
+// verification codes or password reset tokens: production without a configured
+// SMS/mail channel. It still records that a message was produced, so the missing
+// configuration is visible, but the body (which carries the code) never reaches
+// the log.
+type suppressedSender struct {
+	out io.Writer
+}
+
+func newSuppressedSender(out io.Writer) Sender {
+	if out == nil {
+		out = os.Stdout
+	}
+	return &suppressedSender{out: out}
+}
+
+func (sender *suppressedSender) SendSMS(_ context.Context, to, _ string) error {
+	_, err := fmt.Fprintf(sender.out, "[notify] suppressed sms to=%s: no delivery channel configured, message body hidden\n", maskTarget(to))
+	return err
+}
+
+func (sender *suppressedSender) SendMail(_ context.Context, to, _, _ string) error {
+	_, err := fmt.Fprintf(sender.out, "[notify] suppressed mail to=%s: no delivery channel configured, message body hidden\n", maskTarget(to))
+	return err
+}
+
 // maskTarget keeps a recipient readable in logs without printing it in full.
 func maskTarget(target string) string {
 	trimmed := strings.TrimSpace(target)

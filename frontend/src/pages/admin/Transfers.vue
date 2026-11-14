@@ -5,12 +5,14 @@ import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-
 import { adminApi } from '@/api';
 import type { Transfer } from '@/api';
 import { adminTransfersApi } from '@/api/adminTransfers';
+import type { RedBatch } from '@/api/adminTransfers';
+import { exportCsvUrl } from '@/api/reports';
 import { errorMessage } from '@/api/client';
 import MoneyText from '@/components/MoneyText.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusTag from '@/components/StatusTag.vue';
 import { formatDateTime, formatMoney } from '@/utils/format';
-import { asRow, httpStatus, numberOr, useServerPaging } from './shared';
+import { asRow, httpStatus, numberOr, usePendingAction, useServerPaging } from './shared';
 
 const message = useMessage();
 
@@ -25,6 +27,19 @@ const processing = ref(false);
 const showReject = ref(false);
 const rejectTarget = ref<Transfer | null>(null);
 const rejectionReason = ref('');
+
+const actions = usePendingAction();
+
+const showRedBatches = ref(false);
+const redBatches = ref<RedBatch[]>([]);
+const redLoading = ref(false);
+const showRedCancel = ref(false);
+const redCancelTarget = ref<RedBatch | null>(null);
+const redCancelReason = ref('');
+const redCancelSubmitting = ref(false);
+const redActions = usePendingAction();
+
+const redPaging = useServerPaging(loadRedBatches);
 
 interface ManualForm {
   merchant_id: string;
@@ -114,13 +129,74 @@ function resetFilters() {
 }
 
 async function approve(row: Transfer) {
+  await actions.run(`approve:${row.id}`, async () => {
+    try {
+      await adminApi.processTransfer(row.id, 'approve');
+      message.success('代付已通过');
+      await load();
+    } catch (error) {
+      message.error(errorMessage(error));
+    }
+  });
+}
+
+function exportCsv() {
+  window.open(
+    exportCsvUrl('transfers', {
+      status: status.value ?? undefined,
+      keyword: keyword.value.trim() || undefined,
+      merchant_id: merchantId.value.trim() || undefined,
+    }),
+    '_blank',
+  );
+}
+
+async function loadRedBatches() {
+  redLoading.value = true;
   try {
-    await adminApi.processTransfer(row.id, 'approve');
-    message.success('代付已通过');
-    await load();
+    const data = await adminTransfersApi.redBatches({
+      page: redPaging.page.value,
+      page_size: redPaging.pageSize.value,
+      merchant_id: merchantId.value.trim() || undefined,
+    });
+    const items = Array.isArray(asRow(data).items) ? (asRow(data).items as RedBatch[]) : [];
+    redBatches.value = items;
+    redPaging.total.value = numberOr(asRow(data).total, items.length);
   } catch (error) {
     message.error(errorMessage(error));
+  } finally {
+    redLoading.value = false;
   }
+}
+
+function openRedBatches() {
+  showRedBatches.value = true;
+  void loadRedBatches();
+}
+
+function openRedCancel(row: RedBatch) {
+  redCancelTarget.value = row;
+  redCancelReason.value = '';
+  showRedCancel.value = true;
+}
+
+async function submitRedCancel() {
+  const target = redCancelTarget.value;
+  if (!target) return;
+  await redActions.run(`cancel:${target.batch_no}`, async () => {
+    redCancelSubmitting.value = true;
+    try {
+      const result = await adminTransfersApi.cancelRed(target.batch_no, redCancelReason.value.trim());
+      const cancelled = numberOr(asRow(result).cancelled, 0);
+      message.success(`已撤销 ${cancelled} 个红包`);
+      showRedCancel.value = false;
+      await loadRedBatches();
+    } catch (error) {
+      message.error(errorMessage(error));
+    } finally {
+      redCancelSubmitting.value = false;
+    }
+  });
 }
 
 function openReject(row: Transfer) {
@@ -241,7 +317,9 @@ async function submitBatch() {
   }
 }
 
-const columns = computed<DataTableColumns<Transfer>>(() => [
+const columns = computed<DataTableColumns<Transfer>>(() => {
+  const pendingSet = actions.pending.value;
+  return [
   {
     title: '代付单号',
     key: 'transfer_no',
@@ -298,6 +376,7 @@ const columns = computed<DataTableColumns<Transfer>>(() => [
     fixed: 'right',
     render: (row) => {
       if (row.status !== 'pending') return h('span', { class: 'muted' }, '已处理');
+      const approving = pendingSet.has(`approve:${row.id}`);
       return h(
         NSpace,
         { size: 4, wrap: false },
@@ -308,13 +387,23 @@ const columns = computed<DataTableColumns<Transfer>>(() => [
               { onPositiveClick: () => approve(row) },
               {
                 trigger: () =>
-                  h(NButton, { size: 'tiny', quaternary: true, type: 'primary' }, { default: () => '通过' }),
+                  h(
+                    NButton,
+                    { size: 'tiny', quaternary: true, type: 'primary', loading: approving, disabled: approving },
+                    { default: () => '通过' },
+                  ),
                 default: () => '确认通过该代付申请？',
               },
             ),
             h(
               NButton,
-              { size: 'tiny', quaternary: true, type: 'error', onClick: () => openReject(row) },
+              {
+                size: 'tiny',
+                quaternary: true,
+                type: 'error',
+                disabled: approving,
+                onClick: () => openReject(row),
+              },
               { default: () => '驳回' },
             ),
           ],
@@ -322,7 +411,68 @@ const columns = computed<DataTableColumns<Transfer>>(() => [
       );
     },
   },
-]);
+  ];
+});
+
+const redColumns = computed<DataTableColumns<RedBatch>>(() => {
+  const pendingSet = redActions.pending.value;
+  return [
+    {
+      title: '批次号',
+      key: 'batch_no',
+      width: 200,
+      ellipsis: true,
+      render: (row) => h('span', { class: 'mono' }, row.batch_no || '-'),
+    },
+    {
+      title: '商户 ID',
+      key: 'merchant_id',
+      width: 240,
+      ellipsis: true,
+      render: (row) => h('span', { class: 'mono' }, row.merchant_id || '-'),
+    },
+    {
+      title: '总额',
+      key: 'amount',
+      width: 120,
+      align: 'right',
+      render: (row) => h(MoneyText, { amount: row.amount }),
+    },
+    {
+      title: '领取 / 总数',
+      key: 'count',
+      width: 120,
+      align: 'right',
+      render: (row) => `${numberOr(row.claimed_count, 0)} / ${numberOr(row.count, 0)}`,
+    },
+    { title: '状态', key: 'status', width: 100, render: (row) => h(StatusTag, { status: row.status, kind: 'finance' }) },
+    {
+      title: '创建时间',
+      key: 'created_at',
+      width: 170,
+      render: (row) => formatDateTime(row.created_at),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 110,
+      fixed: 'right',
+      render: (row) =>
+        h(
+          NButton,
+          {
+            size: 'tiny',
+            quaternary: true,
+            type: 'error',
+            loading: pendingSet.has(`cancel:${row.batch_no}`),
+            disabled: pendingSet.has(`cancel:${row.batch_no}`),
+            onClick: () => openRedCancel(row),
+          },
+          { default: () => '撤销' },
+        ),
+    },
+  ];
+});
 
 onMounted(load);
 </script>
@@ -332,6 +482,8 @@ onMounted(load);
     <PageHeader title="代付管理" subtitle="商户代付申请审核，需扣减可用余额或冻结资金">
       <template #actions>
         <n-button secondary :loading="loading" @click="load">刷新</n-button>
+        <n-button secondary @click="exportCsv">导出 CSV</n-button>
+        <n-button secondary @click="openRedBatches">红包批次</n-button>
         <n-button secondary type="primary" @click="openBatch">批量付款</n-button>
         <n-button type="primary" @click="openManual">手动付款</n-button>
       </template>
@@ -481,6 +633,58 @@ onMounted(load);
         </n-space>
       </template>
     </n-modal>
+
+    <n-drawer v-model:show="showRedBatches" :width="900" placement="right">
+      <n-drawer-content title="红包批次" closable>
+        <n-alert type="info" :bordered="false" style="margin-bottom: 14px">
+          撤销会把该批次里仍是待领取的红包退回商户可用余额；已领取的部分不受影响。
+        </n-alert>
+        <div class="rules-toolbar">
+          <n-button size="small" :loading="redLoading" @click="loadRedBatches">刷新</n-button>
+          <span class="muted small">共 {{ redPaging.total.value }} 个批次</span>
+        </div>
+        <n-data-table
+          :columns="redColumns"
+          :data="redBatches"
+          :loading="redLoading"
+          :pagination="redPaging.pagination.value"
+          :row-key="(row: RedBatch) => row.batch_no"
+          :bordered="false"
+          :single-line="false"
+          size="small"
+          remote
+          @update:page="redPaging.onPage"
+          @update:page-size="redPaging.onPageSize"
+        >
+          <template #empty>
+            <n-empty description="暂无红包批次" size="small" />
+          </template>
+        </n-data-table>
+      </n-drawer-content>
+    </n-drawer>
+
+    <n-modal v-model:show="showRedCancel" preset="card" title="撤销红包批次" style="width: 520px; max-width: 94vw">
+      <n-descriptions v-if="redCancelTarget" :column="1" label-placement="left" size="small" bordered>
+        <n-descriptions-item label="批次号">
+          <span class="mono">{{ redCancelTarget.batch_no }}</span>
+        </n-descriptions-item>
+        <n-descriptions-item label="商户 ID">
+          <span class="mono">{{ redCancelTarget.merchant_id }}</span>
+        </n-descriptions-item>
+        <n-descriptions-item label="总额">
+          <MoneyText :amount="redCancelTarget.amount" />
+        </n-descriptions-item>
+      </n-descriptions>
+      <n-form-item label="撤销原因" style="margin-top: 16px">
+        <n-input v-model:value="redCancelReason" placeholder="可选，记录到审计" />
+      </n-form-item>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showRedCancel = false">取消</n-button>
+          <n-button type="error" :loading="redCancelSubmitting" @click="submitRedCancel">确认撤销</n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -499,6 +703,12 @@ onMounted(load);
   margin-top: 4px;
   font-size: 14px;
   color: #1f2937;
+}
+.rules-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 .small {
   font-size: 12px;

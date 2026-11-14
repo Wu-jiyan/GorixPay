@@ -2,6 +2,7 @@ package generic
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -58,8 +59,12 @@ func TestCreatePaymentSupportsCustomTemplateAndGET(t *testing.T) {
 		if query.Get("order") != "T4002" || query.Get("cents") != "500" || query.Get("callback") != "https://pay.example/notify" {
 			t.Errorf("query=%+v", query)
 		}
-		if query.Get("sign") != "" {
-			t.Errorf("sign sent although sign_type=none: %+v", query)
+		params := map[string]any{}
+		for name, values := range request.URL.Query() {
+			params[name] = values[0]
+		}
+		if !signing.VerifyMD5(params, "generic-key", query.Get("sign")) {
+			t.Errorf("custom template request is not signed: %+v", query)
 		}
 		_, _ = writer.Write([]byte(`{"code":"1","trade_no":"UP-2","pay_type":"jump","pay_info":"https://pay.example/cashier?id=1"}`))
 	}))
@@ -68,7 +73,7 @@ func TestCreatePaymentSupportsCustomTemplateAndGET(t *testing.T) {
 	action, err := New(server.Client()).CreatePayment(context.Background(), pluginpayment.CreateRequest{
 		TradeNo: "T4002", Amount: 500, NotifyURL: "https://pay.example/notify",
 		Configuration: map[string]string{
-			"api_url": server.URL, "method": "GET", "sign_type": "none",
+			"api_url": server.URL, "method": "GET", "key": "generic-key",
 			"param_template": "order={trade_no}&cents={amount_cents}&callback={notify_url}&sign={sign}",
 		},
 	})
@@ -176,10 +181,15 @@ func TestVerifyCallbackRejectsBadSignatureAndAmounts(t *testing.T) {
 		}
 	})
 	t.Run("json-code-success", func(t *testing.T) {
-		body := `{"code":1,"out_trade_no":"T4001","trade_no":"UP-1","amount":"19.99","sign":"ignored"}`
-		request := httptest.NewRequest(http.MethodPost, "/callback", strings.NewReader(body))
+		params := map[string]any{"code": "1", "out_trade_no": "T4001", "trade_no": "UP-1", "amount": "19.99"}
+		params["sign"] = signing.SignMD5(params, "generic-key")
+		encoded, err := json.Marshal(params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, "/callback", strings.NewReader(string(encoded)))
 		request.Header.Set("Content-Type", "application/json")
-		result, err := New(nil).VerifyCallback(context.Background(), request, map[string]string{"api_url": "https://upstream.example", "sign_type": "none"})
+		result, err := New(nil).VerifyCallback(context.Background(), request, config)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -187,6 +197,120 @@ func TestVerifyCallbackRejectsBadSignatureAndAmounts(t *testing.T) {
 			t.Fatalf("result=%+v", result)
 		}
 	})
+	t.Run("json-unsigned-without-key", func(t *testing.T) {
+		body := `{"code":1,"out_trade_no":"T4001","trade_no":"UP-1","amount":"19.99","sign":"ignored"}`
+		request := httptest.NewRequest(http.MethodPost, "/callback", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		if _, err := New(nil).VerifyCallback(context.Background(), request, map[string]string{"api_url": "https://upstream.example", "sign_type": "none"}); !errors.Is(err, pluginpayment.ErrCallbackRejected) {
+			t.Fatalf("unsigned callback accepted: %v", err)
+		}
+	})
+}
+
+// A generic channel without a signing key used to accept every POST as a paid
+// notification. It now rejects the callback instead of trusting it.
+func TestVerifyCallbackRejectsKeylessChannel(t *testing.T) {
+	params := map[string]any{
+		"pid": "1001", "out_trade_no": "T4001", "trade_no": "UP-1",
+		"money": "19.99", "trade_status": "TRADE_SUCCESS",
+	}
+	params["sign"] = signing.SignMD5(params, "attacker-key")
+	forged := make(url.Values, len(params))
+	for name, value := range params {
+		forged.Set(name, value.(string))
+	}
+	// No key at all: nothing can authenticate the body, so it is rejected with a
+	// reason that names the missing key. sign_type does not matter here.
+	for name, config := range map[string]map[string]string{
+		"no-key":    {"api_url": "https://upstream.example"},
+		"none-mode": {"api_url": "https://upstream.example", "sign_type": "none"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := verifyForm(t, config, forged)
+			if !errors.Is(err, pluginpayment.ErrCallbackRejected) || !strings.Contains(err.Error(), "key") {
+				t.Fatalf("keyless channel did not reject the callback with a clear cause: %v", err)
+			}
+		})
+	}
+	// The same forged body is rejected by a correctly configured channel too:
+	// only the configured key authenticates a notification.
+	if _, err := verifyForm(t, map[string]string{"api_url": "https://upstream.example", "key": "generic-key"}, forged); !errors.Is(err, pluginpayment.ErrCallbackRejected) {
+		t.Fatalf("attacker-key signature accepted: %v", err)
+	}
+	// Callbacks are verified even when the channel is configured unsigned: a
+	// properly signed notification from that channel still passes.
+	valid := genericNotification("T4001", "UP-1", "19.99", "TRADE_SUCCESS")
+	result, err := verifyForm(t, map[string]string{"api_url": "https://upstream.example", "key": "generic-key", "sign_type": "none"}, valid)
+	if err != nil || !result.Paid {
+		t.Fatalf("valid callback rejected: %+v err=%v", result, err)
+	}
+}
+
+func TestCreatePaymentRequiresSigningKey(t *testing.T) {
+	_, err := New(nil).CreatePayment(context.Background(), pluginpayment.CreateRequest{
+		TradeNo: "T4006", Amount: 500, Configuration: map[string]string{"api_url": "https://upstream.example"},
+	})
+	if !errors.Is(err, pluginpayment.ErrInvalidConfiguration) || !strings.Contains(err.Error(), "signing key") {
+		t.Fatalf("keyless create error=%v", err)
+	}
+	_, err = New(nil).CreatePayment(context.Background(), pluginpayment.CreateRequest{
+		TradeNo: "T4007", Amount: 500,
+		Configuration: map[string]string{"api_url": "https://upstream.example", "key": "generic-key", "sign_type": "rsa"},
+	})
+	if !errors.Is(err, pluginpayment.ErrInvalidConfiguration) || !strings.Contains(err.Error(), "sign_type") {
+		t.Fatalf("unknown sign_type error=%v", err)
+	}
+}
+
+// sign_type=none keeps working for the outgoing create call: the request is sent
+// unsigned, but the channel still needs a key for its callbacks.
+func TestCreatePaymentHonoursUnsignedMode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if err := request.ParseForm(); err != nil {
+			t.Errorf("parse form: %v", err)
+		}
+		if request.PostForm.Get("sign") != "" {
+			t.Errorf("unsigned channel signed the request: %+v", request.PostForm)
+		}
+		_, _ = writer.Write([]byte(`{"code":1,"trade_no":"UP-3","pay_type":"jump","pay_info":"https://pay.example/jump"}`))
+	}))
+	defer server.Close()
+	// The conformance harness creates its generic channel with exactly this
+	// configuration (key present, create unsigned); it has to keep working.
+	action, err := New(server.Client()).CreatePayment(context.Background(), pluginpayment.CreateRequest{
+		TradeNo: "T4008", Amount: 500, NotifyURL: "https://pay.example/notify",
+		Configuration: map[string]string{
+			"api_url": server.URL, "pid": "v1-upstream-pid", "key": "v1-upstream-key",
+			"sign_type": "none", "method": "POST",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if action.Type != pluginpayment.ActionJump {
+		t.Fatalf("action=%+v", action)
+	}
+}
+
+func TestValidateConfigurationRejectsIncompleteChannel(t *testing.T) {
+	plugin := New(nil)
+	if err := plugin.ValidateConfiguration(map[string]string{"api_url": "https://upstream.example", "key": "generic-key"}); err != nil {
+		t.Fatalf("complete configuration rejected: %v", err)
+	}
+	if err := plugin.ValidateConfiguration(map[string]string{"api_url": "https://upstream.example", "key": "generic-key", "sign_type": "none"}); err != nil {
+		t.Fatalf("unsigned create mode rejected: %v", err)
+	}
+	for name, config := range map[string]map[string]string{
+		"missing-key": {"api_url": "https://upstream.example"},
+		"missing-url": {"key": "generic-key"},
+		"bad-mode":    {"api_url": "https://upstream.example", "key": "generic-key", "sign_type": "rsa"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := plugin.ValidateConfiguration(config); !errors.Is(err, pluginpayment.ErrInvalidConfiguration) {
+				t.Fatalf("incomplete configuration accepted: %v", err)
+			}
+		})
+	}
 }
 
 func TestMetadataAndConfigFields(t *testing.T) {

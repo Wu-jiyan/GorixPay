@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   NAvatar,
@@ -64,12 +64,6 @@ async function handleUserSelect(key: string) {
   }
   router.push('/');
 }
-
-onMounted(() => {
-  if (!auth.merchant) {
-    auth.loadSession();
-  }
-});
 </script>
 
 <template>

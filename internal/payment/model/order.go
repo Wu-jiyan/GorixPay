@@ -92,8 +92,13 @@ func (order Order) Terminal() bool {
 	return order.Status == StatusPaid || order.Status == StatusClosed || order.Status == StatusFailed
 }
 
+// MaxAmount caps a single order at 100000.00 CNY, the same ceiling the V1 and V2
+// protocol layers apply. Without it a machine caller could create a recharge for
+// an amount that overflows every downstream fee calculation.
+const MaxAmount int64 = 100000 * 100
+
 func ValidateAmount(amount int64) error {
-	if amount <= 0 {
+	if amount <= 0 || amount > MaxAmount {
 		return ErrInvalidAmount
 	}
 	return nil

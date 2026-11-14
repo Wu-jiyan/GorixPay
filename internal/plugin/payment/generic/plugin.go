@@ -48,8 +48,8 @@ func (*Plugin) ConfigFields() []pluginpayment.ConfigField {
 		{Key: "api_url", Label: "下单接口地址", Type: pluginpayment.ConfigFieldURL, Required: true},
 		{Key: "method", Label: "请求方法 (POST/GET)", Type: pluginpayment.ConfigFieldText},
 		{Key: "param_template", Label: "参数模板", Type: pluginpayment.ConfigFieldTextarea},
-		{Key: "sign_type", Label: "签名方式 (md5/none)", Type: pluginpayment.ConfigFieldSelect},
-		{Key: "key", Label: "签名密钥", Type: pluginpayment.ConfigFieldPassword, Secret: true},
+		{Key: "sign_type", Label: "签名方式 (md5/none，回调始终 md5 验签)", Type: pluginpayment.ConfigFieldSelect},
+		{Key: "key", Label: "签名密钥（必填，回调验签依赖它）", Type: pluginpayment.ConfigFieldPassword, Required: true, Secret: true},
 	}
 }
 
@@ -70,18 +70,21 @@ func (plugin *Plugin) CreatePayment(ctx context.Context, request pluginpayment.C
 	if request.TradeNo == "" || request.Amount <= 0 {
 		return pluginpayment.Action{}, fmt.Errorf("%w: trade number and amount", pluginpayment.ErrInvalidConfiguration)
 	}
+	key, err := requireKey(config)
+	if err != nil {
+		return pluginpayment.Action{}, err
+	}
+	mode, err := signMode(config)
+	if err != nil {
+		return pluginpayment.Action{}, err
+	}
 	template := pluginpayment.ConfigValue(config, "param_template", DefaultParamTemplate)
 	params, err := renderTemplate(template, request, config)
 	if err != nil {
 		return pluginpayment.Action{}, err
 	}
-	signType := strings.ToLower(pluginpayment.ConfigValue(config, "sign_type", defaultSignType(config)))
-	if signType == "md5" {
-		key, err := pluginpayment.RequireConfig(config, "key")
-		if err != nil {
-			return pluginpayment.Action{}, err
-		}
-		params["sign"] = signing.SignMD5(anyMap(params), key["key"])
+	if mode == "md5" {
+		params["sign"] = signing.SignMD5(anyMap(params), key)
 	} else {
 		delete(params, "sign")
 	}
@@ -130,11 +133,51 @@ func (plugin *Plugin) CreatePayment(ctx context.Context, request pluginpayment.C
 	return actionFor(decoded.PayType, decoded.PayInfo)
 }
 
-func defaultSignType(config map[string]string) string {
-	if strings.TrimSpace(config["key"]) != "" {
-		return "md5"
+// signMode is the signing mode of the outgoing create call: md5 (default) signs
+// the request, none leaves it unsigned. Only those two exist; an unknown value is
+// a configuration error instead of silently falling back to an unsigned call.
+func signMode(config map[string]string) (string, error) {
+	mode := strings.ToLower(strings.TrimSpace(pluginpayment.ConfigValue(config, "sign_type", "md5")))
+	switch mode {
+	case "md5", "none":
+		return mode, nil
+	default:
+		return "", fmt.Errorf("%w: unsupported sign_type %q (md5 or none)", pluginpayment.ErrInvalidConfiguration, mode)
 	}
-	return "none"
+}
+
+// requireKey enforces the one field a generic channel cannot work without: the
+// signing key. Without it no callback can be authenticated, so the channel is an
+// open door. sign_type only decides whether the create call is signed.
+func requireKey(config map[string]string) (string, error) {
+	key := strings.TrimSpace(config["key"])
+	if key == "" {
+		return "", fmt.Errorf("%w: generic channel has no signing key, callbacks cannot be authenticated", pluginpayment.ErrInvalidConfiguration)
+	}
+	return key, nil
+}
+
+// callbackKey is the callback-side counterpart: a channel without a key rejects
+// every notification instead of trusting it.
+func callbackKey(config map[string]string) (string, error) {
+	key := strings.TrimSpace(config["key"])
+	if key == "" {
+		return "", fmt.Errorf("%w: generic channel has no signing key, callback cannot be verified", pluginpayment.ErrCallbackRejected)
+	}
+	return key, nil
+}
+
+// ValidateConfiguration lets the channel administration reject an incomplete
+// generic channel when it is saved, before any order reaches it.
+func (*Plugin) ValidateConfiguration(config map[string]string) error {
+	if _, err := pluginpayment.RequireConfig(config, "api_url"); err != nil {
+		return err
+	}
+	if _, err := signMode(config); err != nil {
+		return err
+	}
+	_, err := requireKey(config)
+	return err
 }
 
 // successCode accepts the epay-style success markers: 1, "1" or true.
@@ -217,9 +260,10 @@ func anyMap(values map[string]string) map[string]any {
 	return converted
 }
 
-// VerifyCallback authenticates a form (or flat JSON) notification and normalizes
-// it. With sign_type=md5 the epay canonicalization is used; with none the
-// notification is trusted as delivered by the configured upstream.
+// VerifyCallback authenticates a form (or flat JSON) notification. Callbacks are
+// always verified with the md5 canonicalization and the key: sign_type=none only
+// makes the outgoing create call unsigned, it never makes a notification
+// trustworthy. A channel without a key rejects every callback.
 func (plugin *Plugin) VerifyCallback(_ context.Context, r *http.Request, config map[string]string) (pluginpayment.CallbackResult, error) {
 	if r == nil {
 		return pluginpayment.CallbackResult{}, fmt.Errorf("%w: missing request", pluginpayment.ErrCallbackRejected)
@@ -227,7 +271,7 @@ func (plugin *Plugin) VerifyCallback(_ context.Context, r *http.Request, config 
 	if r.ContentLength > maxCallbackBytes {
 		return pluginpayment.CallbackResult{}, fmt.Errorf("%w: notification too large", pluginpayment.ErrCallbackRejected)
 	}
-	resolved, err := pluginpayment.RequireConfig(config, "api_url")
+	key, err := callbackKey(config)
 	if err != nil {
 		return pluginpayment.CallbackResult{}, err
 	}
@@ -239,15 +283,8 @@ func (plugin *Plugin) VerifyCallback(_ context.Context, r *http.Request, config 
 	if err != nil {
 		return pluginpayment.CallbackResult{}, err
 	}
-	signType := strings.ToLower(pluginpayment.ConfigValue(resolved, "sign_type", defaultSignType(resolved)))
-	if signType == "md5" {
-		key, err := pluginpayment.RequireConfig(resolved, "key")
-		if err != nil {
-			return pluginpayment.CallbackResult{}, err
-		}
-		if !signing.VerifyMD5(anyMap(fields), key["key"], fields["sign"]) {
-			return pluginpayment.CallbackResult{}, fmt.Errorf("%w: invalid sign", pluginpayment.ErrCallbackRejected)
-		}
+	if !signing.VerifyMD5(anyMap(fields), key, fields["sign"]) {
+		return pluginpayment.CallbackResult{}, fmt.Errorf("%w: invalid sign", pluginpayment.ErrCallbackRejected)
 	}
 	tradeNo := strings.TrimSpace(fields["out_trade_no"])
 	if tradeNo == "" {
@@ -320,4 +357,5 @@ var (
 	_ pluginpayment.Plugin           = (*Plugin)(nil)
 	_ pluginpayment.Configurable     = (*Plugin)(nil)
 	_ pluginpayment.CallbackVerifier = (*Plugin)(nil)
+	_ pluginpayment.ConfigValidator  = (*Plugin)(nil)
 )

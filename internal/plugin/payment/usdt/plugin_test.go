@@ -124,7 +124,7 @@ func TestVerifyCallbackAcceptsFormNotification(t *testing.T) {
 		"trade_id": {"TR-1"}, "order_id": {"T5001"}, "amount": {"19.99"},
 		"actual_amount": {"19.99"}, "status": {"2"},
 	}
-	form.Set("sign", notifySign("TR-1", "T5001", "19.99", "usdt-key"))
+	form.Set("sign", notifySign("TR-1", "T5001", "19.99", "2", "usdt-key"))
 	request := httptest.NewRequest(http.MethodPost, "/callback", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	result, err := New(nil).VerifyCallback(context.Background(), request, map[string]string{"key": "usdt-key"})
@@ -177,6 +177,50 @@ func TestVerifyCallbackRejectsBadSignatureAndAmounts(t *testing.T) {
 	})
 }
 
+func TestVerifyCallbackBindsStatusToTheSignature(t *testing.T) {
+	config := map[string]string{"key": "usdt-key"}
+
+	// The attack this pins down: a notification signed for an unpaid order
+	// (status=1) is replayed with status flipped to paid (status=2).
+	t.Run("unpaid-flipped-to-paid", func(t *testing.T) {
+		signed := usdtJSONNotification("TR-1", "T5001", "19.99", "1")
+		tampered := strings.Replace(signed, `"status":"1"`, `"status":"2"`, 1)
+		if _, err := verifyBody(t, config, tampered); !errors.Is(err, pluginpayment.ErrCallbackRejected) {
+			t.Fatalf("tampered status accepted: %v", err)
+		}
+	})
+	t.Run("paid-flipped-to-unpaid", func(t *testing.T) {
+		signed := usdtJSONNotification("TR-1", "T5001", "19.99", "2")
+		tampered := strings.Replace(signed, `"status":"2"`, `"status":"3"`, 1)
+		if _, err := verifyBody(t, config, tampered); !errors.Is(err, pluginpayment.ErrCallbackRejected) {
+			t.Fatalf("tampered status accepted: %v", err)
+		}
+	})
+	t.Run("trade-id-changed-after-signing", func(t *testing.T) {
+		signed := usdtJSONNotification("TR-1", "T5001", "19.99", "2")
+		tampered := strings.Replace(signed, `"trade_id":"TR-1"`, `"trade_id":"TR-9"`, 1)
+		if _, err := verifyBody(t, config, tampered); !errors.Is(err, pluginpayment.ErrCallbackRejected) {
+			t.Fatalf("tampered trade_id accepted: %v", err)
+		}
+	})
+	// A create-request signature (order_id + amount + key) never authenticated a
+	// notification: it carries neither trade_id nor status.
+	t.Run("create-signature-is-not-accepted", func(t *testing.T) {
+		fields := map[string]string{
+			"trade_id": "TR-1", "order_id": "T5001", "amount": "19.99",
+			"actual_amount": "19.99", "status": "2",
+			"sign": createSign("T5001", "19.99", "usdt-key"),
+		}
+		encoded, err := json.Marshal(fields)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := verifyBody(t, config, string(encoded)); !errors.Is(err, pluginpayment.ErrCallbackRejected) {
+			t.Fatalf("create-style signature accepted: %v", err)
+		}
+	})
+}
+
 func TestMetadataAndConfigFields(t *testing.T) {
 	plugin := New(nil)
 	if metadata := plugin.Metadata(); metadata.Code != "usdt" || len(metadata.Capabilities) != 1 {
@@ -202,7 +246,7 @@ func usdtJSONNotification(tradeID, orderID, amount, status string) string {
 	fields := map[string]string{
 		"trade_id": tradeID, "order_id": orderID, "amount": amount,
 		"actual_amount": amount, "token": "USDT", "status": status,
-		"sign": notifySign(tradeID, orderID, amount, "usdt-key"),
+		"sign": notifySign(tradeID, orderID, amount, status, "usdt-key"),
 	}
 	encoded, err := json.Marshal(fields)
 	if err != nil {

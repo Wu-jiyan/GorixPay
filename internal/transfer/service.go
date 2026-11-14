@@ -181,63 +181,80 @@ func (service *Service) process(ctx context.Context, id, processedBy, action, re
 	if id == "" || processedBy == "" || (action != "approve" && action != "reject") {
 		return Order{}, ErrInvalidRequest
 	}
-	order, err := service.getByID(ctx, id)
+	var order Order
+	err := service.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&order, "id = ?", id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if order.Status == StatusApproved || order.Status == StatusRejected {
+			if (action == "approve" && order.Status == StatusApproved) || (action == "reject" && order.Status == StatusRejected) {
+				return nil
+			}
+			return ErrStateConflict
+		}
+		now := service.now().UTC()
+		status := StatusApproved
+		updates := map[string]any{"status": status, "processed_by": processedBy, "processed_at": now, "updated_at": now}
+		if action == "reject" {
+			status = StatusRejected
+			updates["status"] = status
+			updates["rejection_reason"] = reason
+		}
+		// Claim the status first and move the money second, both inside one
+		// transaction. The previous order (release, post, then update) left the
+		// merchant debited whenever the final update lost a race, and let a
+		// concurrent reject close a payout whose money had already been sent.
+		claim := tx.Model(&Order{}).Where("id = ? AND status = ?", order.ID, StatusPending).Updates(updates)
+		if claim.Error != nil {
+			return claim.Error
+		}
+		if claim.RowsAffected != 1 {
+			return ErrStateConflict
+		}
+		if action == "approve" {
+			merchant, platform, err := service.accountsInTransaction(tx, order.MerchantID, order.Currency)
+			if err != nil {
+				return err
+			}
+			result, err := service.ledger.PostInTransaction(tx, ledgerservice.TransactionRequest{
+				IdempotencyKey: "transfer-settle:" + order.ID,
+				ReferenceType:  "transfer",
+				ReferenceID:    order.ID,
+				Description:    "merchant payout " + order.TransferNo,
+				Postings: []ledgerservice.Posting{
+					{AccountID: merchant.ID, Direction: ledgermodel.DirectionDebit, Bucket: ledgermodel.BucketAvailable, Amount: order.Amount},
+					{AccountID: platform.ID, Direction: ledgermodel.DirectionCredit, Bucket: ledgermodel.BucketAvailable, Amount: order.Amount},
+				},
+			})
+			if err != nil {
+				return err
+			}
+			if err := tx.Model(&Order{}).Where("id = ?", order.ID).Update("ledger_transaction_id", result.Transaction.ID).Error; err != nil {
+				return err
+			}
+			order.LedgerTransactionID = &result.Transaction.ID
+		}
+		// The freeze belongs to this payout. Inside this transaction a missing
+		// freeze means it was never created, not that a concurrent approval
+		// spent it, so tolerating ErrFreezeNotFound is safe here.
+		if _, err := service.ledger.ReleaseInTransaction(tx, "transfer:"+order.ID); err != nil && !errors.Is(err, ledgerservice.ErrFreezeNotFound) {
+			return err
+		}
+		order.Status = status
+		processed := processedBy
+		order.ProcessedBy = &processed
+		order.ProcessedAt = &now
+		order.UpdatedAt = now
+		if action == "reject" {
+			order.RejectionReason = &reason
+		}
+		return nil
+	})
 	if err != nil {
 		return Order{}, err
-	}
-	if order.Status == StatusApproved || order.Status == StatusRejected {
-		if (action == "approve" && order.Status == StatusApproved) || (action == "reject" && order.Status == StatusRejected) {
-			return order, nil
-		}
-		return Order{}, ErrStateConflict
-	}
-	merchant, platform, err := service.accounts(ctx, order.MerchantID, order.Currency)
-	if err != nil {
-		return Order{}, err
-	}
-	if _, err := service.ledger.Release(ctx, "transfer:"+order.ID); err != nil && !errors.Is(err, ledgerservice.ErrFreezeNotFound) {
-		return Order{}, err
-	}
-	now := service.now().UTC()
-	updates := map[string]any{"processed_by": processedBy, "processed_at": now, "updated_at": now}
-	if action == "reject" {
-		updates["status"] = StatusRejected
-		updates["rejection_reason"] = reason
-	} else {
-		result, postErr := service.ledger.Post(ctx, ledgerservice.TransactionRequest{
-			IdempotencyKey: "transfer-settle:" + order.ID,
-			ReferenceType:  "transfer",
-			ReferenceID:    order.ID,
-			Description:    "merchant payout " + order.TransferNo,
-			Postings: []ledgerservice.Posting{
-				{AccountID: merchant.ID, Direction: ledgermodel.DirectionDebit, Bucket: ledgermodel.BucketAvailable, Amount: order.Amount},
-				{AccountID: platform.ID, Direction: ledgermodel.DirectionCredit, Bucket: ledgermodel.BucketAvailable, Amount: order.Amount},
-			},
-		})
-		if postErr != nil {
-			return Order{}, postErr
-		}
-		updates["status"] = StatusApproved
-		updates["ledger_transaction_id"] = result.Transaction.ID
-		order.LedgerTransactionID = &result.Transaction.ID
-	}
-	update := service.db.WithContext(ctx).Model(&Order{}).Where("id = ? AND status = ?", order.ID, StatusPending).Updates(updates)
-	if update.Error != nil {
-		return Order{}, update.Error
-	}
-	if update.RowsAffected != 1 {
-		latest, lookupErr := service.getByID(ctx, order.ID)
-		if lookupErr == nil && latest.Status == Status(updates["status"].(Status)) {
-			return latest, nil
-		}
-		return Order{}, ErrStateConflict
-	}
-	order.Status = updates["status"].(Status)
-	order.ProcessedBy = &processedBy
-	order.ProcessedAt = &now
-	order.UpdatedAt = now
-	if action == "reject" {
-		order.RejectionReason = &reason
 	}
 	return order, nil
 }
@@ -376,6 +393,28 @@ func (service *Service) accounts(ctx context.Context, merchantID, currency strin
 		return ledgermodel.Account{}, ledgermodel.Account{}, err
 	}
 	platform, err := service.ledger.CreateAccount(ctx, ledgerservice.AccountRequest{
+		OwnerType: "platform", OwnerID: "platform", Purpose: "cash",
+		Category: ledgermodel.CategoryAsset, Currency: currency,
+	})
+	return merchant, platform, err
+}
+
+// accountsInTransaction resolves the same two accounts on a caller supplied
+// transaction. Calling the ctx variant from inside a transaction would start a
+// second transaction on the same connection, which blocks forever under the
+// single-connection SQLite pool and splits the write on MySQL/PostgreSQL.
+func (service *Service) accountsInTransaction(tx *gorm.DB, merchantID, currency string) (ledgermodel.Account, ledgermodel.Account, error) {
+	if service.ledger == nil || tx == nil {
+		return ledgermodel.Account{}, ledgermodel.Account{}, ErrInvalidRequest
+	}
+	merchant, err := service.ledger.CreateAccountInTransaction(tx, ledgerservice.AccountRequest{
+		OwnerType: "merchant", OwnerID: merchantID, Purpose: "balance",
+		Category: ledgermodel.CategoryLiability, Currency: currency,
+	})
+	if err != nil {
+		return ledgermodel.Account{}, ledgermodel.Account{}, err
+	}
+	platform, err := service.ledger.CreateAccountInTransaction(tx, ledgerservice.AccountRequest{
 		OwnerType: "platform", OwnerID: "platform", Purpose: "cash",
 		Category: ledgermodel.CategoryAsset, Currency: currency,
 	})

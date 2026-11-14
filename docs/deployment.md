@@ -227,7 +227,7 @@ docker run -d --name gorixpay \
   -v /var/lib/gorixpay:/app/data \
 ```
 
-镜像里 `WORKDIR` 是 `/app`，容器以非 root 用户 `gorixpay` 运行，挂进去的目录要让它可写：`chown -R 1000:1000 /var/lib/gorixpay`。
+镜像里 `WORKDIR` 是 `/app`，容器以非 root 用户 `gorixpay` 运行（镜像里固定为 UID/GID `10001`），挂进去的目录要让它可写：`chown -R 10001:10001 /var/lib/gorixpay`。
 
 想自己构建镜像：
 

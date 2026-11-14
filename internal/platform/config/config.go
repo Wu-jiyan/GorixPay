@@ -7,8 +7,17 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
+)
+
+// defaultNotifyTimeoutSeconds matches netguard.DefaultTimeout: long enough for a
+// slow merchant endpoint, short enough that one dead endpoint cannot stall the
+// notification queue for minutes.
+const (
+	defaultNotifyTimeoutSeconds = 15
+	maxNotifyTimeoutSeconds     = 300
 )
 
 type Config struct {
@@ -23,6 +32,11 @@ type Config struct {
 type HTTPConfig struct {
 	Address   string `yaml:"address"`
 	PublicURL string `yaml:"public_url"`
+	// TrustedProxies lists the proxy addresses whose X-Forwarded-For header is
+	// believed. Empty means "trust nobody", so ClientIP reports the socket peer:
+	// otherwise any client can spoof its address and walk past the IP blacklist,
+	// the login lockout and the cashier rate limit.
+	TrustedProxies []string `yaml:"trusted_proxies"`
 }
 
 type DatabaseConfig struct {
@@ -32,6 +46,14 @@ type DatabaseConfig struct {
 
 type SecurityConfig struct {
 	MasterKeyFile string `yaml:"master_key_file"`
+	// NotifyTimeoutSeconds bounds one merchant notification round trip. A
+	// merchant server that accepts the connection and never answers must not be
+	// able to park the outbox worker, so this is always enforced.
+	NotifyTimeoutSeconds int `yaml:"notify_timeout_seconds"`
+	// AllowPrivateNotifyHosts permits merchant notify_url targets on private
+	// (RFC 1918 / ULA) networks. Loopback, link-local and cloud metadata
+	// addresses are rejected regardless.
+	AllowPrivateNotifyHosts bool `yaml:"allow_private_notify_hosts"`
 }
 
 // RedisConfig describes the optional Redis dependency. An empty Addr disables
@@ -55,6 +77,7 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 		Environment: "development",
 		HTTP:        HTTPConfig{Address: ":8080", PublicURL: "http://localhost:8080"},
 		Database:    DatabaseConfig{Driver: "sqlite", DSN: "gorixpay.db"},
+		Security:    SecurityConfig{NotifyTimeoutSeconds: defaultNotifyTimeoutSeconds},
 		Sandbox:     SandboxConfig{Enabled: true},
 	}
 	configPath := flagValue(args, "config")
@@ -77,6 +100,8 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 	flags.StringVar(&cfg.Database.Driver, "database-driver", cfg.Database.Driver, "database driver")
 	flags.StringVar(&cfg.Database.DSN, "database-dsn", cfg.Database.DSN, "database DSN")
 	flags.StringVar(&cfg.Security.MasterKeyFile, "master-key-file", cfg.Security.MasterKeyFile, "master key file")
+	flags.IntVar(&cfg.Security.NotifyTimeoutSeconds, "notify-timeout-seconds", cfg.Security.NotifyTimeoutSeconds, "merchant notification timeout in seconds")
+	flags.BoolVar(&cfg.Security.AllowPrivateNotifyHosts, "allow-private-notify-hosts", cfg.Security.AllowPrivateNotifyHosts, "allow merchant notify_url on private networks")
 	flags.StringVar(&cfg.Redis.Addr, "redis-addr", cfg.Redis.Addr, "Redis address (empty disables Redis)")
 	flags.BoolVar(&cfg.Sandbox.Enabled, "sandbox-enabled", cfg.Sandbox.Enabled, "enable the sandbox payment channel")
 	if err := flags.Parse(args); err != nil {
@@ -107,6 +132,12 @@ func (c *Config) Validate() error {
 	if c.Environment == "production" {
 		c.Sandbox.Enabled = false
 	}
+	if c.Security.NotifyTimeoutSeconds <= 0 {
+		c.Security.NotifyTimeoutSeconds = defaultNotifyTimeoutSeconds
+	}
+	if c.Security.NotifyTimeoutSeconds > maxNotifyTimeoutSeconds {
+		c.Security.NotifyTimeoutSeconds = maxNotifyTimeoutSeconds
+	}
 	if c.Redis.DB < 0 {
 		return errors.New("redis DB index must not be negative")
 	}
@@ -117,9 +148,12 @@ func applyEnvironment(cfg *Config, getenv func(string) string) {
 	applyString(&cfg.Environment, getenv("GORIXPAY_ENVIRONMENT"))
 	applyString(&cfg.HTTP.Address, getenv("GORIXPAY_HTTP_ADDRESS"))
 	applyString(&cfg.HTTP.PublicURL, getenv("GORIXPAY_PUBLIC_URL"))
+	applyList(&cfg.HTTP.TrustedProxies, getenv("GORIXPAY_TRUSTED_PROXIES"))
 	applyString(&cfg.Database.Driver, getenv("GORIXPAY_DATABASE_DRIVER"))
 	applyString(&cfg.Database.DSN, getenv("GORIXPAY_DATABASE_DSN"))
 	applyString(&cfg.Security.MasterKeyFile, getenv("GORIXPAY_MASTER_KEY_FILE"))
+	applyInt(&cfg.Security.NotifyTimeoutSeconds, getenv("GORIXPAY_NOTIFY_TIMEOUT_SECONDS"))
+	applyBool(&cfg.Security.AllowPrivateNotifyHosts, getenv("GORIXPAY_ALLOW_PRIVATE_NOTIFY_HOSTS"))
 	applyString(&cfg.Redis.Addr, getenv("GORIXPAY_REDIS_ADDR"))
 	applyString(&cfg.Redis.Password, getenv("GORIXPAY_REDIS_PASSWORD"))
 	applyInt(&cfg.Redis.DB, getenv("GORIXPAY_REDIS_DB"))
@@ -139,6 +173,23 @@ func applyBool(target *bool, value string) {
 	}
 	if parsed, err := strconv.ParseBool(value); err == nil {
 		*target = parsed
+	}
+}
+
+// applyList splits a comma separated environment value, trimming blanks so a
+// trailing comma does not become an empty proxy entry.
+func applyList(target *[]string, value string) {
+	if strings.TrimSpace(value) == "" {
+		return
+	}
+	items := make([]string, 0, 4)
+	for _, item := range strings.Split(value, ",") {
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			items = append(items, trimmed)
+		}
+	}
+	if len(items) > 0 {
+		*target = items
 	}
 }
 

@@ -47,13 +47,17 @@ type Merchant struct {
 	DisplayName  string  `gorm:"type:varchar(128);not null"`
 	// SettleType and SettleAccount mirror pre_user.settle_id/account: the payout
 	// channel the merchant chose and the account it pays into.
-	SettleType    int       `gorm:"not null;default:0"`
-	SettleAccount *string   `gorm:"type:varchar(128)"`
-	Status        Status    `gorm:"type:varchar(20);not null"`
-	InvitedBy     *string   `gorm:"type:varchar(36);index"`
-	InviteCode    *string   `gorm:"type:varchar(32);uniqueIndex"`
-	CreatedAt     time.Time `gorm:"not null"`
-	UpdatedAt     time.Time `gorm:"not null"`
+	SettleType    int     `gorm:"not null;default:0"`
+	SettleAccount *string `gorm:"type:varchar(128)"`
+	// GroupID is the merchant group whose rate and payment types apply. It is
+	// owned by internal/merchantgroup (migration 000017) and declared here so the
+	// admin merchant list can show the current group instead of only assigning it.
+	GroupID    *string   `gorm:"type:varchar(36);index"`
+	Status     Status    `gorm:"type:varchar(20);not null"`
+	InvitedBy  *string   `gorm:"type:varchar(36);index"`
+	InviteCode *string   `gorm:"type:varchar(32);uniqueIndex"`
+	CreatedAt  time.Time `gorm:"not null"`
+	UpdatedAt  time.Time `gorm:"not null"`
 }
 
 type Role struct {

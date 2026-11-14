@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/xml"
 	"errors"
@@ -36,14 +37,18 @@ func signParams(values map[string]string, key string) string {
 	return strings.ToUpper(hex.EncodeToString(sum[:]))
 }
 
-// verifySignature compares the payload signature in constant-ish form (both
-// sides are normalized to upper case first).
+// verifySignature compares the payload signature in constant time (both sides are
+// normalized to upper case first).
 func verifySignature(values map[string]string, key string) bool {
-	signature := strings.TrimSpace(values["sign"])
+	signature := strings.ToUpper(strings.TrimSpace(values["sign"]))
 	if signature == "" {
 		return false
 	}
-	return strings.EqualFold(signParams(values, key), signature)
+	expected := signParams(values, key)
+	if len(expected) != len(signature) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(signature)) == 1
 }
 
 // nonceString returns the 32 character nonce_str QQ Pay expects.

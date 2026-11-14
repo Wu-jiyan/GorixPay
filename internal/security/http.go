@@ -158,6 +158,8 @@ func securityError(ctx *gin.Context, err error) {
 		invalidRequest(ctx)
 	case errors.Is(err, ErrTOTPInvalid):
 		ctx.JSON(http.StatusBadRequest, gin.H{"code": "totp_invalid", "message": "totp code invalid"})
+	case errors.Is(err, ErrTOTPReused):
+		ctx.JSON(http.StatusBadRequest, gin.H{"code": "totp_reused", "message": "totp code already used, wait for the next one"})
 	case errors.Is(err, ErrTOTPNotSetup):
 		ctx.JSON(http.StatusConflict, gin.H{"code": "totp_not_setup", "message": "totp is not set up"})
 	case errors.Is(err, ErrTOTPAlreadyEnabled):

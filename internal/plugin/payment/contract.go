@@ -57,6 +57,14 @@ type Plugin interface {
 	CreatePayment(context.Context, CreateRequest) (Action, error)
 }
 
+// ConfigValidator is implemented by plugins that can reject an incomplete
+// channel configuration (for example a channel without a signing key) before an
+// order or a callback is attempted. Registry.ValidateConfiguration is the entry
+// point the channel administration can call when it saves a channel.
+type ConfigValidator interface {
+	ValidateConfiguration(config map[string]string) error
+}
+
 type ActionType string
 
 const (

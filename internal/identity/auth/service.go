@@ -21,9 +21,18 @@ var ErrMerchantExists = errors.New("merchant already exists")
 var (
 	ErrCaptchaRequired = errors.New("captcha required")
 	ErrCaptchaInvalid  = errors.New("captcha invalid")
-	ErrTOTPRequired    = errors.New("totp required")
-	ErrTOTPInvalid     = errors.New("totp invalid")
+	// ErrLockedOut is returned after too many failed attempts from the same
+	// identifier inside the lockout window.
+	ErrLockedOut    = errors.New("too many failed login attempts")
+	ErrTOTPRequired = errors.New("totp required")
+	ErrTOTPInvalid  = errors.New("totp invalid")
 )
+
+// LoginGuard is the optional hook the security service implements so repeated
+// failures stop before the password hash runs.
+type LoginGuard interface {
+	LoginAllowed(ctx context.Context, principalType, identifier string) error
+}
 
 // Challenge is the optional login hook for captcha and TOTP. It is injected by
 // the caller (internal/security) so this package stays free of that dependency.
@@ -82,6 +91,10 @@ func (service *Service) LoginMerchant(ctx context.Context, identifier, secret st
 	if identifier == "" || secret == "" {
 		return MerchantLogin{}, ErrInvalidCredentials
 	}
+	if err := service.guardLogin(ctx, model.PrincipalMerchant, identifier, metadata); err != nil {
+		service.recordAttempt(ctx, string(model.PrincipalMerchant), identifier, metadata, false)
+		return MerchantLogin{}, err
+	}
 	var merchant model.Merchant
 	query := service.db.WithContext(ctx).Where("email = ? OR phone = ?", identifier, identifier)
 	if uid, err := strconv.ParseInt(identifier, 10, 64); err == nil {
@@ -102,8 +115,10 @@ func (service *Service) LoginMerchant(ctx context.Context, identifier, secret st
 	}
 	matched, upgrade, err := password.VerifyWithSalt(secret, *merchant.PasswordHash, salt)
 	if err != nil || !matched {
+		service.recordAttempt(ctx, string(model.PrincipalMerchant), identifier, metadata, false)
 		return MerchantLogin{}, ErrInvalidCredentials
 	}
+	service.recordAttempt(ctx, string(model.PrincipalMerchant), identifier, metadata, true)
 	if upgrade {
 		upgraded, err := password.Hash(secret)
 		if err != nil {
@@ -129,13 +144,13 @@ func (service *Service) LoginMerchant(ctx context.Context, identifier, secret st
 func (service *Service) LoginAdministrator(ctx context.Context, username, secret string, metadata LoginMetadata) (AdministratorLogin, error) {
 	username = strings.TrimSpace(username)
 	if service.challenge != nil {
-		if err := service.checkCaptcha(ctx, metadata); err != nil {
-			service.recordAttempt(ctx, username, metadata, false)
+		if err := service.guardLogin(ctx, model.PrincipalAdministrator, username, metadata); err != nil {
+			service.recordAttempt(ctx, string(model.PrincipalAdministrator), username, metadata, false)
 			return AdministratorLogin{}, err
 		}
 	}
 	result, err := service.loginAdministrator(ctx, username, secret, metadata)
-	service.recordAttempt(ctx, username, metadata, err == nil)
+	service.recordAttempt(ctx, string(model.PrincipalAdministrator), username, metadata, err == nil)
 	if err != nil {
 		return AdministratorLogin{}, err
 	}
@@ -201,9 +216,25 @@ func (service *Service) checkCaptcha(ctx context.Context, metadata LoginMetadata
 	return nil
 }
 
-func (service *Service) recordAttempt(ctx context.Context, identifier string, metadata LoginMetadata, success bool) {
+func (service *Service) recordAttempt(ctx context.Context, principalType, identifier string, metadata LoginMetadata, success bool) {
 	if service.challenge == nil {
 		return
 	}
-	service.challenge.RecordLoginAttempt(ctx, string(model.PrincipalAdministrator), identifier, metadata.IPAddress, success)
+	service.challenge.RecordLoginAttempt(ctx, principalType, identifier, metadata.IPAddress, success)
+}
+
+// guardLogin rejects a login attempt that follows too many failures, and asks for
+// the captcha when the operator turned it on. It runs before the password hash so
+// a brute force run cannot use the (deliberately expensive) hash as a CPU and
+// memory amplifier.
+func (service *Service) guardLogin(ctx context.Context, principalType model.PrincipalType, identifier string, metadata LoginMetadata) error {
+	if service.challenge == nil {
+		return nil
+	}
+	if guard, ok := service.challenge.(LoginGuard); ok {
+		if err := guard.LoginAllowed(ctx, string(principalType), identifier); err != nil {
+			return ErrLockedOut
+		}
+	}
+	return service.checkCaptcha(ctx, metadata)
 }

@@ -10,6 +10,7 @@ import (
 	identitymodel "gorixpay/internal/identity/model"
 	ledgermodel "gorixpay/internal/ledger/model"
 	ledgerservice "gorixpay/internal/ledger/service"
+	"gorixpay/internal/money"
 	paymentmodel "gorixpay/internal/payment/model"
 
 	"github.com/google/uuid"
@@ -171,7 +172,7 @@ func (hook *Hook) OnPayment(ctx context.Context, tx *gorm.DB, order paymentmodel
 	if inviterID == order.MerchantID {
 		return nil
 	}
-	rebateAmount := order.Amount * rate / 10000
+	rebateAmount := money.ApplyBasisPoints(order.Amount, int(rate))
 	if rebateAmount <= 0 {
 		return nil
 	}

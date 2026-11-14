@@ -9,5 +9,14 @@ data
 *.log
 master.key
 *.key
+*.pem
 frontend/node_modules
 frontend/dist
+# The master key and the deployment secrets must never enter the build context:
+# anything not excluded here is available to every COPY in the Dockerfile.
+deploy/secrets
+deploy/.env
+deploy/plugin-credentials.local.ps1
+tests
+docs
+*.md

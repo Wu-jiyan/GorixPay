@@ -3,6 +3,7 @@ package complaint
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -114,6 +115,55 @@ func (service *Service) DeleteAutoRule(ctx context.Context, id string) error {
 	return nil
 }
 
+// maxAutoRulesBatch caps how many complaints one rule run touches. Without it a
+// backlog of overdue complaints is loaded in full every minute, and channels
+// without a rule keep the same rows pending forever.
+const maxAutoRulesBatch = 100
+
+// channelPlan describes which complaint channels a rule run may touch. It keeps
+// the historical rule that a disabled channel rule blocks the wildcard fallback
+// for that channel.
+type channelPlan struct {
+	all     bool
+	include []string
+	exclude []string
+}
+
+func (plan channelPlan) empty() bool { return !plan.all && len(plan.include) == 0 }
+
+func (plan channelPlan) apply(query *gorm.DB) *gorm.DB {
+	if plan.all {
+		if len(plan.exclude) > 0 {
+			return query.Where("channel NOT IN ?", plan.exclude)
+		}
+		return query
+	}
+	return query.Where("channel IN ?", plan.include)
+}
+
+func planChannels(rules map[string]AutoRule, usable func(AutoRule) bool) channelPlan {
+	if wildcard, ok := rules[RuleWildcard]; ok && usable(wildcard) {
+		plan := channelPlan{all: true}
+		for channel, rule := range rules {
+			if channel == RuleWildcard || usable(rule) {
+				continue
+			}
+			plan.exclude = append(plan.exclude, channel)
+		}
+		sort.Strings(plan.exclude)
+		return plan
+	}
+	plan := channelPlan{}
+	for channel, rule := range rules {
+		if channel == RuleWildcard || !usable(rule) {
+			continue
+		}
+		plan.include = append(plan.include, channel)
+	}
+	sort.Strings(plan.include)
+	return plan
+}
+
 // RunAutoRules applies the active rules: pending complaints past their deadline
 // get one system reply, replied complaints past deadline + close_after_hours are
 // closed. Both steps are guarded by the source status, so a second run cannot
@@ -124,64 +174,76 @@ func (service *Service) RunAutoRules(ctx context.Context, now time.Time) (int, i
 	if err := service.db.WithContext(ctx).Find(&rules).Error; err != nil {
 		return 0, 0, err
 	}
-	if len(rules) == 0 {
-		return 0, 0, nil
-	}
 	byChannel := make(map[string]AutoRule, len(rules))
+	active := 0
 	for _, rule := range rules {
 		byChannel[rule.Channel] = rule
-	}
-	pick := func(channel string) (AutoRule, bool) {
-		if rule, ok := byChannel[strings.ToLower(strings.TrimSpace(channel))]; ok {
-			return rule, true
+		if rule.Status == RuleActive {
+			active++
 		}
-		rule, ok := byChannel[RuleWildcard]
-		return rule, ok
+	}
+	if active == 0 {
+		// Nothing can move: skip the scan instead of re-reading the backlog.
+		return 0, 0, nil
+	}
+	replyPlan := planChannels(byChannel, func(rule AutoRule) bool { return rule.Status == RuleActive })
+	closePlan := planChannels(byChannel, func(rule AutoRule) bool {
+		return rule.Status == RuleActive && rule.CloseAfterHours > 0
+	})
+
+	replied := 0
+	if !replyPlan.empty() {
+		pending := make([]Complaint, 0, maxAutoRulesBatch)
+		query := replyPlan.apply(service.db.WithContext(ctx).
+			Where("status = ? AND deadline_at IS NOT NULL AND deadline_at < ?", StatusPending, now.UTC()))
+		if err := query.Order("deadline_at ASC, id ASC").Limit(maxAutoRulesBatch).Find(&pending).Error; err != nil {
+			return 0, 0, err
+		}
+		for _, complaint := range pending {
+			rule, ok := byChannel[strings.ToLower(strings.TrimSpace(complaint.Channel))]
+			if !ok {
+				rule, ok = byChannel[RuleWildcard]
+			}
+			if !ok || rule.Status != RuleActive {
+				continue
+			}
+			applied, err := service.autoReply(ctx, complaint, rule.ReplyText, now)
+			if err != nil {
+				return replied, 0, err
+			}
+			if applied {
+				replied++
+			}
+		}
 	}
 
-	var pending []Complaint
-	if err := service.db.WithContext(ctx).
-		Where("status = ? AND deadline_at IS NOT NULL AND deadline_at < ?", StatusPending, now.UTC()).
-		Find(&pending).Error; err != nil {
-		return 0, 0, err
-	}
-	replied := 0
-	for _, complaint := range pending {
-		rule, ok := pick(complaint.Channel)
-		if !ok || rule.Status != RuleActive {
-			continue
-		}
-		applied, err := service.autoReply(ctx, complaint, rule.ReplyText, now)
-		if err != nil {
+	closed := 0
+	if !closePlan.empty() {
+		repliedComplaints := make([]Complaint, 0, maxAutoRulesBatch)
+		query := closePlan.apply(service.db.WithContext(ctx).
+			Where("status = ? AND deadline_at IS NOT NULL AND deadline_at < ?", StatusReplied, now.UTC()))
+		if err := query.Order("deadline_at ASC, id ASC").Limit(maxAutoRulesBatch).Find(&repliedComplaints).Error; err != nil {
 			return replied, 0, err
 		}
-		if applied {
-			replied++
-		}
-	}
-
-	var repliedComplaints []Complaint
-	if err := service.db.WithContext(ctx).
-		Where("status = ? AND deadline_at IS NOT NULL AND deadline_at < ?", StatusReplied, now.UTC()).
-		Find(&repliedComplaints).Error; err != nil {
-		return replied, 0, err
-	}
-	closed := 0
-	for _, complaint := range repliedComplaints {
-		rule, ok := pick(complaint.Channel)
-		if !ok || rule.Status != RuleActive || rule.CloseAfterHours <= 0 {
-			continue
-		}
-		closeAt := complaint.DeadlineAt.UTC().Add(time.Duration(rule.CloseAfterHours) * time.Hour)
-		if now.UTC().Before(closeAt) {
-			continue
-		}
-		applied, err := service.autoClose(ctx, complaint, now)
-		if err != nil {
-			return replied, closed, err
-		}
-		if applied {
-			closed++
+		for _, complaint := range repliedComplaints {
+			rule, ok := byChannel[strings.ToLower(strings.TrimSpace(complaint.Channel))]
+			if !ok {
+				rule, ok = byChannel[RuleWildcard]
+			}
+			if !ok || rule.Status != RuleActive || rule.CloseAfterHours <= 0 {
+				continue
+			}
+			closeAt := complaint.DeadlineAt.UTC().Add(time.Duration(rule.CloseAfterHours) * time.Hour)
+			if now.UTC().Before(closeAt) {
+				continue
+			}
+			applied, err := service.autoClose(ctx, complaint, now)
+			if err != nil {
+				return replied, closed, err
+			}
+			if applied {
+				closed++
+			}
 		}
 	}
 	return replied, closed, nil

@@ -29,7 +29,7 @@ The PHP original is a monolith: merchant balances stored as columns on the user 
 | Epay V1: `submit.php`, `mapi.php`, `api.php?act=query\|order\|orders\|refund\|refundapi\|settle`, `submit2.php`, `/pay/{action}/{trade_no}/` | Done, 109 conformance cases |
 | Epay V2: 12 methods under `pay/*`, `merchant/*`, `transfer/*`, reachable as `/api.php?s=class/method` too | Done, signed responses and replay protection |
 | Payment channels | 10 plugins; Huifu has created a 0.01 CNY order on the live gateway |
-| Frontend | 36 Vue pages on Naive UI: landing, cashier, merchant console, admin console |
+| Frontend | 59 pages on Naive UI: landing, cashier, merchant console, admin console |
 | Money | Integer-cent double-entry ledger, refunds, settlement, payout, balance top-up, deposit |
 | Settlement automation | Rules on minimum amount, fee rate and period; generated settlements, batch approval, automatic payout after approval, checked every minute and idempotent per day |
 | Profit sharing and red packets | Receiver list with rates, split inside the payment transaction for ledger receivers, retry on failure; red packets created per batch with random amounts that add up |
@@ -45,7 +45,7 @@ The PHP original is a monolith: merchant balances stored as columns on the user 
 | Site skin | `site.skin` with three presets (default / dark / compact); name, logo, footer and skin all live in the console and apply on refresh |
 | Reliability | Transactional outbox with lease-based claiming and CAS updates, notification retries, optional Redis |
 | Legacy migration | `cmd/migrate-epay`, MySQL or SQLite into GorixPay, preflight, dry run, idempotent |
-| Releases | `v2.0.0` (2026-11-13), the first tag |
+| Releases | `v2.2.1` (2026-11-14); the first tag was `v2.0.0` (2026-11-13) |
 
 ## Screenshots
 
@@ -360,8 +360,11 @@ Things that bite:
 | `GORIXPAY_REDIS_ADDR` | Empty disables Redis |
 | `GORIXPAY_REDIS_PASSWORD` / `_DB` / `_PREFIX` | Redis auth, database index and key prefix |
 | `GORIXPAY_SANDBOX_ENABLED` | Sandbox channel switch, forced off in production |
+| `GORIXPAY_TRUSTED_PROXIES` | Comma separated reverse proxy addresses (for example `127.0.0.1,::1`). Empty trusts no `X-Forwarded-For`, so `ClientIP` is the socket peer |
+| `GORIXPAY_ALLOW_PRIVATE_NOTIFY_HOSTS` | Allow merchant `notify_url` targets on private networks or loopback (needed when the merchant site runs on the same host). Off by default; the cloud metadata address stays blocked either way |
+| `GORIXPAY_NOTIFY_TIMEOUT_SECONDS` | One merchant notification round trip, default 15, capped at 300 |
 
-Migrations are versioned SQL shared by all three databases; the runner strips `CREATE INDEX IF NOT EXISTS` on MySQL, which does not support it.
+Migrations are versioned SQL shared by all three databases. The runner strips `CREATE INDEX IF NOT EXISTS` on MySQL, executes one statement at a time (MySQL disables multi-statement Exec by default), and takes an advisory lock on PostgreSQL/MySQL first, so two instances starting together no longer collide.
 
 ## Migrating from Epay
 

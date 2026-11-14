@@ -51,22 +51,35 @@ func TOTPCode(secret string, at time.Time) (string, error) {
 // VerifyTOTPCode accepts the code of the current step or one step either side,
 // which absorbs clock skew between the server and the phone.
 func VerifyTOTPCode(secret, code string, at time.Time) bool {
+	_, ok := VerifyTOTPStep(secret, code, at)
+	return ok
+}
+
+// VerifyTOTPStep reports which time step the code belongs to. Callers that must
+// stop a code from being replayed use the step to record what was already
+// accepted: the +-1 window means one code stays valid for up to 90 seconds, so
+// "it verified" alone is not proof that it is a fresh code.
+func VerifyTOTPStep(secret, code string, at time.Time) (int64, bool) {
 	code = strings.TrimSpace(code)
 	if len(code) != totpDigits || !numeric(code) {
-		return false
+		return 0, false
 	}
 	key, err := decodeTOTPSecret(secret)
 	if err != nil {
-		return false
+		return 0, false
 	}
 	step := at.Unix() / int64(totpPeriod/time.Second)
 	for offset := -int64(totpWindow); offset <= int64(totpWindow); offset++ {
-		expected := hotpCode(key, uint64(step+offset))
+		candidate := step + offset
+		if candidate < 0 {
+			continue
+		}
+		expected := hotpCode(key, uint64(candidate))
 		if subtle.ConstantTimeCompare([]byte(expected), []byte(code)) == 1 {
-			return true
+			return candidate, true
 		}
 	}
-	return false
+	return 0, false
 }
 
 // TOTPAuthURL builds the otpauth:// URI an authenticator app scans.

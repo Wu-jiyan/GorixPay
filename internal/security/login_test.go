@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	identityauth "gorixpay/internal/identity/auth"
 )
@@ -82,11 +83,21 @@ func TestLoginRequiresTOTPWhenEnrolled(t *testing.T) {
 		t.Fatalf("wrong totp err=%v", err)
 	}
 	result, err := authService.LoginAdministrator(ctx, testUsername, testPassword, identityauth.LoginMetadata{TOTPCode: code})
+	if !errors.Is(err, identityauth.ErrTOTPInvalid) {
+		t.Fatalf("replayed enrollment code err=%v, want totp invalid", err)
+	}
+	// The enrollment code is spent; log in with the next step's code.
+	fixture.advance(30 * time.Second)
+	loginCode, err := TOTPCode(secretValue, fixture.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = authService.LoginAdministrator(ctx, testUsername, testPassword, identityauth.LoginMetadata{TOTPCode: loginCode})
 	if err != nil || result.Token == "" {
 		t.Fatalf("valid totp result=%+v err=%v", result, err)
 	}
 	// A wrong password must still fail as invalid credentials, not as TOTP.
-	if _, err := authService.LoginAdministrator(ctx, testUsername, "wrong-password", identityauth.LoginMetadata{TOTPCode: code}); !errors.Is(err, identityauth.ErrInvalidCredentials) {
+	if _, err := authService.LoginAdministrator(ctx, testUsername, "wrong-password", identityauth.LoginMetadata{TOTPCode: loginCode}); !errors.Is(err, identityauth.ErrInvalidCredentials) {
 		t.Fatalf("wrong password err=%v", err)
 	}
 	attempts := fixture.loginAttempts(t)
@@ -96,7 +107,9 @@ func TestLoginRequiresTOTPWhenEnrolled(t *testing.T) {
 			successes++
 		}
 	}
-	if len(attempts) != 4 || successes != 1 {
+	// Five attempts: missing code, wrong code, replayed code, the successful
+	// login, and the wrong password one.
+	if len(attempts) != 5 || successes != 1 {
 		t.Fatalf("attempts=%d successes=%d", len(attempts), successes)
 	}
 }
@@ -127,5 +140,32 @@ func TestLoginWithoutChallengeKeepsWorking(t *testing.T) {
 	}
 	if attempts := fixture.loginAttempts(t); len(attempts) != 0 {
 		t.Fatalf("plain login must not write attempts: %+v", attempts)
+	}
+}
+
+// TestLoginLockoutStopsPasswordGuessing pins the rate limit: ten failures lock the
+// identifier for the window, and the check runs before the password hash so a
+// brute force run cannot use Argon2id as a memory amplifier.
+func TestLoginLockoutStopsPasswordGuessing(t *testing.T) {
+	fixture := newFixture(t, "security-login-lockout")
+	ctx := context.Background()
+	authService := newAuthService(fixture)
+	for attempt := 0; attempt < maxLoginFailures; attempt++ {
+		if _, err := authService.LoginAdministrator(ctx, testUsername, "wrong-password", identityauth.LoginMetadata{}); !errors.Is(err, identityauth.ErrInvalidCredentials) {
+			t.Fatalf("attempt %d err=%v", attempt, err)
+		}
+	}
+	// Even the correct password is refused while the lockout is active.
+	if _, err := authService.LoginAdministrator(ctx, testUsername, testPassword, identityauth.LoginMetadata{}); !errors.Is(err, identityauth.ErrLockedOut) {
+		t.Fatalf("locked login err=%v, want ErrLockedOut", err)
+	}
+	// After the window passes the account works again.
+	fixture.advance(loginLockoutWindow + time.Minute)
+	if _, err := authService.LoginAdministrator(ctx, testUsername, testPassword, identityauth.LoginMetadata{}); err != nil {
+		t.Fatalf("login after the window err=%v", err)
+	}
+	// A different identifier is unaffected by another account's failures.
+	if _, err := authService.LoginAdministrator(ctx, "someone-else", testPassword, identityauth.LoginMetadata{}); !errors.Is(err, identityauth.ErrInvalidCredentials) {
+		t.Fatalf("unrelated identifier err=%v, want invalid credentials", err)
 	}
 }

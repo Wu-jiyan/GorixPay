@@ -411,14 +411,17 @@ func writeExport(ctx *gin.Context, baseName string, header []string, rows [][]st
 		// Python csv, PostgreSQL COPY) do not reject the ragged first row.
 		notice := make([]string, len(header))
 		notice[0] = fmt.Sprintf(truncationNotice, maxExportRows)
-		if err := writer.Write(notice); err != nil {
+		if err := writer.Write(neutralizeRow(notice)); err != nil {
 			internalError(ctx)
 			return
 		}
 	}
-	if err := writer.Write(header); err != nil {
+	if err := writer.Write(neutralizeRow(header)); err != nil {
 		internalError(ctx)
 		return
+	}
+	for index := range rows {
+		rows[index] = neutralizeRow(rows[index])
 	}
 	if err := writer.WriteAll(rows); err != nil {
 		internalError(ctx)
@@ -441,6 +444,27 @@ func trimExport[T any](items []T) ([]T, bool) {
 		return items, false
 	}
 	return items[:maxExportRows], true
+}
+
+// neutralizeRow defuses spreadsheet formula injection. A merchant controlled
+// field like =HYPERLINK(...) or +cmd|... would otherwise execute when the
+// administrator opens the export in Excel or WPS.
+func neutralizeRow(row []string) []string {
+	for index, value := range row {
+		row[index] = neutralizeCell(value)
+	}
+	return row
+}
+
+func neutralizeCell(value string) string {
+	if value == "" {
+		return value
+	}
+	switch value[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + value
+	}
+	return value
 }
 
 func orderQuery(db *gorm.DB, filter orderFilter) *gorm.DB {

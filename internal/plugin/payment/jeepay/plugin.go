@@ -5,6 +5,7 @@ package jeepay
 import (
 	"context"
 	"crypto/md5"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -103,9 +104,16 @@ func sign(values map[string]string, key string) string {
 	return strings.ToUpper(hex.EncodeToString(sum[:]))
 }
 
+// verify compares the Jeepay signature in constant time, like the MD5 helpers in
+// internal/compat/epay/signing. A byte-by-byte early exit would leak the prefix
+// of a valid signature to an attacker who can time the callback.
 func verify(values map[string]string, key, signature string) bool {
 	expected := sign(values, key)
-	return strings.EqualFold(expected, strings.TrimSpace(signature))
+	provided := strings.ToUpper(strings.TrimSpace(signature))
+	if len(provided) != len(expected) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) == 1
 }
 
 type unifiedResponse struct {

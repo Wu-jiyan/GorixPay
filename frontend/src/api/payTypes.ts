@@ -131,4 +131,9 @@ export const wechatMpApi = {
   async remove(id: string) {
     await http.delete(`/admin/wechat-mp-configs/${id}`);
   },
+  /** 给指定 openid 发一条模板测试消息（POST /admin/wechat-mp-configs/:id/test-message） */
+  async testMessage(id: string, openid: string) {
+    const { data } = await http.post<{ ok?: boolean }>(`/admin/wechat-mp-configs/${id}/test-message`, { openid });
+    return data;
+  },
 };

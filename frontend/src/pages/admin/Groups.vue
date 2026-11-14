@@ -8,7 +8,7 @@ import { errorMessage } from '@/api/client';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusTag from '@/components/StatusTag.vue';
 import { formatDateTime, paymentTypeText } from '@/utils/format';
-import { asRow, httpStatus, itemsOf, numberOr, stringList, textOf, useServerPaging } from './shared';
+import { asRow, httpStatus, itemsOf, numberOr, stringList, textOf, usePendingAction, useServerPaging } from './shared';
 
 interface GroupForm {
   name: string;
@@ -27,6 +27,14 @@ const showForm = ref(false);
 const editingId = ref<string | null>(null);
 const editingStatus = ref('active');
 const formRef = ref<FormInst | null>(null);
+
+const actions = usePendingAction();
+
+const showAssign = ref(false);
+const assignGroupId = ref<string | null>(null);
+const assignMerchantId = ref('');
+const assignSubmitting = ref(false);
+const assignResult = ref('');
 
 const { page, pageSize, total, pagination, onPage, onPageSize } = useServerPaging(load);
 
@@ -65,6 +73,13 @@ const rules: FormRules = {
 };
 
 const isEditing = computed(() => editingId.value !== null);
+
+const groupOptions = computed<SelectOption[]>(() =>
+  rows.value.map((group) => ({
+    label: `${group.name || group.id}（${(numberOr(group.rate_bp, 0) / 100).toFixed(2)}%）`,
+    value: group.id,
+  })),
+);
 
 async function load() {
   loading.value = true;
@@ -155,26 +170,58 @@ async function submit() {
 
 async function toggleStatus(row: MerchantGroup) {
   const next = row.status === 'active' ? 'disabled' : 'active';
-  try {
-    await groupsApi.setStatus(row.id, next);
-    message.success(next === 'active' ? '用户组已启用' : '用户组已禁用');
-    await load();
-  } catch (error) {
-    message.error(errorMessage(error));
-  }
+  await actions.run(`toggle:${row.id}`, async () => {
+    try {
+      await groupsApi.setStatus(row.id, next);
+      message.success(next === 'active' ? '用户组已启用' : '用户组已禁用');
+      await load();
+    } catch (error) {
+      message.error(errorMessage(error));
+    }
+  });
 }
 
 async function remove(row: MerchantGroup) {
+  await actions.run(`remove:${row.id}`, async () => {
+    try {
+      await groupsApi.remove(row.id);
+      message.success('用户组已删除');
+      await load();
+    } catch (error) {
+      if (httpStatus(error) === 409) {
+        message.error('该用户组下还有商户在使用，先把商户移出组再删除');
+        return;
+      }
+      message.error(errorMessage(error));
+    }
+  });
+}
+
+function openAssign(row: MerchantGroup | null) {
+  assignGroupId.value = row ? row.id : null;
+  assignMerchantId.value = '';
+  assignResult.value = '';
+  showAssign.value = true;
+}
+
+/** 按 group_id 归组；选「不分组」时传 null 表示移出所有组 */
+async function submitAssign(moveOut = false) {
+  const merchantId = assignMerchantId.value.trim();
+  if (merchantId === '') {
+    message.warning('请输入商户 ID');
+    return;
+  }
+  assignSubmitting.value = true;
   try {
-    await groupsApi.remove(row.id);
-    message.success('用户组已删除');
+    const result = await groupsApi.assignMerchant(merchantId, moveOut ? null : assignGroupId.value);
+    const data = asRow(result);
+    assignResult.value = `商户已归组：group_id=${textOf(data.group_id, '无')}，settle_mode=${textOf(data.settle_mode, '-')}`;
+    message.success(moveOut ? '商户已移出用户组' : '商户已归组');
     await load();
   } catch (error) {
-    if (httpStatus(error) === 409) {
-      message.error('该用户组下还有商户在使用，先把商户移出组再删除');
-      return;
-    }
     message.error(errorMessage(error));
+  } finally {
+    assignSubmitting.value = false;
   }
 }
 
@@ -194,7 +241,9 @@ function payTypeCell(row: MerchantGroup) {
   );
 }
 
-const columns = computed<DataTableColumns<MerchantGroup>>(() => [
+const columns = computed<DataTableColumns<MerchantGroup>>(() => {
+  const pendingSet = actions.pending.value;
+  return [
   { title: '名称', key: 'name', minWidth: 160, ellipsis: true, render: (row) => row.name || '-' },
   {
     title: '费率',
@@ -232,10 +281,13 @@ const columns = computed<DataTableColumns<MerchantGroup>>(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 210,
+    width: 260,
     fixed: 'right',
-    render: (row) =>
-      h(
+    render: (row) => {
+      const toggling = pendingSet.has(`toggle:${row.id}`);
+      const removing = pendingSet.has(`remove:${row.id}`);
+      const busy = toggling || removing;
+      return h(
         NSpace,
         { size: 4, wrap: false },
         {
@@ -246,13 +298,24 @@ const columns = computed<DataTableColumns<MerchantGroup>>(() => [
               { default: () => '编辑' },
             ),
             h(
+              NButton,
+              { size: 'tiny', quaternary: true, onClick: () => openAssign(row) },
+              { default: () => '商户归组' },
+            ),
+            h(
               NPopconfirm,
               { onPositiveClick: () => toggleStatus(row) },
               {
                 trigger: () =>
                   h(
                     NButton,
-                    { size: 'tiny', quaternary: true, type: row.status === 'active' ? 'warning' : 'primary' },
+                    {
+                      size: 'tiny',
+                      quaternary: true,
+                      type: row.status === 'active' ? 'warning' : 'primary',
+                      loading: toggling,
+                      disabled: busy,
+                    },
                     { default: () => (row.status === 'active' ? '禁用' : '启用') },
                   ),
                 default: () => (row.status === 'active' ? '确认禁用该用户组？' : '确认启用该用户组？'),
@@ -262,15 +325,22 @@ const columns = computed<DataTableColumns<MerchantGroup>>(() => [
               NPopconfirm,
               { onPositiveClick: () => remove(row) },
               {
-                trigger: () => h(NButton, { size: 'tiny', quaternary: true, type: 'error' }, { default: () => '删除' }),
+                trigger: () =>
+                  h(
+                    NButton,
+                    { size: 'tiny', quaternary: true, type: 'error', loading: removing, disabled: busy },
+                    { default: () => '删除' },
+                  ),
                 default: () => '确认删除该用户组？删除后不可恢复。',
               },
             ),
           ],
         },
-      ),
+      );
+    },
   },
-]);
+  ];
+});
 
 onMounted(load);
 </script>
@@ -356,6 +426,32 @@ onMounted(load);
         <n-space justify="end">
           <n-button @click="showForm = false">取消</n-button>
           <n-button type="primary" :loading="submitting" @click="submit">保存</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <n-modal v-model:show="showAssign" preset="card" title="商户归组" style="width: 560px; max-width: 94vw">
+      <n-alert type="info" :bordered="false" style="margin-bottom: 14px">
+        归组后该商户的费率、可用支付方式与结算模式按用户组生效，会覆盖商户原有设置。
+      </n-alert>
+      <n-form label-placement="left" label-width="110">
+        <n-form-item label="商户 ID">
+          <n-input v-model:value="assignMerchantId" placeholder="要归组的商户 ID" />
+        </n-form-item>
+        <n-form-item label="目标用户组">
+          <n-select
+            v-model:value="assignGroupId"
+            :options="groupOptions"
+            placeholder="选择用户组"
+          />
+        </n-form-item>
+      </n-form>
+      <p v-if="assignResult" class="muted small">{{ assignResult }}</p>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showAssign = false">取消</n-button>
+          <n-button type="error" secondary :loading="assignSubmitting" @click="submitAssign(true)">移出用户组</n-button>
+          <n-button type="primary" :loading="assignSubmitting" @click="submitAssign(false)">确认归组</n-button>
         </n-space>
       </template>
     </n-modal>

@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { useMessage, type FormInst, type FormRules } from 'naive-ui';
-import { authApi, merchantApi } from '@/api';
+import { authApi } from '@/api';
 import { accountSecurityApi } from '@/api/accountSecurity';
-import { qrLoginApi, type QrTicket, type QrPollResult } from '@/api/publicQrLogin';
+import { qrLoginApi, type QrTicket } from '@/api/publicQrLogin';
 import { errorMessage } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 import { siteLogo, siteName } from '@/stores/site';
 
+const route = useRoute();
 const router = useRouter();
 const message = useMessage();
 const auth = useAuthStore();
@@ -38,6 +39,20 @@ const oauthProviders = [
   { key: 'qq', label: 'QQ' },
   { key: 'douyin', label: '抖音' },
 ];
+
+/** 登录成功后回跳 ?next=，只接受站内路径 */
+function nextTarget(fallback: string): string {
+  const raw = route.query.next;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) return fallback;
+  if (value === '/login' || value === '/admin/login') return fallback;
+  return value;
+}
+
+/** 后端返回的 SVG 用 data URL 交给 <img> 渲染，避免 v-html 注入面 */
+function svgDataUrl(svg: string): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
 
 const rules: FormRules = {
   identifier: [{ required: true, message: '请输入邮箱或手机号', trigger: ['blur', 'input'] }],
@@ -95,9 +110,10 @@ async function handleSubmit() {
       message.error('登录成功但未返回商户信息，请联系平台客服');
       return;
     }
-    auth.setMerchantLogin(res.token, res.expires_at, res.merchant);
+    // 会话由后端写入 HttpOnly cookie，这里只记录展示资料
+    auth.setMerchantLogin(res.merchant);
     message.success('登录成功');
-    await router.replace('/merchant');
+    await router.replace(nextTarget('/merchant'));
   } catch (err) {
     if (axios.isAxiosError(err) && err.response?.status === 401) {
       message.error('账号或密码错误');
@@ -145,7 +161,7 @@ async function pollQr(ticket: string) {
     qrStatus.value = result.status;
     if (result.status === 'confirmed') {
       stopQrPolling();
-      await completeQrLogin(result);
+      await completeQrLogin();
       return;
     }
     if (result.status === 'expired' || result.status === 'cancelled') {
@@ -156,25 +172,15 @@ async function pollQr(ticket: string) {
   }
 }
 
-async function completeQrLogin(result: QrPollResult) {
-  if (!result.token) {
-    qrError.value = '扫码登录确认失败，请重试';
+async function completeQrLogin() {
+  // 手机确认后由后端下发会话 cookie；这里用 /auth/me 复核一次，避免把 token 存进浏览器
+  const session = await auth.refreshSession();
+  if (!session) {
+    qrError.value = '扫码登录未完成：服务端未在轮询接口写入会话 Cookie，请改用账号密码登录';
     return;
   }
-  const expiresAt = result.expires_at || new Date(Date.now() + 7 * 86400000).toISOString();
-  const merchant = result.merchant ?? { id: '', display_name: '商户' };
-  auth.setMerchantLogin(result.token, expiresAt, merchant);
-  if (!result.merchant) {
-    try {
-      const profile = await merchantApi.profile();
-      auth.merchant = { ...profile };
-      auth.persist();
-    } catch {
-      // 拿不到资料也不影响登录，顶部名称稍后由 loadSession 补齐
-    }
-  }
   message.success('登录成功');
-  await router.replace('/merchant');
+  await router.replace(nextTarget('/merchant'));
 }
 
 function handleOauth(provider: string) {
@@ -238,7 +244,7 @@ onBeforeUnmount(() => {
                   @keyup.enter="handleSubmit"
                 />
                 <button type="button" class="captcha-image" title="点击刷新验证码" @click="loadCaptcha">
-                  <span v-if="captchaSvg" class="captcha-svg" v-html="captchaSvg"></span>
+                  <img v-if="captchaSvg" class="captcha-svg" :src="svgDataUrl(captchaSvg)" alt="图形验证码" />
                   <span v-else class="captcha-refresh">刷新</span>
                 </button>
               </div>
@@ -261,7 +267,12 @@ onBeforeUnmount(() => {
             </template>
             <template v-else>
               <button type="button" class="qr-image" title="点击刷新二维码" @click="loadQrTicket">
-                <span v-if="qrTicket?.qr_svg" class="qr-svg" v-html="qrTicket.qr_svg"></span>
+                <img
+                  v-if="qrTicket?.qr_svg"
+                  class="qr-svg"
+                  :src="svgDataUrl(qrTicket.qr_svg)"
+                  alt="扫码登录二维码"
+                />
               </button>
               <p class="qr-tip">
                 <template v-if="qrStatus === 'expired'">二维码已过期，点击上方二维码重新生成</template>
@@ -399,11 +410,6 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
 }
-.qr-svg :deep(svg) {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
 .qr-tip {
   margin: 0;
   font-size: 12.5px;
@@ -459,11 +465,6 @@ onBeforeUnmount(() => {
   border-color: #93c5fd;
 }
 .captcha-svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-.captcha-svg :deep(svg) {
   display: block;
   width: 100%;
   height: 100%;

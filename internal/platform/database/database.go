@@ -2,7 +2,9 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorixpay/internal/platform/config"
@@ -22,7 +24,7 @@ func Open(ctx context.Context, cfg config.DatabaseConfig) (*gorm.DB, Dialect, er
 	var dialector gorm.Dialector
 	switch cfg.Driver {
 	case "sqlite":
-		dialector = sqlite.Open(cfg.DSN)
+		dialector = sqlite.Open(sqliteDSN(cfg.DSN))
 	case "mysql":
 		dialector = mysql.Open(cfg.DSN)
 	case "postgres":
@@ -39,13 +41,18 @@ func Open(ctx context.Context, cfg config.DatabaseConfig) (*gorm.DB, Dialect, er
 	sqlDB.SetConnMaxLifetime(30 * time.Minute)
 	if cfg.Driver == "sqlite" {
 		sqlDB.SetMaxOpenConns(1)
-		if err := db.WithContext(ctx).Exec("PRAGMA foreign_keys = ON").Error; err != nil {
+		// The DSN pragmas apply to every new connection, so the guarantee holds
+		// after the pool recycles a connection. This check only proves the first
+		// connection got them; failing loudly beats silently losing the foreign
+		// keys 30 minutes into a deployment.
+		var foreignKeys int
+		if err := db.WithContext(ctx).Raw("PRAGMA foreign_keys").Scan(&foreignKeys).Error; err != nil {
 			_ = sqlDB.Close()
 			return nil, nil, err
 		}
-		if err := db.WithContext(ctx).Exec("PRAGMA busy_timeout = 5000").Error; err != nil {
+		if foreignKeys != 1 {
 			_ = sqlDB.Close()
-			return nil, nil, err
+			return nil, nil, errors.New("sqlite foreign_keys pragma is not enabled")
 		}
 	} else {
 		sqlDB.SetMaxOpenConns(25)
@@ -56,4 +63,30 @@ func Open(ctx context.Context, cfg config.DatabaseConfig) (*gorm.DB, Dialect, er
 		return nil, nil, fmt.Errorf("ping %s database: %w", cfg.Driver, err)
 	}
 	return db, dialect, nil
+}
+
+// sqliteDSN appends the connection pragmas the driver applies to every new
+// connection (glebarez/go-sqlite parses _pragma from the DSN). A plain
+// connection-level Exec only covers the one connection it ran on, which is how
+// foreign key enforcement used to disappear after the pool recycled a handle.
+func sqliteDSN(dsn string) string {
+	clauses := make([]string, 0, 2)
+	lower := strings.ToLower(dsn)
+	if !strings.Contains(lower, "foreign_keys") {
+		clauses = append(clauses, "_pragma=foreign_keys(1)")
+	}
+	if !strings.Contains(lower, "busy_timeout") {
+		clauses = append(clauses, "_pragma=busy_timeout(5000)")
+	}
+	if len(clauses) == 0 {
+		return dsn
+	}
+	separator := "?"
+	switch {
+	case strings.Contains(dsn, "?"):
+		separator = "&"
+	case strings.HasSuffix(dsn, "&"), strings.HasSuffix(dsn, "?"):
+		separator = ""
+	}
+	return dsn + separator + strings.Join(clauses, "&")
 }

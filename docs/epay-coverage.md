@@ -50,7 +50,7 @@
 
 | 分组 | 上游文件 | 上游能力 | 我们的实现 | 判定 |
 | --- | --- | --- | --- | --- |
-| 登录与会话 | `login.php`、`code.php`、`log.php`、`sso.php`、`index.php`、`head.php` | 账号密码登录、图形验证码、登录日志、一键登录商户、后台首页 | 邮箱登录加会话、SVG 验证码（`/api/v1/captcha`，只存哈希、一次性）、TOTP（`/admin/security/totp/*`，密钥 AES-GCM 加密）、登录尝试审计；缺码回 400 `captcha_required` 或 401 `totp_required`。一键登录商户（`sso.php`）不适用：运营不持商户会话，排障走商户详情、订单与审计日志 | 已实现 |
+| 登录与会话 | `login.php`、`code.php`、`log.php`、`sso.php`、`index.php`、`head.php` | 账号密码登录、图形验证码、登录日志、一键登录商户、后台首页 | 邮箱登录加会话、SVG 验证码（`/api/v1/auth/captcha`，只存哈希、一次性）、TOTP（`/admin/security/totp/*`，密钥 AES-GCM 加密）、登录尝试审计；缺码回 400 `captcha_required` 或 401 `totp_required`。一键登录商户（`sso.php`）不适用：运营不持商户会话，排障走商户详情、订单与审计日志 | 已实现 |
 | 订单 | `order.php`、`export.php`、`buyerstat.php`、`blacklist.php`、`ajax_order.php` | 订单列表、导出、支付用户统计、支付黑名单 | `/admin/orders` 与关单、`GET /admin/export/orders.csv`、`GET /admin/stats/buyers`、`/admin/blacklist`（`internal/reporting`、`internal/risk`） | 已实现 |
 | 分账 | `ps_receiver.php`、`ps_order.php`、`ajax_profitsharing.php` | 分账规则与分账记录 | `internal/profitsharing`：接收方增删改查、分账记录、重试；按 `rate_bp` 分账、手续费先扣、向下取整到分，内部接收方同事务走账本（幂等键 `split:{orderID}:{receiverID}`），费率合计超 100% 拒绝。渠道侧直清分账待渠道开通，见第 9 节 | 已实现 |
 | 结算 | `slist.php`、`settle.php`、`settle_batch.php`、`ajax_settle.php` | 结算列表、批量结算、批量转账 | `internal/settlement`：结算规则增删改查与手动触发、`/admin/settlements/batch-process`、`/admin/settlements/:id/auto-transfer`，每分钟巡检，同日幂等，审核通过自动建代付单，缺结算资料记 `failed` 并写原因 | 已实现 |

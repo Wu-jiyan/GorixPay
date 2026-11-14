@@ -48,6 +48,41 @@ const rules: FormRules = {
 
 const isEditing = computed(() => editingId.value !== null);
 
+const showTest = ref(false);
+const testTarget = ref<WechatMpConfig | null>(null);
+const testOpenid = ref('');
+const testingId = ref('');
+const testSubmitting = ref(false);
+
+function openTest(row: WechatMpConfig) {
+  testTarget.value = row;
+  testOpenid.value = '';
+  showTest.value = true;
+}
+
+async function submitTest() {
+  const target = testTarget.value;
+  if (!target) return;
+  const openid = testOpenid.value.trim();
+  if (openid === '') {
+    message.warning('请输入接收消息的 openid');
+    return;
+  }
+  if (testSubmitting.value) return;
+  testSubmitting.value = true;
+  testingId.value = target.id;
+  try {
+    await wechatMpApi.testMessage(target.id, openid);
+    message.success('测试消息已发送');
+    showTest.value = false;
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    testSubmitting.value = false;
+    testingId.value = '';
+  }
+}
+
 const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } = useServerPaging(load);
 
 async function load() {
@@ -179,10 +214,11 @@ const columns = computed<DataTableColumns<WechatMpConfig>>(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 150,
+    width: 210,
     fixed: 'right',
-    render: (row) =>
-      h(
+    render: (row) => {
+      const testing = testingId.value === row.id;
+      return h(
         NSpace,
         { size: 4, wrap: false },
         {
@@ -191,6 +227,18 @@ const columns = computed<DataTableColumns<WechatMpConfig>>(() => [
               NButton,
               { size: 'tiny', quaternary: true, type: 'info', onClick: () => openEdit(row) },
               { default: () => '编辑' },
+            ),
+            h(
+              NButton,
+              {
+                size: 'tiny',
+                quaternary: true,
+                type: 'primary',
+                loading: testing,
+                disabled: testing,
+                onClick: () => openTest(row),
+              },
+              { default: () => '测试消息' },
             ),
             h(
               NPopconfirm,
@@ -202,7 +250,8 @@ const columns = computed<DataTableColumns<WechatMpConfig>>(() => [
             ),
           ],
         },
-      ),
+      );
+    },
   },
 ]);
 
@@ -281,6 +330,30 @@ onMounted(load);
         <n-space justify="end">
           <n-button @click="showForm = false">取消</n-button>
           <n-button type="primary" :loading="submitting" @click="submit">保存</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <n-modal v-model:show="showTest" preset="card" title="发送公众号测试消息" style="width: 540px; max-width: 94vw">
+      <n-alert type="info" :bordered="false" style="margin-bottom: 14px">
+        后端会用这条配置的 AppID/AppSecret 调用微信接口，给指定 openid 发一条模板测试消息；配置不完整时会直接报错。
+      </n-alert>
+      <n-descriptions v-if="testTarget" :column="1" label-placement="left" size="small" bordered>
+        <n-descriptions-item label="适用范围">
+          <span v-if="testTarget.merchant_id" class="mono">{{ testTarget.merchant_id }}</span>
+          <span v-else>全局</span>
+        </n-descriptions-item>
+        <n-descriptions-item label="AppID">
+          <span class="mono">{{ testTarget.app_id || '-' }}</span>
+        </n-descriptions-item>
+      </n-descriptions>
+      <n-form-item label="接收 openid" style="margin-top: 16px">
+        <n-input v-model:value="testOpenid" placeholder="微信 openid，测试用" />
+      </n-form-item>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showTest = false">取消</n-button>
+          <n-button type="primary" :loading="testSubmitting" @click="submitTest">发送</n-button>
         </n-space>
       </template>
     </n-modal>

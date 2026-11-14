@@ -204,3 +204,32 @@ export function useServerPaging(loader: () => unknown, initialSize = 20) {
 
   return { page, pageSize, total, pagination, onPage, onPageSize, resetPage };
 }
+
+/**
+ * 行级 in-flight 锁：同一个 key 正在请求时再次触发会被直接忽略，按钮据此显示 loading。
+ * 资金审批、批量处理这类动作必须走这里，避免双击重复提交。
+ */
+export function usePendingAction() {
+  const pending = ref<Set<string>>(new Set());
+
+  function isPending(key: string): boolean {
+    return pending.value.has(key);
+  }
+
+  async function run(key: string, action: () => Promise<void>): Promise<boolean> {
+    if (pending.value.has(key)) return false;
+    const started = new Set(pending.value);
+    started.add(key);
+    pending.value = started;
+    try {
+      await action();
+      return true;
+    } finally {
+      const finished = new Set(pending.value);
+      finished.delete(key);
+      pending.value = finished;
+    }
+  }
+
+  return { pending, isPending, run };
+}

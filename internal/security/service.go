@@ -28,6 +28,8 @@ var (
 	ErrTOTPNotSetup       = errors.New("totp not set up")
 	ErrTOTPAlreadyEnabled = errors.New("totp already enabled")
 	ErrTOTPInvalid        = errors.New("totp code invalid")
+	ErrTOTPReused         = errors.New("totp code already used")
+	ErrLockedOut          = errors.New("too many failed login attempts")
 )
 
 const (
@@ -37,6 +39,10 @@ const (
 	loginPrincipalAdmin    = "administrator"
 	defaultPageSize        = 20
 	maxPageSize            = 100
+	// loginLockoutWindow and maxLoginFailures bound password guessing: ten failed
+	// attempts for one identifier inside fifteen minutes lock it out.
+	loginLockoutWindow = 15 * time.Minute
+	maxLoginFailures   = 10
 )
 
 type AdminTOTP struct {
@@ -44,8 +50,11 @@ type AdminTOTP struct {
 	AdministratorID string     `gorm:"type:varchar(36);not null;uniqueIndex"`
 	SecretEncrypted string     `gorm:"type:text;not null"`
 	EnabledAt       *time.Time `json:"enabled_at"`
-	CreatedAt       time.Time  `gorm:"not null"`
-	UpdatedAt       time.Time  `gorm:"not null"`
+	// LastUsedStep is the newest accepted RFC 6238 time step. Without it the same
+	// six digits stay valid for the whole +-1 window and can be replayed.
+	LastUsedStep int64     `gorm:"not null;default:0"`
+	CreatedAt    time.Time `gorm:"not null"`
+	UpdatedAt    time.Time `gorm:"not null"`
 }
 
 func (AdminTOTP) TableName() string { return "admin_totp" }
@@ -267,8 +276,8 @@ func (service *Service) EnableTOTP(ctx context.Context, administratorID, code st
 	if err != nil {
 		return TOTPStatus{}, err
 	}
-	if !VerifyTOTPCode(plaintext, code, service.now().UTC()) {
-		return TOTPStatus{}, ErrTOTPInvalid
+	if err := service.consumeTOTPStep(ctx, record, plaintext, code); err != nil {
+		return TOTPStatus{}, err
 	}
 	now := service.now().UTC()
 	if err := service.db.WithContext(ctx).Model(&AdminTOTP{}).
@@ -290,8 +299,8 @@ func (service *Service) DisableTOTP(ctx context.Context, administratorID, code s
 	if err != nil {
 		return err
 	}
-	if !VerifyTOTPCode(plaintext, code, service.now().UTC()) {
-		return ErrTOTPInvalid
+	if err := service.consumeTOTPStep(ctx, record, plaintext, code); err != nil {
+		return err
 	}
 	return service.db.WithContext(ctx).Where("administrator_id = ?", record.AdministratorID).Delete(&AdminTOTP{}).Error
 }
@@ -314,8 +323,50 @@ func (service *Service) VerifyTOTP(ctx context.Context, administratorID, code st
 	if err != nil {
 		return err
 	}
-	if !VerifyTOTPCode(plaintext, code, service.now().UTC()) {
+	return service.consumeTOTPStep(ctx, record, plaintext, code)
+}
+
+// consumeTOTPStep verifies the code and claims its time step in one atomic
+// update. Two logins racing with the same code therefore cannot both succeed,
+// and a captured code is dead as soon as it has been used once.
+func (service *Service) consumeTOTPStep(ctx context.Context, record AdminTOTP, plaintext, code string) error {
+	step, ok := VerifyTOTPStep(plaintext, code, service.now().UTC())
+	if !ok {
 		return ErrTOTPInvalid
+	}
+	result := service.db.WithContext(ctx).Model(&AdminTOTP{}).
+		Where("id = ? AND last_used_step < ?", record.ID, step).
+		Update("last_used_step", step)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrTOTPReused
+	}
+	return nil
+}
+
+// LoginAllowed satisfies identityauth.LoginGuard: it refuses a login for an
+// identifier that already failed too many times inside the lockout window. The
+// check runs before the password hash, so a brute force run cannot turn Argon2id
+// into a memory amplifier. An audit read failure never blocks a login.
+func (service *Service) LoginAllowed(ctx context.Context, principalType, identifier string) error {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return nil
+	}
+	since := service.now().UTC().Add(-loginLockoutWindow)
+	query := service.db.WithContext(ctx).Model(&LoginAttempt{}).
+		Where("identifier = ? AND success = ? AND created_at > ?", identifier, false, since)
+	if principal := strings.TrimSpace(principalType); principal != "" {
+		query = query.Where("principal_type = ?", principal)
+	}
+	var failures int64
+	if err := query.Count(&failures).Error; err != nil {
+		return nil
+	}
+	if failures >= maxLoginFailures {
+		return ErrLockedOut
 	}
 	return nil
 }

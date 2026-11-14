@@ -131,8 +131,21 @@ func TestTOTPEnrollmentFlow(t *testing.T) {
 	if enabled, err := service.TOTPEnabled(ctx, testAdministratorID); err != nil || !enabled {
 		t.Fatalf("TOTPEnabled=%v err=%v", enabled, err)
 	}
-	if err := service.VerifyTOTP(ctx, testAdministratorID, code); err != nil {
+	// The code used to enable TOTP is spent: replaying it must fail, otherwise a
+	// captured six digit code stays usable for the whole +-1 step window.
+	if err := service.VerifyTOTP(ctx, testAdministratorID, code); !errors.Is(err, ErrTOTPReused) {
+		t.Fatalf("replay of the enrollment code err=%v, want ErrTOTPReused", err)
+	}
+	fixture.advance(30 * time.Second)
+	freshCode, err := TOTPCode(secretValue, fixture.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.VerifyTOTP(ctx, testAdministratorID, freshCode); err != nil {
 		t.Fatalf("verify current code: %v", err)
+	}
+	if err := service.VerifyTOTP(ctx, testAdministratorID, freshCode); !errors.Is(err, ErrTOTPReused) {
+		t.Fatalf("second use of the same code err=%v, want ErrTOTPReused", err)
 	}
 	if err := service.VerifyTOTP(ctx, testAdministratorID, "000000"); !errors.Is(err, ErrTOTPInvalid) {
 		t.Fatalf("verify wrong code err=%v", err)
@@ -140,7 +153,12 @@ func TestTOTPEnrollmentFlow(t *testing.T) {
 	if err := service.DisableTOTP(ctx, testAdministratorID, "000000"); !errors.Is(err, ErrTOTPInvalid) {
 		t.Fatalf("disable wrong code err=%v", err)
 	}
-	if err := service.DisableTOTP(ctx, testAdministratorID, code); err != nil {
+	fixture.advance(30 * time.Second)
+	disableCode, err := TOTPCode(secretValue, fixture.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DisableTOTP(ctx, testAdministratorID, disableCode); err != nil {
 		t.Fatal(err)
 	}
 	status, err = service.TOTPStatus(ctx, testAdministratorID)

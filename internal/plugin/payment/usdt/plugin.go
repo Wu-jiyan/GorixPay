@@ -5,6 +5,7 @@ package usdt
 import (
 	"context"
 	"crypto/md5"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -80,10 +81,12 @@ func createSign(orderID, amount, key string) string {
 	return strings.ToLower(hex.EncodeToString(sum[:]))
 }
 
-// notifySign is md5(trade_id + order_id + amount + key). The legacy form without
-// trade_id is also accepted so gateways that only send order_id still verify.
-func notifySign(tradeID, orderID, amount, key string) string {
-	sum := md5.Sum([]byte(tradeID + orderID + amount + key))
+// notifySign is md5(trade_id + order_id + amount + status + key). The status is
+// part of the digest on purpose: it decides whether the payment counts as paid,
+// so leaving it out lets anyone flip a pending notification into a paid one by
+// replaying the same signature.
+func notifySign(tradeID, orderID, amount, status, key string) string {
+	sum := md5.Sum([]byte(tradeID + orderID + amount + status + key))
 	return strings.ToLower(hex.EncodeToString(sum[:]))
 }
 
@@ -200,16 +203,11 @@ func (plugin *Plugin) VerifyCallback(_ context.Context, r *http.Request, config 
 }
 
 func verifySign(payload notification, key string) bool {
-	candidates := []string{
-		notifySign(payload.TradeID, payload.OrderID, payload.Amount, key),
-		createSign(payload.OrderID, payload.Amount, key),
+	if payload.Sign == "" {
+		return false
 	}
-	for _, candidate := range candidates {
-		if candidate == payload.Sign && payload.Sign != "" {
-			return true
-		}
-	}
-	return false
+	expected := notifySign(payload.TradeID, payload.OrderID, payload.Amount, payload.Status, key)
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(payload.Sign)) == 1
 }
 
 // notificationFields accepts both a JSON body and a form post.

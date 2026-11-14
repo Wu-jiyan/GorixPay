@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { setPageTitle } from '@/stores/site';
+import { setUnauthorizedHandler } from '@/api/client';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -152,23 +153,72 @@ const router = createRouter({
   scrollBehavior: () => ({ top: 0 }),
 });
 
-router.beforeEach((to) => {
+const LOGIN_PATHS = new Set(['/login', '/admin/login']);
+
+function isLoginPath(path: string): boolean {
+  return LOGIN_PATHS.has(path);
+}
+
+/** 只接受站内路径，避免 ?next=//evil.com 这类开放重定向 */
+function safeNext(value: unknown): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string' || !raw) return null;
+  if (!raw.startsWith('/') || raw.startsWith('//')) return null;
+  const [path] = raw.split('?');
+  if (LOGIN_PATHS.has(path)) return null;
+  return raw;
+}
+
+/**
+ * 401 统一处理：清会话 + 单次跳转。
+ * 并发 401 只跳一次；已经在登录页时不再跳，避免 /login 自循环。
+ */
+let unauthorizedRedirecting = false;
+setUnauthorizedHandler(async () => {
+  if (unauthorizedRedirecting) return;
+  unauthorizedRedirecting = true;
+  try {
+    const auth = useAuthStore();
+    auth.reset();
+    const current = router.currentRoute.value;
+    if (isLoginPath(current.path)) return;
+    const target = current.path.startsWith('/admin') ? '/admin/login' : '/login';
+    const next = current.fullPath.startsWith('/') ? current.fullPath : undefined;
+    await router.replace(next ? { path: target, query: { next } } : { path: target });
+  } finally {
+    unauthorizedRedirecting = false;
+  }
+});
+
+router.beforeEach(async (to) => {
   const auth = useAuthStore();
+  // 首次导航先向服务端确认会话；失败即视为未登录
+  if (!auth.sessionChecked) {
+    await auth.ensureSession();
+  }
   const required = to.meta.requiresAuth as string | undefined;
-  if (required && !auth.isLoggedIn) {
-    return required === 'administrator' ? '/admin/login' : '/login';
+
+  if (required === 'administrator') {
+    if (!auth.isLoggedIn) {
+      return { path: '/admin/login', query: { next: to.fullPath } };
+    }
+    if (auth.principalType !== 'administrator') {
+      return { path: '/merchant' };
+    }
+  } else if (required === 'merchant') {
+    if (!auth.isLoggedIn) {
+      return { path: '/login', query: { next: to.fullPath } };
+    }
+    if (auth.principalType !== 'merchant') {
+      return { path: '/admin' };
+    }
   }
-  if (required === 'administrator' && auth.principalType === 'merchant') {
-    return '/merchant';
+
+  if (to.path === '/login' && auth.isLoggedIn && auth.principalType === 'merchant') {
+    return safeNext(to.query.next) ?? '/merchant';
   }
-  if (required === 'merchant' && auth.principalType === 'administrator') {
-    return '/admin';
-  }
-  if (to.path === '/login' && auth.principalType === 'merchant' && auth.isLoggedIn) {
-    return '/merchant';
-  }
-  if (to.path === '/admin/login' && auth.principalType === 'administrator' && auth.isLoggedIn) {
-    return '/admin';
+  if (to.path === '/admin/login' && auth.isLoggedIn && auth.principalType === 'administrator') {
+    return safeNext(to.query.next) ?? '/admin';
   }
   return true;
 });

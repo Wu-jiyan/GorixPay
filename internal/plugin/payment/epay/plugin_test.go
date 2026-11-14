@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"gorixpay/internal/compat/epay/signing"
 	pluginpayment "gorixpay/internal/plugin/payment"
@@ -68,5 +69,19 @@ func TestPluginRejectsFailedAndOversizedResponses(t *testing.T) {
 				t.Fatal("invalid response accepted")
 			}
 		})
+	}
+}
+
+func TestNewUsesTimeoutClientAndKeepsInjectedOne(t *testing.T) {
+	plugin := New(nil)
+	if plugin.client == nil || plugin.client == http.DefaultClient {
+		t.Fatal("nil client did not get the shared timeout client")
+	}
+	if plugin.client.Timeout != pluginpayment.DefaultUpstreamTimeout {
+		t.Fatalf("timeout=%s", plugin.client.Timeout)
+	}
+	custom := &http.Client{Timeout: time.Second}
+	if New(custom).client != custom {
+		t.Fatal("injected client was replaced")
 	}
 }

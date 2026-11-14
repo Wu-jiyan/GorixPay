@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"gorixpay/internal/identity/auth"
 	"gorixpay/internal/identity/model"
@@ -20,10 +21,45 @@ const (
 type Handler struct {
 	auth     *auth.Service
 	sessions *session.Service
+	// secureCookies forces the Secure flag. A reverse proxy terminates TLS and
+	// forwards plain HTTP, so ctx.Request.TLS is nil on the only hop this process
+	// sees; without the flag the session cookie would travel over cleartext.
+	secureCookies bool
 }
 
-func Register(group *gin.RouterGroup, authService *auth.Service, sessions *session.Service) {
+// Option tweaks what Register builds.
+type Option func(*Handler)
+
+// WithSecureCookies marks the session cookie Secure regardless of the inbound
+// hop. The wiring layer enables it when the public URL is https.
+func WithSecureCookies(enabled bool) Option {
+	return func(handler *Handler) { handler.secureCookies = enabled }
+}
+
+func (handler *Handler) secureCookie(ctx *gin.Context) bool {
+	return handler.secureCookies || ctx.Request.TLS != nil
+}
+
+// WriteSessionCookie sets the session cookie exactly like a password login does.
+// Other login paths (OAuth callback, QR login) call it so a browser ends up with
+// the HttpOnly cookie the SPA relies on instead of a token in JavaScript.
+func WriteSessionCookie(ctx *gin.Context, token string, expires time.Time, secure bool) {
+	http.SetCookie(ctx.Writer, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    token,
+		Path:     "/",
+		Expires:  expires,
+		HttpOnly: true,
+		Secure:   secure || ctx.Request.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func Register(group *gin.RouterGroup, authService *auth.Service, sessions *session.Service, options ...Option) {
 	handler := &Handler{auth: authService, sessions: sessions}
+	for _, option := range options {
+		option(handler)
+	}
 	group.POST("/auth/merchant/login", handler.loginMerchant)
 	group.POST("/auth/administrator/login", handler.loginAdministrator)
 	group.POST("/auth/register", handler.registerMerchant)
@@ -90,7 +126,7 @@ func (handler *Handler) registerMerchant(ctx *gin.Context) {
 		Path:     "/",
 		Expires:  result.Session.ExpiresAt,
 		HttpOnly: true,
-		Secure:   ctx.Request.TLS != nil,
+		Secure:   handler.secureCookie(ctx),
 		SameSite: http.SameSiteLaxMode,
 	})
 	ctx.JSON(http.StatusCreated, gin.H{
@@ -112,12 +148,26 @@ func (handler *Handler) loginMerchant(ctx *gin.Context) {
 		return
 	}
 	result, err := handler.auth.LoginMerchant(ctx.Request.Context(), request.Identifier, request.Password, auth.LoginMetadata{
-		IPAddress: ctx.ClientIP(),
-		UserAgent: ctx.Request.UserAgent(),
+		IPAddress:   ctx.ClientIP(),
+		UserAgent:   ctx.Request.UserAgent(),
+		CaptchaID:   request.CaptchaID,
+		CaptchaCode: request.CaptchaCode,
+		TOTPCode:    request.TOTPCode,
 	})
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			ctx.JSON(http.StatusUnauthorized, gin.H{"code": "invalid_credentials", "message": "invalid credentials"})
+			return
+		}
+		switch {
+		case errors.Is(err, auth.ErrCaptchaRequired):
+			ctx.JSON(http.StatusBadRequest, gin.H{"code": "captcha_required", "message": "captcha required"})
+			return
+		case errors.Is(err, auth.ErrCaptchaInvalid):
+			ctx.JSON(http.StatusBadRequest, gin.H{"code": "captcha_invalid", "message": "captcha invalid"})
+			return
+		case errors.Is(err, auth.ErrLockedOut):
+			ctx.JSON(http.StatusTooManyRequests, gin.H{"code": "too_many_attempts", "message": "too many failed attempts, try again later"})
 			return
 		}
 		ctx.JSON(http.StatusInternalServerError, gin.H{"code": "internal_error", "message": "internal server error"})
@@ -129,7 +179,7 @@ func (handler *Handler) loginMerchant(ctx *gin.Context) {
 		Path:     "/",
 		Expires:  result.Session.ExpiresAt,
 		HttpOnly: true,
-		Secure:   ctx.Request.TLS != nil,
+		Secure:   handler.secureCookie(ctx),
 		SameSite: http.SameSiteLaxMode,
 	})
 	ctx.JSON(http.StatusOK, gin.H{
@@ -173,7 +223,7 @@ func (handler *Handler) loginAdministrator(ctx *gin.Context) {
 	}
 	http.SetCookie(ctx.Writer, &http.Cookie{
 		Name: sessionCookieName, Value: result.Token, Path: "/", Expires: result.Session.ExpiresAt,
-		HttpOnly: true, Secure: ctx.Request.TLS != nil, SameSite: http.SameSiteLaxMode,
+		HttpOnly: true, Secure: handler.secureCookie(ctx), SameSite: http.SameSiteLaxMode,
 	})
 	ctx.JSON(http.StatusOK, gin.H{
 		"token": result.Token, "expires_at": result.Session.ExpiresAt,
@@ -225,7 +275,7 @@ func (handler *Handler) logout(ctx *gin.Context) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   ctx.Request.TLS != nil,
+		Secure:   handler.secureCookie(ctx),
 		SameSite: http.SameSiteLaxMode,
 	})
 	ctx.Status(http.StatusNoContent)

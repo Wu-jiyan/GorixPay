@@ -101,11 +101,16 @@ func NewService(config Config) (*Service, error) {
 		service.logf = func(string, ...any) {}
 	}
 	if service.sender == nil {
-		// Development fallback: nothing is delivered, and the reset token is
-		// printed so the flow can be finished locally. A real Sender switches
-		// both behaviours off.
-		service.sender = NewLogSender(nil)
-		service.logTokens = true
+		// Nothing is delivered. In development the reset token is printed so the
+		// flow can be finished locally; a production deployment that enabled
+		// WithTokenLogging(false) gets a sender that records the attempt without
+		// the body, because the body carries a working reset token.
+		if config.LogTokens != nil && !*config.LogTokens {
+			service.sender = newSuppressedSender(nil)
+		} else {
+			service.sender = NewLogSender(nil)
+			service.logTokens = true
+		}
 	}
 	if config.LogTokens != nil {
 		service.logTokens = *config.LogTokens

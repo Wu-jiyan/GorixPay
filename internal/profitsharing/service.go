@@ -8,6 +8,7 @@ import (
 
 	ledgermodel "gorixpay/internal/ledger/model"
 	ledgerservice "gorixpay/internal/ledger/service"
+	"gorixpay/internal/money"
 	paymentmodel "gorixpay/internal/payment/model"
 
 	"github.com/google/uuid"
@@ -471,13 +472,7 @@ func (service *Service) postSplit(ctx context.Context, tx *gorm.DB, payment paym
 
 // share applies a basis-point rate to an amount, rounding down to the fen.
 func share(amount int64, rateBp int) int64 {
-	if amount <= 0 || rateBp <= 0 {
-		return 0
-	}
-	if rateBp > 10000 {
-		rateBp = 10000
-	}
-	return amount * int64(rateBp) / basisPoints
+	return money.ApplyBasisPoints(amount, rateBp)
 }
 
 // guardRate keeps the active rates of a merchant within 100%.

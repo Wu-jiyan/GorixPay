@@ -2,10 +2,14 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
+	"strings"
+	"sync"
 	"time"
 
 	adminhttp "gorixpay/internal/admin/httpapi"
@@ -49,6 +53,7 @@ import (
 	"gorixpay/internal/platform/health"
 	"gorixpay/internal/platform/httpserver"
 	"gorixpay/internal/platform/migrate"
+	"gorixpay/internal/platform/netguard"
 	redisx "gorixpay/internal/platform/redis"
 	"gorixpay/internal/platform/secret"
 	pluginpayment "gorixpay/internal/plugin/payment"
@@ -80,8 +85,38 @@ type App struct {
 	router       *gin.Engine
 	redis        *redisx.Client
 	workerCancel context.CancelFunc
-	workerDone   <-chan struct{}
+	background   *backgroundGroup
 }
+
+// backgroundGroup owns every background worker so shutting down waits for them
+// and a panic inside one cannot take the payment process down with it.
+type backgroundGroup struct {
+	wait   sync.WaitGroup
+	logger *slog.Logger
+}
+
+func newBackgroundGroup(logger *slog.Logger) *backgroundGroup {
+	return &backgroundGroup{logger: logger}
+}
+
+// Go starts one named worker with panic recovery.
+func (group *backgroundGroup) Go(name string, run func()) {
+	group.wait.Add(1)
+	go func() {
+		defer group.wait.Done()
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				if group.logger != nil {
+					group.logger.Error("background worker panicked",
+						"worker", name, "panic", recovered, "stack", string(debug.Stack()))
+				}
+			}
+		}()
+		run()
+	}()
+}
+
+func (group *backgroundGroup) Wait() { group.wait.Wait() }
 
 type databaseChecker struct {
 	db *gorm.DB
@@ -104,6 +139,17 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		mode = gin.TestMode
 	}
 	router := httpserver.NewRouter(logger, mode)
+	// Cookie authenticated console API: refuse state changes announced by another
+	// origin (SameSite=Lax is the first line, this is the second).
+	router.Use(httpserver.OriginGuard(cfg.HTTP.PublicURL))
+	if len(cfg.HTTP.TrustedProxies) > 0 {
+		// Only the configured proxies may speak for the client. Everything else is
+		// reported by its socket address, so X-Forwarded-For cannot be forged.
+		if err := router.SetTrustedProxies(cfg.HTTP.TrustedProxies); err != nil {
+			closeDatabase(db)
+			return nil, fmt.Errorf("invalid trusted proxies: %w", err)
+		}
+	}
 	health.Register(router, databaseChecker{db: db})
 	sessions := session.NewService(db, time.Now)
 	application := &App{cfg: cfg, db: db, router: router}
@@ -127,9 +173,20 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	securityService := security.New(db, cipher)
 	inviteCodes := invitecode.New(db)
 	authService := auth.NewService(db, sessions).WithChallenge(securityService).WithInviteCodes(inviteCodes)
-	identityhttp.Register(router.Group("/api/v1"), authService, sessions)
+	identityhttp.Register(
+		router.Group("/api/v1"), authService, sessions,
+		// Behind a TLS terminator the inbound hop is plain HTTP, so the cookie
+		// only gets Secure when the operator declares an https public URL.
+		identityhttp.WithSecureCookies(strings.HasPrefix(strings.ToLower(cfg.HTTP.PublicURL), "https://")),
+	)
 	security.Register(router.Group("/api/v1"), identityhttp.Authenticate(sessions), securityService)
-	notifyService := notify.Register(router.Group("/api/v1"), db, sessions, cipher)
+	// Without a real SMS/mail sender the service prints the reset token so a
+	// local deployment can finish the flow. Production must never log a working
+	// reset token, even when the operator has not configured a sender yet.
+	notifyService := notify.Register(
+		router.Group("/api/v1"), db, sessions, cipher,
+		notify.WithTokenLogging(cfg.Environment != "production"),
+	)
 
 	redisClient, redisErr := redisx.Open(redisx.Config{
 		Addr: cfg.Redis.Addr, Password: cfg.Redis.Password, DB: cfg.Redis.DB, Prefix: cfg.Redis.Prefix,
@@ -153,6 +210,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		profitSharing := profitsharing.New(db, ledgerWriter, time.Now).WithFeeResolver(merchantGroups)
 		orders := paymentservice.New(db, time.Now).WithGuards(
 			certService.Guard(), domainService.Guard(), riskService.Guard(), fundingService.Guard(),
+			paymentservice.URLGuard{AllowPrivate: cfg.Security.AllowPrivateNotifyHosts},
 		)
 		// Hooks are attached once, after every hook owner exists: WithHooks
 		// replaces the slice, so a second call would silently drop the earlier
@@ -174,6 +232,15 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			}
 		}
 		sandboxEnabled := cfg.Sandbox.Enabled && cfg.Environment != "production"
+		if sandboxEnabled && !netguard.IsLocalTarget(cfg.HTTP.PublicURL) {
+			// /api/v1/sandbox/orders/{trade_no}/complete has no authentication: it
+			// marks an order paid for anyone who can reach it. Loud warning only —
+			// staging and conformance runs legitimately use a fake public URL with
+			// the sandbox channel on.
+			logger.Warn("sandbox channel is enabled on a non-loopback public URL: anyone who can reach /api/v1/sandbox/orders/{trade_no}/complete can mark orders paid",
+				"public_url", cfg.HTTP.PublicURL,
+				"fix", "set GORIXPAY_ENVIRONMENT=production or GORIXPAY_SANDBOX_ENABLED=false")
+		}
 		if sandboxEnabled {
 			if err := plugins.Register(sandboxplugin.New()); err != nil {
 				application.closeResources()
@@ -273,22 +340,29 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		})
 
 		router.NoRoute(serveSPA(cfg.HTTP.PublicURL))
-		notifier := epaynotification.NewSenderWithSigner(db, credentials, nil, signer)
+		// Merchant notification endpoints are attacker controlled (anyone can
+		// register an order): bound the round trip and refuse internal targets.
+		notifyClient := netguard.Client(netguard.Options{
+			Timeout:      time.Duration(cfg.Security.NotifyTimeoutSeconds) * time.Second,
+			AllowPrivate: cfg.Security.AllowPrivateNotifyHosts,
+		})
+		notifier := epaynotification.NewSenderWithSigner(db, credentials, notifyClient, signer)
 		epaypage.Register(router, db, cfg.HTTP.PublicURL, notifier, epaypage.WithCaptchaVerifier(securityService.VerifyCaptcha))
 		worker := outbox.NewWorker(db, notifier, time.Now, outbox.Options{})
 		workerContext, workerCancel := context.WithCancel(context.Background())
-		workerDone := make(chan struct{})
+		background := newBackgroundGroup(logger)
 		application.workerCancel = workerCancel
-		application.workerDone = workerDone
-		go func() {
-			defer close(workerDone)
+		application.background = background
+		background.Go("outbox", func() {
 			if err := worker.Run(workerContext); err != nil {
 				logger.Error("run outbox worker", "error", err)
 			}
-		}()
-		settleService.Start(workerContext, time.Minute)
+		})
+		background.Go("settlement", func() {
+			settleService.Run(workerContext, time.Minute)
+		})
 		complaintService := complaint.New(db, time.Now)
-		go func() {
+		background.Go("complaint-cron", func() {
 			ticker := time.NewTicker(time.Minute)
 			defer ticker.Stop()
 			for {
@@ -306,8 +380,8 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 					}
 				}
 			}
-		}()
-		go func() {
+		})
+		background.Go("red-packet-expiry", func() {
 			ticker := time.NewTicker(30 * time.Minute)
 			defer ticker.Stop()
 			for {
@@ -325,7 +399,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 					}
 				}
 			}
-		}()
+		})
 	}
 	return application, nil
 }
@@ -360,7 +434,11 @@ func (a *App) Address() string {
 func (a *App) Close() error {
 	if a.workerCancel != nil {
 		a.workerCancel()
-		<-a.workerDone
+	}
+	// Wait for every background worker before closing the pool: a worker that is
+	// still querying when the database closes fails or panics.
+	if a.background != nil {
+		a.background.Wait()
 	}
 	if a.redis != nil {
 		_ = a.redis.Close()

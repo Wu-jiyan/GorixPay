@@ -84,7 +84,7 @@ async function handleSubmit() {
       message.error('注册成功但未返回商户信息，请使用登录页登录');
       return;
     }
-    auth.setMerchantLogin(res.token, res.expires_at, res.merchant);
+    auth.setMerchantLogin(res.merchant);
     message.success('注册成功，正在进入商户中心');
     await router.replace('/merchant');
   } catch (err) {

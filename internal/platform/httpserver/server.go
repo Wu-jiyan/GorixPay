@@ -13,6 +13,11 @@ import (
 func NewRouter(logger *slog.Logger, mode string) *gin.Engine {
 	gin.SetMode(mode)
 	router := gin.New()
+	// Gin trusts every proxy by default, which makes ClientIP() report whatever
+	// X-Forwarded-For the caller invented: the IP blacklist, the login lockout and
+	// the cashier rate limit would all key on a value the attacker controls. The
+	// wiring layer opts specific proxies back in when it knows them.
+	_ = router.SetTrustedProxies(nil)
 	router.Use(requestID(), securityHeaders(), accessLog(logger), recovery(logger))
 	router.NoRoute(func(ctx *gin.Context) {
 		ctx.JSON(http.StatusNotFound, gin.H{"code": "not_found", "message": "resource not found"})

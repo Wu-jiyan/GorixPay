@@ -8,7 +8,7 @@ import MoneyText from '@/components/MoneyText.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusTag from '@/components/StatusTag.vue';
 import { formatDateTime } from '@/utils/format';
-import { asRow, hasKeys, httpStatus, itemsOf, numberOr, pick, textOf, useServerPaging } from './shared';
+import { asRow, hasKeys, httpStatus, itemsOf, numberOr, pick, textOf, usePendingAction, useServerPaging } from './shared';
 
 interface CertRow {
   merchantId: string;
@@ -44,6 +44,8 @@ const processing = ref(false);
 const showReject = ref(false);
 const rejectTarget = ref<CertRow | null>(null);
 const rejectionReason = ref('');
+
+const actions = usePendingAction();
 
 const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } = useServerPaging(load);
 
@@ -139,14 +141,16 @@ function openDetail(row: CertRow) {
 }
 
 async function approve(row: CertRow) {
-  try {
-    await adminApi.reviewCertification(row.merchantId, 'approve');
-    message.success('实名认证已通过');
-    showDetail.value = false;
-    await load();
-  } catch (error) {
-    message.error(errorMessage(error));
-  }
+  await actions.run(`approve:${row.merchantId}`, async () => {
+    try {
+      await adminApi.reviewCertification(row.merchantId, 'approve');
+      message.success('实名认证已通过');
+      showDetail.value = false;
+      await load();
+    } catch (error) {
+      message.error(errorMessage(error));
+    }
+  });
 }
 
 function openReject(row: CertRow) {
@@ -183,7 +187,9 @@ function statusCell(value: string) {
   return h(NTag, { size: 'small', round: true }, { default: () => (value === 'none' ? '未提交' : value || '-') });
 }
 
-const columns = computed<DataTableColumns<CertRow>>(() => [
+const columns = computed<DataTableColumns<CertRow>>(() => {
+  const pendingSet = actions.pending.value;
+  return [
   {
     title: '商户 ID',
     key: 'merchantId',
@@ -220,6 +226,7 @@ const columns = computed<DataTableColumns<CertRow>>(() => [
     width: 190,
     fixed: 'right',
     render: (row) => {
+      const approving = pendingSet.has(`approve:${row.merchantId}`);
       const detailButton = h(
         NButton,
         { size: 'tiny', quaternary: true, type: 'info', onClick: () => openDetail(row) },
@@ -236,20 +243,25 @@ const columns = computed<DataTableColumns<CertRow>>(() => [
             { onPositiveClick: () => approve(row) },
             {
               trigger: () =>
-                h(NButton, { size: 'tiny', quaternary: true, type: 'primary' }, { default: () => '通过' }),
+                h(
+                  NButton,
+                  { size: 'tiny', quaternary: true, type: 'primary', loading: approving, disabled: approving },
+                  { default: () => '通过' },
+                ),
               default: () => '确认通过该商户的实名认证？',
             },
           ),
           h(
             NButton,
-            { size: 'tiny', quaternary: true, type: 'error', onClick: () => openReject(row) },
+            { size: 'tiny', quaternary: true, type: 'error', disabled: approving, onClick: () => openReject(row) },
             { default: () => '驳回' },
           ),
         ],
       });
     },
   },
-]);
+  ];
+});
 
 onMounted(load);
 </script>

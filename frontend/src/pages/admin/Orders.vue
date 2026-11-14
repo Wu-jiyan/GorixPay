@@ -3,6 +3,7 @@ import { computed, h, onMounted, ref } from 'vue';
 import { NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { adminApi } from '@/api';
+import { exportCsvUrl } from '@/api/reports';
 import type { Order } from '@/api';
 import { errorMessage } from '@/api/client';
 import MoneyText from '@/components/MoneyText.vue';
@@ -68,6 +69,20 @@ async function load() {
 function search() {
   resetPage();
   void load();
+}
+
+function exportCsv() {
+  const range = dateRange.value;
+  window.open(
+    exportCsvUrl('orders', {
+      status: status.value ?? undefined,
+      payment_type: paymentType.value ?? undefined,
+      keyword: keyword.value.trim() || undefined,
+      created_from: range ? toISOString(range[0]) : undefined,
+      created_to: range ? toISOString(range[1]) : undefined,
+    }),
+    '_blank',
+  );
 }
 
 function resetFilters() {
@@ -220,6 +235,7 @@ onMounted(load);
     <PageHeader title="订单管理" subtitle="全平台支付订单查询、明细查看与未支付关单">
       <template #actions>
         <n-button secondary :loading="loading" @click="load">刷新</n-button>
+        <n-button secondary @click="exportCsv">导出 CSV</n-button>
       </template>
     </PageHeader>
 

@@ -16,7 +16,14 @@ import (
 )
 
 type Handler struct {
-	service *Service
+	service   *Service
+	publicURL string
+}
+
+// secureCookies follows the public scheme, like the password login does: behind a
+// TLS terminator the inbound hop is plain HTTP.
+func (handler *Handler) secureCookies() bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(handler.publicURL)), "https://")
 }
 
 // Register mounts the OAuth and QR login routes on the authenticated /api/v1
@@ -44,7 +51,7 @@ func RegisterWithProviders(group *gin.RouterGroup, db *gorm.DB, sessions *sessio
 }
 
 func register(group *gin.RouterGroup, service *Service, sessions *session.Service) {
-	handler := &Handler{service: service}
+	handler := &Handler{service: service, publicURL: service.publicURL}
 	authenticate := identityhttp.Authenticate(sessions)
 
 	public := group.Group("/auth")
@@ -100,6 +107,9 @@ func (handler *Handler) callback(ctx *gin.Context) {
 		writeOAuthError(ctx, err)
 		return
 	}
+	// The SPA keeps no token in JavaScript: the browser session is the cookie, so
+	// a third party login must set it here.
+	identityhttp.WriteSessionCookie(ctx, result.Token, result.ExpiresAt, handler.secureCookies())
 	ctx.JSON(http.StatusOK, result)
 }
 
@@ -164,6 +174,11 @@ func (handler *Handler) qrPoll(ctx *gin.Context) {
 		return
 	}
 	ctx.Header("Cache-Control", "no-store")
+	// A confirmed scan hands the browser its session here: the SPA never stores a
+	// token, so a token in the JSON alone would leave the user logged out.
+	if result.Status == statusConfirmed && result.Token != "" && result.ExpiresAt != nil {
+		identityhttp.WriteSessionCookie(ctx, result.Token, *result.ExpiresAt, handler.secureCookies())
+	}
 	ctx.JSON(http.StatusOK, result)
 }
 

@@ -22,11 +22,23 @@ const (
 	testPassword        = "SecretPass1"
 )
 
+type testClock struct{ at time.Time }
+
+func (clock *testClock) now() time.Time { return clock.at }
+
 type fixture struct {
 	service  *Service
 	db       *gorm.DB
 	sessions *session.Service
 	now      time.Time
+	clock    *testClock
+}
+
+// advance moves the fixture clock forward, which is what a TOTP test needs to
+// reach the next time step.
+func (fixture *fixture) advance(duration time.Duration) {
+	fixture.clock.at = fixture.clock.at.Add(duration)
+	fixture.now = fixture.clock.at
 }
 
 func newFixture(t *testing.T, name string) *fixture {
@@ -45,7 +57,8 @@ func newFixture(t *testing.T, name string) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Date(2026, 11, 14, 9, 0, 0, 0, time.UTC)
+	clock := &testClock{at: time.Date(2026, 11, 14, 9, 0, 0, 0, time.UTC)}
+	now := clock.at
 	administrator := identitymodel.Administrator{
 		ID: testAdministratorID, Username: testUsername, DisplayName: "管理员",
 		PasswordHash: hash, Status: identitymodel.StatusActive, CreatedAt: now, UpdatedAt: now,
@@ -58,12 +71,13 @@ func newFixture(t *testing.T, name string) *fixture {
 		t.Fatal(err)
 	}
 	service := New(db, cipher)
-	service.now = func() time.Time { return now }
+	service.now = clock.now
 	return &fixture{
 		service:  service,
 		db:       db,
-		sessions: session.NewService(db, func() time.Time { return now }),
+		sessions: session.NewService(db, clock.now),
 		now:      now,
+		clock:    clock,
 	}
 }
 

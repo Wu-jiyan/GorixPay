@@ -2,6 +2,7 @@ package callback
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -106,6 +107,19 @@ func (handler *PluginHandler) callback(ctx *gin.Context) {
 		ctx.String(http.StatusNotFound, "fail")
 		return
 	}
+	// A callback may only settle an order that was actually routed to this
+	// channel. Without this check the trade_no alone was enough, so any channel
+	// (or anyone holding one channel's credentials) could confirm somebody
+	// else's order and book the income.
+	routed, err := handler.orderRoutedToChannel(ctx.Request.Context(), order.ID, channel.ID)
+	if err != nil {
+		ctx.String(http.StatusInternalServerError, "fail")
+		return
+	}
+	if !routed {
+		ctx.String(http.StatusBadRequest, "fail")
+		return
+	}
 	if result.Amount != order.Amount {
 		ctx.String(http.StatusBadRequest, "fail")
 		return
@@ -119,6 +133,23 @@ func (handler *PluginHandler) callback(ctx *gin.Context) {
 		return
 	}
 	ctx.String(http.StatusOK, acknowledgement(result.Ack))
+}
+
+// orderRoutedToChannel reports whether the order ever attempted payment through
+// this channel. Any attempt counts, not just the latest one: a payer who retried
+// on another channel may still complete an older attempt, and that payment is
+// real money that must be booked.
+func (handler *PluginHandler) orderRoutedToChannel(ctx context.Context, orderID, channelID string) (bool, error) {
+	if orderID == "" || channelID == "" {
+		return false, nil
+	}
+	var count int64
+	if err := handler.db.WithContext(ctx).Model(&paymentmodel.Attempt{}).
+		Where("order_id = ? AND channel_id = ?", orderID, channelID).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // acknowledgement returns the plugin specific success body, or "success" when

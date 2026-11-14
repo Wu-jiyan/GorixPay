@@ -28,6 +28,7 @@ const formRef = ref<FormInst | null>(null);
 
 const showCode = ref(false);
 const createdCode = ref('');
+const removingId = ref('');
 
 const form = reactive<CodeForm>({
   max_uses: 1,
@@ -104,12 +105,16 @@ async function submit() {
 }
 
 async function remove(row: InviteCode) {
+  if (removingId.value === row.id) return;
+  removingId.value = row.id;
   try {
     await inviteCodesApi.remove(row.id);
     message.success('邀请码已删除');
     await load();
   } catch (error) {
     message.error(errorMessage(error));
+  } finally {
+    removingId.value = '';
   }
 }
 
@@ -173,8 +178,9 @@ const columns = computed<DataTableColumns<InviteCode>>(() => [
     key: 'actions',
     width: 150,
     fixed: 'right',
-    render: (row) =>
-      h(
+    render: (row) => {
+      const removing = removingId.value === row.id;
+      return h(
         NSpace,
         { size: 4, wrap: false },
         {
@@ -188,13 +194,19 @@ const columns = computed<DataTableColumns<InviteCode>>(() => [
               NPopconfirm,
               { onPositiveClick: () => remove(row) },
               {
-                trigger: () => h(NButton, { size: 'tiny', quaternary: true, type: 'error' }, { default: () => '删除' }),
+                trigger: () =>
+                  h(
+                    NButton,
+                    { size: 'tiny', quaternary: true, type: 'error', loading: removing, disabled: removing },
+                    { default: () => '删除' },
+                  ),
                 default: () => '确认删除该邀请码？已注册的商户不受影响。',
               },
             ),
           ],
         },
-      ),
+      );
+    },
   },
 ]);
 
