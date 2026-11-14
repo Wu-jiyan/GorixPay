@@ -76,7 +76,7 @@
 | 代付与红包 | `transfer.php`、`transfer_add.php`、`transfer_red.php` | 代付管理、新增代付、创建红包 | `/merchant/transfers` 列表与申请、`/merchant/transfers/red` 红包批次（`transfer.CreateRed`：按批次建 N 个 `kind=red` 代付单，金额随机且合计守恒，批次号幂等）；领取未接渠道，`claimed_count` 恒 0 | 已实现 |
 | 收款工具 | `onecode.php`、`test.php` | 聚合收款码、测试支付 | 无聚合收款码；测试支付用本地 sandbox 渠道替代 | 部分实现 |
 | 域名、邀请与公告 | `domain.php`、`invite.php` | 授权支付域名、邀请返现 | `/merchant/domains`、`/merchant/invite` | 已实现 |
-| 风控与投诉 | 菜单引用的 `mchrisk.php`、`complain.php` | 商户侧风险提示、投诉记录 | `/merchant/risk-events`；投诉只读 `/merchant/complaints` 与 `/merchant/complaints/:id`（`internal/complaint`），回复由运营在后台做；这两份上游文件本身不在这份源码里 | 部分实现 |
+| 风控与投诉 | 菜单引用的 `mchrisk.php`、`complain.php` | 商户侧风险提示、投诉记录 | `/merchant/risk-events`；投诉只读 `/merchant/complaints` 与 `/merchant/complaints/:id`，页面 `pages/merchant/Complaints.vue`（`internal/complaint`），回复由运营在后台做；这两份上游文件本身不在这份源码里 | 部分实现 |
 
 ## 5. 渠道插件（`plugins/`，63 个目录）
 
@@ -116,9 +116,9 @@
 | 运营靠后台看单、审退款、审结算、管通道 | 能 | 对应页面与接口都在，流程是人工审核 |
 | 依赖自动生成结算单与自动打款 | 能 | `internal/settlement`：规则生成结算单同日幂等，批量审核，通过后自动建代付单，缺结算资料记 `failed` 并写原因 |
 | 依赖分账（`ProfitSharing`） | 能 | 内部接收方按万分比同事务走账本，幂等键 `split:{orderID}:{receiverID}`；渠道侧直清分账仍是 pending，`receiver_type=channel` 的行记 pending |
-| 依赖支付宝、微信投诉处理 | 能 | 运营端登记、回复、关闭，状态机 `pending` 到 `replied` 到 `closed`，超期读取时派生 `overdue`，商户端只读；自动拉取未接，`Puller` 接口留着 |
+| 依赖支付宝、微信投诉处理 | 能，须人工登记 | 运营端登记、回复、关闭，状态机 `pending` 到 `replied` 到 `closed`，超期读取时派生 `overdue`，商户端只读；自动拉取未接，`Puller` 接口留着 |
 | 依赖用户组与费率、商户直清模式 | 能 | `internal/merchantgroup`：`rate_bp`、组内可用支付方式、`settle_mode` 的 normal/direct、商户归组；付费购买套餐未做 |
-| 依赖语音播报设备、云打印机、公众号模板消息 | 不能 | 这三块都没有实现 |
+| 依赖语音播报设备、云打印机、公众号模板消息 | 不能 | 语音设备与云打印机没有实现；公众号配置已有，但模板消息推送没有 |
 | 依赖 CSV 对账单与导出 | 能 | 9 个 CSV 接口，带 BOM 与截断提示；统计有买家、商户、每日三类 |
 
 一句话：把一套正在跑的易支付换成本项目，收单链路加上订单、退款、结算、分账、投诉、通知、导出这条运营主链可以切换；第三方登录、设备类功能与三处插件侧能力（投诉自动拉取、渠道侧分账、红包领取）仍需补齐。
@@ -138,11 +138,11 @@
 ## 9. 口径与未核实
 
 - 「工单」与「抽奖」在上游源码里不存在：`工单`、`抽奖`、`lottery` 全文检索无匹配；`ticket` 的命中全部是微信 `jsapi_ticket`，与工单无关。上游确实有红包（`transfer_red.php`、`paypage/red*.php`），已在第 3、4 节列出。
-- 上游菜单引用了但这份源码里没有的文件：`complain.php`、`mchrisk.php`（`user/`）、`applyments_channel.php`、`applyments_merchant.php`、`satf_transfer.php`（`admin/`）。它们由 `class_exists('\lib\Applyments\CommUtil')`、`class_exists('\lib\AlipaySATF\AlipaySATF')` 这类判断隐藏，属于未随包发布的扩展。同理 `cron.php` 的 `complain` 分支调用 `\lib\Complain\CommUtil`，该命名空间在此份源码中不存在。
+- 上游菜单引用了但这份源码里没有的文件：`complain.php`、`mchrisk.php`（`user/`）、`applyments_channel.php`、`applyments_merchant.php`、`satf_transfer.php`（`admin/`）。它们由 `class_exists('\lib\Applyments\CommUtil')`、`class_exists('\lib\AlipaySATF\AlipaySATF')` 这类判断隐藏，属于未随包发布的扩展。`cron.php` 的 `complain` 分支调用 `\lib\Complain\CommUtil`，该命名空间在此份源码中同样不存在，所以我们的投诉是团队自己设计的手工工作流（`internal/complaint`），不是移植这个类。
 - `plugins/` 的 63 个目录只按目录名归类，没有逐个读实现，单个插件的可用状态与报文细节未核实。
 - `includes/lib/ProfitSharing/` 的 16 个文件只读了目录与 `CommUtil` 的调用点。我们自己的分账在 `internal/profitsharing`，标「已实现」指的是内部接收方这一半，渠道侧直清分账没有接。
 - `alipayd`、`wxpaynp` 的「直清结算」（`Payment::settle_task`）只读到调用点，未读插件侧的 settle 实现。
-- 2026-11-14 第一批的判定依据是读迁移 `000017` 到 `000019`、`internal/merchantgroup`、`internal/settlement`、`internal/profitsharing`、`internal/reporting` 的模型、服务与路由注册，加上新页面组件清单。前端的 22 个后台页与 13 个商户页没有逐屏点过，也没做多副本并发的实测（结算的当日幂等靠 `settle_rules.last_run_at` 领取加进程内重入保护，我只读了代码与注释）。
+- 2026-11-14 第一批的判定依据是读迁移 `000017` 到 `000019`、`internal/merchantgroup`、`internal/settlement`、`internal/profitsharing`、`internal/reporting` 的模型、服务与路由注册，加上新页面组件清单。前端现在有 27 个后台页、15 个商户页与 6 个公开页，没有逐屏点过，也没做多副本并发的实测（结算的当日幂等靠 `settle_rules.last_run_at` 领取加进程内重入保护，我只读了代码与注释）。
 - 2026-11-14 第二批的判定依据是读迁移 `000020` 到 `000023`、`internal/complaint`、`internal/security`、`internal/channelops`、`internal/notify` 的模型、服务、路由与测试，以及 `internal/channel/router/router.go` 里 `RollResolver` 的接线。没有在浏览器里走完整的「验证码加重试加 TOTP」登录流程，短信与邮件也只有内置的 logSender 可测（真实网关要自备）。
 - 第 3、4 节里有的行只读了 `$title` 与菜单文字，没逐页读表单字段（`gedit.php`、`group.php`、`glist.php`、`ustat.php`、`buyerstat.php` 这几个）。
 - 我们这一侧的「已实现」指路由与页面存在、且协议面有测试覆盖；后台与商户中心的功能没有逐条端到端用例，判定来自路由清单、服务测试与页面组件清单。
