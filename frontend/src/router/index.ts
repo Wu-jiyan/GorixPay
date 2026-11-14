@@ -19,6 +19,11 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '商户登录' },
   },
   {
+    path: '/forgot-password',
+    component: () => import('@/pages/public/ForgotPassword.vue'),
+    meta: { title: '找回密码' },
+  },
+  {
     path: '/admin/login',
     component: () => import('@/pages/public/AdminLogin.vue'),
     meta: { title: '运营登录' },
@@ -50,6 +55,7 @@ const routes: RouteRecordRaw[] = [
       { path: '', component: () => import('@/pages/merchant/Dashboard.vue'), meta: { title: '商户概览' } },
       { path: 'orders', component: () => import('@/pages/merchant/Orders.vue'), meta: { title: '我的订单' } },
       { path: 'refunds', component: () => import('@/pages/merchant/Refunds.vue'), meta: { title: '退款记录' } },
+      { path: 'complaints', component: () => import('@/pages/merchant/Complaints.vue'), meta: { title: '我的投诉' } },
       {
         path: 'settlements',
         component: () => import('@/pages/merchant/Settlements.vue'),
@@ -85,7 +91,11 @@ const routes: RouteRecordRaw[] = [
       { path: 'groups', component: () => import('@/pages/admin/Groups.vue'), meta: { title: '用户组与费率' } },
       { path: 'orders', component: () => import('@/pages/admin/Orders.vue'), meta: { title: '订单管理' } },
       { path: 'channels', component: () => import('@/pages/admin/Channels.vue'), meta: { title: '支付渠道' } },
+      { path: 'pay-types', component: () => import('@/pages/admin/PayTypes.vue'), meta: { title: '支付方式' } },
+      { path: 'pay-rolls', component: () => import('@/pages/admin/PayRolls.vue'), meta: { title: '按日轮询' } },
+      { path: 'wechat-mp', component: () => import('@/pages/admin/WechatMp.vue'), meta: { title: '公众号配置' } },
       { path: 'refunds', component: () => import('@/pages/admin/Refunds.vue'), meta: { title: '退款管理' } },
+      { path: 'complaints', component: () => import('@/pages/admin/Complaints.vue'), meta: { title: '投诉管理' } },
       {
         path: 'settlements',
         component: () => import('@/pages/admin/Settlements.vue'),
@@ -110,6 +120,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/admin/Announcements.vue'),
         meta: { title: '公告管理' },
       },
+      { path: 'security', component: () => import('@/pages/admin/Security.vue'), meta: { title: '安全设置' } },
       { path: 'settings', component: () => import('@/pages/admin/Settings.vue'), meta: { title: '系统设置' } },
       { path: 'audit', component: () => import('@/pages/admin/Audit.vue'), meta: { title: '审计日志' } },
       { path: 'reports', component: () => import('@/pages/admin/Reports.vue'), meta: { title: '报表' } },

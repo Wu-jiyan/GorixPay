@@ -46,6 +46,11 @@ func RequireAdministrator() gin.HandlerFunc {
 type loginRequest struct {
 	Identifier string `json:"identifier" binding:"required"`
 	Password   string `json:"password" binding:"required"`
+	// Optional anti-bot and second-factor fields. The security package decides
+	// whether they are required.
+	CaptchaID   string `json:"captcha_id"`
+	CaptchaCode string `json:"captcha_code"`
+	TOTPCode    string `json:"totp_code"`
 }
 
 type registerMerchantRequest struct {
@@ -140,13 +145,23 @@ func (handler *Handler) loginAdministrator(ctx *gin.Context) {
 	}
 	result, err := handler.auth.LoginAdministrator(ctx.Request.Context(), request.Identifier, request.Password, auth.LoginMetadata{
 		IPAddress: ctx.ClientIP(), UserAgent: ctx.Request.UserAgent(),
+		CaptchaID: request.CaptchaID, CaptchaCode: request.CaptchaCode, TOTPCode: request.TOTPCode,
 	})
 	if err != nil {
-		if errors.Is(err, auth.ErrInvalidCredentials) {
+		switch {
+		case errors.Is(err, auth.ErrCaptchaRequired):
+			ctx.JSON(http.StatusBadRequest, gin.H{"code": "captcha_required", "message": "captcha required"})
+		case errors.Is(err, auth.ErrCaptchaInvalid):
+			ctx.JSON(http.StatusBadRequest, gin.H{"code": "captcha_invalid", "message": "captcha invalid"})
+		case errors.Is(err, auth.ErrTOTPRequired):
+			ctx.JSON(http.StatusUnauthorized, gin.H{"code": "totp_required", "message": "totp code required"})
+		case errors.Is(err, auth.ErrTOTPInvalid):
+			ctx.JSON(http.StatusUnauthorized, gin.H{"code": "totp_invalid", "message": "totp code invalid"})
+		case errors.Is(err, auth.ErrInvalidCredentials):
 			ctx.JSON(http.StatusUnauthorized, gin.H{"code": "invalid_credentials", "message": "invalid credentials"})
-			return
+		default:
+			ctx.JSON(http.StatusInternalServerError, gin.H{"code": "internal_error", "message": "internal server error"})
 		}
-		ctx.JSON(http.StatusInternalServerError, gin.H{"code": "internal_error", "message": "internal server error"})
 		return
 	}
 	http.SetCookie(ctx.Writer, &http.Cookie{

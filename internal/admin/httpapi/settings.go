@@ -39,6 +39,7 @@ var allowedSettings = map[string]bool{
 	"site.name":                          true,
 	"site.logo_url":                      true,
 	"site.footer_text":                   true,
+	"security.captcha_required":          true,
 	"payment.order_expiry_minutes":       true,
 	"payment.domain_whitelist_required":  true,
 	"certification.required":             true,

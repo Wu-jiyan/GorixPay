@@ -31,6 +31,7 @@ const menuOptions = [
   { label: '商户概览', key: '/merchant' },
   { label: '我的订单', key: '/merchant/orders' },
   { label: '退款记录', key: '/merchant/refunds' },
+  { label: '我的投诉', key: '/merchant/complaints' },
   { label: '资金明细', key: '/merchant/records' },
   { label: '结算记录', key: '/merchant/settlements' },
   { label: '代付申请', key: '/merchant/transfers' },

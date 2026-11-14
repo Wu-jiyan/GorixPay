@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { useMessage, type FormInst, type FormRules } from 'naive-ui';
 import { authApi } from '@/api';
+import { accountSecurityApi } from '@/api/accountSecurity';
 import { errorMessage } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 import { siteLogo, siteName } from '@/stores/site';
@@ -16,10 +17,41 @@ const formRef = ref<FormInst | null>(null);
 const submitting = ref(false);
 const form = reactive({ identifier: '', password: '' });
 
+// 图形验证码：后端开启时才返回内容，404/400 或空内容就整块隐藏
+const captchaEnabled = ref(false);
+const captchaId = ref('');
+const captchaSvg = ref('');
+const captchaCode = ref('');
+const captchaLoading = ref(false);
+
 const rules: FormRules = {
   identifier: [{ required: true, message: '请输入邮箱或手机号', trigger: ['blur', 'input'] }],
   password: [{ required: true, message: '请输入登录密码', trigger: ['blur', 'input'] }],
 };
+
+async function loadCaptcha() {
+  if (captchaLoading.value) return;
+  captchaLoading.value = true;
+  try {
+    const challenge = await accountSecurityApi.captcha();
+    if (!challenge.svg) {
+      captchaEnabled.value = false;
+      captchaId.value = '';
+      captchaSvg.value = '';
+      return;
+    }
+    captchaEnabled.value = true;
+    captchaId.value = challenge.id;
+    captchaSvg.value = challenge.svg;
+    captchaCode.value = '';
+  } catch {
+    captchaEnabled.value = false;
+    captchaId.value = '';
+    captchaSvg.value = '';
+  } finally {
+    captchaLoading.value = false;
+  }
+}
 
 async function handleSubmit() {
   if (submitting.value) return;
@@ -30,8 +62,20 @@ async function handleSubmit() {
     submitting.value = false;
     return;
   }
+  if (captchaEnabled.value && !captchaCode.value.trim()) {
+    message.error('请输入图形验证码');
+    submitting.value = false;
+    return;
+  }
   try {
-    const res = await authApi.loginMerchant(form.identifier.trim(), form.password);
+    const res = captchaEnabled.value
+      ? await accountSecurityApi.loginMerchantWithCaptcha(
+          form.identifier.trim(),
+          form.password,
+          captchaId.value,
+          captchaCode.value.trim(),
+        )
+      : await authApi.loginMerchant(form.identifier.trim(), form.password);
     if (!res.merchant) {
       message.error('登录成功但未返回商户信息，请联系平台客服');
       return;
@@ -45,10 +89,15 @@ async function handleSubmit() {
     } else {
       message.error(errorMessage(err));
     }
+    if (captchaEnabled.value) void loadCaptcha();
   } finally {
     submitting.value = false;
   }
 }
+
+onMounted(() => {
+  void loadCaptcha();
+});
 </script>
 
 <template>
@@ -78,10 +127,27 @@ async function handleSubmit() {
             @keyup.enter="handleSubmit"
           />
         </n-form-item>
+        <n-form-item v-if="captchaEnabled" label="图形验证码">
+          <div class="captcha-row">
+            <n-input
+              v-model:value="captchaCode"
+              placeholder="请输入图中字符"
+              :maxlength="8"
+              @keyup.enter="handleSubmit"
+            />
+            <button type="button" class="captcha-image" title="点击刷新验证码" @click="loadCaptcha">
+              <span v-if="captchaSvg" class="captcha-svg" v-html="captchaSvg"></span>
+              <span v-else class="captcha-refresh">刷新</span>
+            </button>
+          </div>
+        </n-form-item>
         <n-button type="primary" block size="large" :loading="submitting" attr-type="submit" @click="handleSubmit">
           登录
         </n-button>
       </n-form>
+      <div class="auth-links">
+        <router-link to="/forgot-password" class="auth-link">忘记密码？</router-link>
+      </div>
       <div class="auth-footer">
         还没有账号？<router-link to="/register" class="auth-link">免费注册</router-link>
       </div>
@@ -159,6 +225,51 @@ async function handleSubmit() {
   margin-top: 18px;
   text-align: center;
   font-size: 13px;
+  color: #64748b;
+}
+.auth-links {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 13px;
+}
+.captcha-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  align-items: center;
+}
+.captcha-row :deep(.n-input) {
+  flex: 1;
+  min-width: 0;
+}
+.captcha-image {
+  width: 116px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  cursor: pointer;
+  flex: none;
+}
+.captcha-image:hover {
+  border-color: #93c5fd;
+}
+.captcha-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.captcha-svg :deep(svg) {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.captcha-refresh {
+  font-size: 12px;
   color: #64748b;
 }
 .auth-link {

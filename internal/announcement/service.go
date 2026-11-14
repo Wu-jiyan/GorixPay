@@ -159,7 +159,7 @@ func (service *Service) Site(ctx context.Context) (Site, error) {
 	site := Site{
 		Name:         defaultSiteName,
 		LogoURL:      "",
-		PaymentTypes: []string{"alipay", "wxpay", "qqpay"},
+		PaymentTypes: service.paymentTypes(ctx),
 	}
 	if value := decodeSetting(settings[settingSiteName]); value != "" {
 		site.Name = value
@@ -178,6 +178,21 @@ func (service *Service) Site(ctx context.Context) (Site, error) {
 		site.Announcement = latest
 	}
 	return site, nil
+}
+
+// paymentTypes reads the enabled catalogue from pay_types (000023) and falls
+// back to the built-in list when the table is missing or empty, so the landing
+// page always renders something.
+func (service *Service) paymentTypes(ctx context.Context) []string {
+	fallback := []string{"alipay", "wxpay", "qqpay"}
+	var codes []string
+	err := service.db.WithContext(ctx).Table("pay_types").
+		Where("status = ?", "active").Order("sort ASC, code ASC").Limit(50).
+		Pluck("code", &codes).Error
+	if err != nil || len(codes) == 0 {
+		return fallback
+	}
+	return codes
 }
 
 func (service *Service) settings(ctx context.Context) (map[string]string, error) {

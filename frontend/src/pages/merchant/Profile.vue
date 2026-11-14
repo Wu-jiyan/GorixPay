@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue';
 import { useMessage, type FormInst, type FormRules } from 'naive-ui';
 import { merchantApi } from '@/api';
+import { accountSecurityApi } from '@/api/accountSecurity';
 import type { Merchant } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import PageHeader from '@/components/PageHeader.vue';
@@ -92,6 +93,65 @@ async function handleSave() {
   }
 }
 
+// 修改密码
+const pwdFormRef = ref<FormInst | null>(null);
+const pwdSaving = ref(false);
+const pwdForm = reactive({ old_password: '', new_password: '', confirm: '' });
+
+const pwdRules: FormRules = {
+  old_password: [{ required: true, message: '请输入当前密码', trigger: ['blur', 'input'] }],
+  new_password: [
+    { required: true, message: '请输入新密码', trigger: ['blur', 'input'] },
+    {
+      validator: (_rule, value: string) => {
+        if (!value || value.length >= 6) return true;
+        return new Error('新密码至少 6 位');
+      },
+      trigger: ['blur', 'input'],
+    },
+  ],
+  confirm: [
+    { required: true, message: '请再次输入新密码', trigger: ['blur', 'input'] },
+    {
+      validator: (_rule, value: string) => {
+        if (!value || value === pwdForm.new_password) return true;
+        return new Error('两次输入的新密码不一致');
+      },
+      trigger: ['blur', 'input'],
+    },
+  ],
+};
+
+async function handleChangePassword() {
+  if (pwdSaving.value) return;
+  pwdSaving.value = true;
+  try {
+    await pwdFormRef.value?.validate();
+  } catch {
+    pwdSaving.value = false;
+    return;
+  }
+  if (pwdForm.new_password !== pwdForm.confirm) {
+    message.error('两次输入的新密码不一致');
+    pwdSaving.value = false;
+    return;
+  }
+  try {
+    await accountSecurityApi.changePassword({
+      old_password: pwdForm.old_password,
+      new_password: pwdForm.new_password,
+    });
+    message.success('密码已修改，下次登录请使用新密码');
+    pwdForm.old_password = '';
+    pwdForm.new_password = '';
+    pwdForm.confirm = '';
+  } catch (err) {
+    message.error(errorMessage(err));
+  } finally {
+    pwdSaving.value = false;
+  }
+}
+
 onMounted(() => {
   void loadProfile();
 });
@@ -152,6 +212,48 @@ onMounted(() => {
           邮箱与手机号用于登录与安全校验，如需变更请联系平台运营处理。
         </n-alert>
       </n-card>
+
+      <n-card :bordered="false" title="修改密码" class="profile-card password-card">
+        <p class="profile-desc">
+          修改成功后当前登录状态仍然有效，下次登录请使用新密码；忘记当前密码可以用登录页的「忘记密码」重置。
+        </p>
+        <n-form
+          ref="pwdFormRef"
+          :model="pwdForm"
+          :rules="pwdRules"
+          label-placement="top"
+          @submit.prevent="handleChangePassword"
+        >
+          <n-form-item label="当前密码" path="old_password">
+            <n-input
+              v-model:value="pwdForm.old_password"
+              type="password"
+              show-password-on="click"
+              placeholder="请输入当前登录密码"
+            />
+          </n-form-item>
+          <n-form-item label="新密码" path="new_password">
+            <n-input
+              v-model:value="pwdForm.new_password"
+              type="password"
+              show-password-on="click"
+              placeholder="至少 6 位字符"
+            />
+          </n-form-item>
+          <n-form-item label="确认新密码" path="confirm">
+            <n-input
+              v-model:value="pwdForm.confirm"
+              type="password"
+              show-password-on="click"
+              placeholder="再次输入新密码"
+              @keyup.enter="handleChangePassword"
+            />
+          </n-form-item>
+          <n-button type="primary" :loading="pwdSaving" attr-type="submit" @click="handleChangePassword">
+            修改密码
+          </n-button>
+        </n-form>
+      </n-card>
     </div>
   </div>
 </template>
@@ -171,6 +273,9 @@ onMounted(() => {
   font-size: 13px;
   color: #64748b;
   line-height: 1.8;
+}
+.password-card {
+  grid-column: 1 / -1;
 }
 .profile-alert {
   margin-top: 18px;

@@ -41,17 +41,41 @@ func (Channel) TableName() string {
 
 type RandomInt func(max int) (int, error)
 
+// RollResolver returns the effective weight for a channel on a given day.
+// Implementations come from the pay-roll table; ok=false keeps the configured
+// weight, and a resolved zero weight means the channel sits out that day.
+type RollResolver interface {
+	RollWeight(ctx context.Context, channelID string, day time.Time) (int, bool)
+}
+
 type Router struct {
 	db       *gorm.DB
 	registry *pluginpayment.Registry
 	random   RandomInt
+	rolls    RollResolver
+	now      func() time.Time
 }
 
 func New(db *gorm.DB, registry *pluginpayment.Registry, random RandomInt) *Router {
 	if random == nil {
 		random = cryptoRandomInt
 	}
-	return &Router{db: db, registry: registry, random: random}
+	return &Router{db: db, registry: registry, random: random, now: time.Now}
+}
+
+// WithRollResolver enables per-day weight rotation. Without it the router only
+// uses payment_channels.weight.
+func (router *Router) WithRollResolver(resolver RollResolver) *Router {
+	router.rolls = resolver
+	return router
+}
+
+// WithClock overrides the clock used for day-based rotation; tests use it.
+func (router *Router) WithClock(now func() time.Time) *Router {
+	if now != nil {
+		router.now = now
+	}
+	return router
 }
 
 func (router *Router) Select(ctx context.Context, paymentType string) (Channel, pluginpayment.Plugin, error) {
@@ -64,6 +88,7 @@ func (router *Router) Select(ctx context.Context, paymentType string) (Channel, 
 	type candidate struct {
 		channel Channel
 		plugin  pluginpayment.Plugin
+		weight  int
 	}
 	var candidates []candidate
 	bestPriority := 0
@@ -78,15 +103,31 @@ func (router *Router) Select(ctx context.Context, paymentType string) (Channel, 
 		if channel.Priority != bestPriority {
 			break
 		}
-		candidates = append(candidates, candidate{channel: channel, plugin: plugin})
+		candidates = append(candidates, candidate{channel: channel, plugin: plugin, weight: channel.Weight})
 	}
 	if len(candidates) == 0 {
 		return Channel{}, nil, ErrNoAvailableChannel
 	}
 	sort.SliceStable(candidates, func(left, right int) bool { return candidates[left].channel.ID < candidates[right].channel.ID })
+	if router.rolls != nil {
+		day := router.now()
+		rotated := candidates[:0]
+		for _, candidate := range candidates {
+			if weight, ok := router.rolls.RollWeight(ctx, candidate.channel.ID, day); ok {
+				candidate.weight = weight
+			}
+			if candidate.weight > 0 {
+				rotated = append(rotated, candidate)
+			}
+		}
+		candidates = rotated
+		if len(candidates) == 0 {
+			return Channel{}, nil, ErrNoAvailableChannel
+		}
+	}
 	total := 0
 	for _, candidate := range candidates {
-		total += candidate.channel.Weight
+		total += candidate.weight
 	}
 	selected, err := router.random(total)
 	if err != nil || selected < 0 || selected >= total {
@@ -96,10 +137,10 @@ func (router *Router) Select(ctx context.Context, paymentType string) (Channel, 
 		return Channel{}, nil, err
 	}
 	for _, candidate := range candidates {
-		if selected < candidate.channel.Weight {
+		if selected < candidate.weight {
 			return candidate.channel, candidate.plugin, nil
 		}
-		selected -= candidate.channel.Weight
+		selected -= candidate.weight
 	}
 	return Channel{}, nil, ErrNoAvailableChannel
 }

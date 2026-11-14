@@ -13,9 +13,11 @@ import (
 	"gorixpay/internal/certification"
 	channelconfig "gorixpay/internal/channel/config"
 	channelrouter "gorixpay/internal/channel/router"
+	"gorixpay/internal/channelops"
 	epaypage "gorixpay/internal/compat/epay/page"
 	epaypayment "gorixpay/internal/compat/epay/payment"
 	epayv2 "gorixpay/internal/compat/epay/v2"
+	"gorixpay/internal/complaint"
 	"gorixpay/internal/domainauth"
 	financeservice "gorixpay/internal/finance/service"
 	"gorixpay/internal/funding"
@@ -29,6 +31,7 @@ import (
 	merchanthttp "gorixpay/internal/merchant/httpapi"
 	"gorixpay/internal/merchantgroup"
 	epaynotification "gorixpay/internal/notification/epay"
+	"gorixpay/internal/notify"
 	"gorixpay/internal/outbox"
 	paymentcallback "gorixpay/internal/payment/callback"
 	"gorixpay/internal/payment/cashier"
@@ -56,6 +59,7 @@ import (
 	"gorixpay/internal/profitsharing"
 	"gorixpay/internal/reporting"
 	"gorixpay/internal/risk"
+	"gorixpay/internal/security"
 	"gorixpay/internal/settlement"
 	"gorixpay/internal/transfer"
 	"gorixpay/migrations"
@@ -96,7 +100,14 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	router := httpserver.NewRouter(logger, mode)
 	health.Register(router, databaseChecker{db: db})
 	sessions := session.NewService(db, time.Now)
-	identityhttp.Register(router.Group("/api/v1"), auth.NewService(db, sessions), sessions)
+	// cipher stays nil when no master key file is configured: 渠道与商户密钥类
+	// 功能会在使用点报错，登录、验证码这些不依赖密钥的功能照常可用。
+	var cipher *secret.Cipher
+	securityService := security.New(db, cipher)
+	authService := auth.NewService(db, sessions).WithChallenge(securityService)
+	identityhttp.Register(router.Group("/api/v1"), authService, sessions)
+	security.Register(router.Group("/api/v1"), identityhttp.Authenticate(sessions), securityService)
+	notify.Register(router.Group("/api/v1"), db, sessions, cipher)
 	application := &App{cfg: cfg, db: db, router: router}
 
 	redisClient, redisErr := redisx.Open(redisx.Config{
@@ -114,7 +125,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			application.closeResources()
 			return nil, err
 		}
-		cipher, err := secret.NewCipher(key, "v1")
+		cipher, err = secret.NewCipher(key, "v1")
 		if err != nil {
 			application.closeResources()
 			return nil, err
@@ -157,6 +168,9 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			}
 		}
 		channels := channelrouter.New(db, plugins, nil)
+		channelOps := channelops.New(db, cipher, time.Now)
+		channelops.Mount(router.Group("/api/v1"), identityhttp.Authenticate(sessions), channelOps)
+		channels = channels.WithRollResolver(channelOps)
 		orchestrator := paymentorchestrator.NewConfigured(db, channels, time.Now, channelConfigs, cfg.HTTP.PublicURL)
 		finance := financeservice.New(db, ledgerWriter, time.Now)
 		transferService := transfer.New(db, ledgerWriter, time.Now)
@@ -192,6 +206,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		adminhttp.RegisterPlugins(adminGroup, db, channelConfigs, plugins)
 		paymentcallback.RegisterPlugins(router, db, channelConfigs, callbacks, plugins)
 		merchantgroup.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions))
+		complaint.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions))
 		settlement.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions), finance, transferService, merchantGroups.RateBp)
 		reporting.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions), merchantGroups.RateBp)
 		profitsharing.Mount(router.Group("/api/v1"), identityhttp.Authenticate(sessions), profitSharing)
