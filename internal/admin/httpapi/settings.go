@@ -57,6 +57,7 @@ var allowedSettings = map[string]bool{
 	"risk.daily_order_limit":             true,
 	"risk.ip_daily_limit":                true,
 	"merchant.deposit_required_cents":    true,
+	"wechat.mp.template_id":              true,
 	"notify.smtp_host":                   true,
 	"notify.smtp_port":                   true,
 	"notify.smtp_username":               true,

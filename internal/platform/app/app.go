@@ -129,7 +129,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	authService := auth.NewService(db, sessions).WithChallenge(securityService).WithInviteCodes(inviteCodes)
 	identityhttp.Register(router.Group("/api/v1"), authService, sessions)
 	security.Register(router.Group("/api/v1"), identityhttp.Authenticate(sessions), securityService)
-	notify.Register(router.Group("/api/v1"), db, sessions, cipher)
+	notifyService := notify.Register(router.Group("/api/v1"), db, sessions, cipher)
 
 	redisClient, redisErr := redisx.Open(redisx.Config{
 		Addr: cfg.Redis.Addr, Password: cfg.Redis.Password, DB: cfg.Redis.DB, Prefix: cfg.Redis.Prefix,
@@ -202,6 +202,9 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		outboxQuery := outbox.NewQuery(db)
 
 		notifyPrefs := notifyprefs.New(db, logger)
+		if notifyService != nil {
+			notifyPrefs = notifyPrefs.WithWeChat(notifyService.WeChatSender())
+		}
 		notifyprefs.RegisterMerchant(router.Group("/api/v1/merchant", identityhttp.Authenticate(sessions)), notifyPrefs)
 		merchant := merchanthttp.Register(router.Group("/api/v1/merchant"), sessions, credentials)
 		merchanthttp.RegisterOrders(merchant, paymentquery.New(db))

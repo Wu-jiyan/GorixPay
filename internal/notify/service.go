@@ -57,20 +57,23 @@ const channelContextPrefix = "notification-channel:"
 // sender is used and reset tokens are echoed to Logf. LogTokens overrides that
 // decision explicitly (tests and production both want control over it).
 type Config struct {
-	DB        *gorm.DB
-	Cipher    *secret.Cipher
-	Sender    Sender
-	Now       func() time.Time
-	Logf      func(format string, arguments ...any)
-	LogTokens *bool
+	DB            *gorm.DB
+	Cipher        *secret.Cipher
+	Sender        Sender
+	HTTPClient    HTTPClient
+	WeChatBaseURL string
+	Now           func() time.Time
+	Logf          func(format string, arguments ...any)
+	LogTokens     *bool
 }
 
-// Service issues one-time codes, resets merchant passwords and owns the
-// notification channel configuration.
+// Service issues one-time codes, resets merchant passwords, owns the
+// notification channel configuration and pushes 公众号 template messages.
 type Service struct {
 	db        *gorm.DB
 	cipher    *secret.Cipher
 	sender    Sender
+	wechat    *WeChatMPClient
 	now       func() time.Time
 	logf      func(format string, arguments ...any)
 	logTokens bool
@@ -107,7 +110,35 @@ func NewService(config Config) (*Service, error) {
 	if config.LogTokens != nil {
 		service.logTokens = *config.LogTokens
 	}
+	service.wechat = NewWeChatMPClient(config.DB, config.Cipher,
+		WithWeChatHTTPClient(config.HTTPClient),
+		WithWeChatBaseURL(config.WeChatBaseURL),
+		WithWeChatClock(config.Now),
+		WithWeChatLogger(service.logf),
+	)
 	return service, nil
+}
+
+// WeChatSender exposes the template message sender so the wiring layer can hand it
+// to other modules (notifyprefs uses it for the "wechat" notification channel).
+func (service *Service) WeChatSender() WeChatTemplateSender {
+	if service == nil {
+		return nil
+	}
+	return service.wechat
+}
+
+// SendWeChatTestMessage pushes one template message through an explicit
+// configuration row. It is what the administrator test endpoint calls, so the
+// operator validates the row being edited rather than the platform default.
+func (service *Service) SendWeChatTestMessage(ctx context.Context, configID, openID string) error {
+	if service.wechat == nil {
+		return ErrCipherUnavailable
+	}
+	return service.wechat.SendTemplateForConfig(ctx, configID, openID, "", "", map[string]string{
+		"first":    "GorixPay 测试消息：公众号配置可用。",
+		"keyword1": service.now().UTC().Format(time.RFC3339),
+	})
 }
 
 // merchantRecord is the slice of `merchants` this package reads and writes.

@@ -33,9 +33,17 @@ const (
 )
 
 const (
-	ChannelMail = "mail"
-	ChannelSMS  = "sms"
+	ChannelMail   = "mail"
+	ChannelSMS    = "sms"
+	ChannelWeChat = "wechat"
 )
+
+// WeChatTemplateSettingKey is the 公众号 template used by the wechat channel. It is
+// the same key internal/notify reads, so one setting drives both senders.
+const WeChatTemplateSettingKey = "wechat.mp.template_id"
+
+// weChatProvider is the oauth_bindings provider value that stores a 公众号 openid.
+const weChatProvider = "wechat"
 
 type Prefs struct {
 	MerchantID       string    `gorm:"type:varchar(36);primaryKey" json:"merchant_id"`
@@ -63,12 +71,32 @@ type SMSSender interface {
 	Send(ctx context.Context, phone, message string) error
 }
 
+// WeChatTemplateSender pushes a 公众号 template message. The shape matches
+// internal/notify's sender on purpose, so this package never imports it: the wiring
+// layer hands over whatever implements the method set.
+type WeChatTemplateSender interface {
+	SendWeChatTemplate(ctx context.Context, openID, templateID, url string, data map[string]string) error
+}
+
+// oauthBinding is the slice of oauth_bindings this package reads to find the
+// merchant's 公众号 openid.
+type oauthBinding struct {
+	ID            string `gorm:"type:varchar(36);primaryKey"`
+	PrincipalType string `gorm:"type:varchar(20);not null"`
+	PrincipalID   string `gorm:"type:varchar(36);not null"`
+	Provider      string `gorm:"type:varchar(20);not null"`
+	OpenID        string `gorm:"column:open_id;type:varchar(128);not null"`
+}
+
+func (oauthBinding) TableName() string { return "oauth_bindings" }
+
 type Service struct {
 	db     *gorm.DB
 	now    func() time.Time
 	logger *slog.Logger
 	mail   Mailer
 	sms    SMSSender
+	wechat WeChatTemplateSender
 }
 
 func New(db *gorm.DB, logger *slog.Logger) *Service {
@@ -90,6 +118,17 @@ func (service *Service) WithSenders(mail Mailer, sms SMSSender) *Service {
 	}
 	if sms != nil {
 		copied.sms = sms
+	}
+	return &copied
+}
+
+// WithWeChat attaches the 公众号 template sender used by the "wechat" channel.
+// Without one the channel falls back to mail, so an unwired deployment keeps
+// delivering notifications.
+func (service *Service) WithWeChat(sender WeChatTemplateSender) *Service {
+	copied := *service
+	if sender != nil {
+		copied.wechat = sender
 	}
 	return &copied
 }
@@ -211,7 +250,62 @@ func (service *Service) Notify(ctx context.Context, merchantID, scene, subject, 
 		}
 		return nil
 	}
+	if prefs.NotifyChannel == ChannelWeChat {
+		return service.sendWeChat(ctx, merchantID, scene, email, subject, body)
+	}
 	return service.sendMail(ctx, merchantID, scene, email, subject, body)
+}
+
+// sendWeChat pushes the notification as a 公众号 template message and falls back to
+// mail whenever WeChat cannot be used: no sender wired, merchant never bound an
+// openid, template id not configured, or the send itself failed. A notification is
+// best effort, so nothing here returns an error.
+func (service *Service) sendWeChat(ctx context.Context, merchantID, scene, email, subject, body string) error {
+	fallback := func(reason string, attributes ...any) error {
+		service.logger.Warn("notify: wechat channel unavailable, sending mail",
+			append([]any{"merchant_id", merchantID, "scene", scene, "reason", reason}, attributes...)...)
+		return service.sendMail(ctx, merchantID, scene, email, subject, body)
+	}
+	if service.wechat == nil {
+		return fallback("sender_not_wired")
+	}
+	openID, err := service.weChatOpenID(ctx, merchantID)
+	if err != nil {
+		return fallback("openid_lookup_failed", "error", err)
+	}
+	if openID == "" {
+		return fallback("no_openid")
+	}
+	settings, err := loadSettings(ctx, service.db, WeChatTemplateSettingKey)
+	if err != nil {
+		return fallback("settings_lookup_failed", "error", err)
+	}
+	templateID := strings.Trim(strings.TrimSpace(settings[WeChatTemplateSettingKey]), `"`)
+	if templateID == "" {
+		return fallback("template_not_configured")
+	}
+	// Epay style template: first carries the title, keyword1 the detail.
+	data := map[string]string{"first": subject, "keyword1": body}
+	if err := service.wechat.SendWeChatTemplate(ctx, openID, templateID, "", data); err != nil {
+		return fallback("delivery_failed", "error", err)
+	}
+	return nil
+}
+
+// weChatOpenID returns the merchant's 公众号 openid, or "" when it never bound one.
+func (service *Service) weChatOpenID(ctx context.Context, merchantID string) (string, error) {
+	var binding oauthBinding
+	err := service.db.WithContext(ctx).
+		Where("principal_type = ? AND principal_id = ? AND provider = ?",
+			string(identitymodel.PrincipalMerchant), merchantID, weChatProvider).
+		First(&binding).Error
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return "", nil
+	case err != nil:
+		return "", err
+	}
+	return strings.TrimSpace(binding.OpenID), nil
 }
 
 func (service *Service) sendMail(ctx context.Context, merchantID, scene, to, subject, body string) error {
@@ -245,5 +339,5 @@ func sceneSwitch(scene string) (func(Prefs) bool, bool) {
 }
 
 func validChannel(channel string) bool {
-	return channel == ChannelMail || channel == ChannelSMS
+	return channel == ChannelMail || channel == ChannelSMS || channel == ChannelWeChat
 }

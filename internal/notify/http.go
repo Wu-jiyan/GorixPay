@@ -41,6 +41,20 @@ func WithTokenLogging(enabled bool) Option {
 	return func(config *Config) { config.LogTokens = &enabled }
 }
 
+// WithHTTPClient injects the transport used by the 公众号 template sender.
+func WithHTTPClient(client HTTPClient) Option {
+	return func(config *Config) { config.HTTPClient = client }
+}
+
+// WithWeChatTransport injects both the transport and the gateway base URL, which is
+// how tests point the template sender at an httptest server.
+func WithWeChatTransport(client HTTPClient, baseURL string) Option {
+	return func(config *Config) {
+		config.HTTPClient = client
+		config.WeChatBaseURL = baseURL
+	}
+}
+
 // Register mounts the M8 routes on the caller's /api/v1 group:
 //
 //	public:   POST /auth/merchant/password/forgot, /auth/merchant/password/reset, /auth/code
@@ -54,9 +68,12 @@ func WithTokenLogging(enabled bool) Option {
 // cipher may be nil when the deployment runs without a master key: the code and
 // password routes keep working and the channel routes answer 503, which matches
 // the "no key, no encrypted feature" rule the rest of app.go follows.
-func Register(group *gin.RouterGroup, db *gorm.DB, sessions *session.Service, cipher *secret.Cipher, options ...Option) {
+//
+// It returns the service it built (nil when nothing was mounted) so the wiring
+// layer can reuse the 公众号 sender: notifyprefs needs it for the "wechat" channel.
+func Register(group *gin.RouterGroup, db *gorm.DB, sessions *session.Service, cipher *secret.Cipher, options ...Option) *Service {
 	if group == nil || db == nil || sessions == nil {
-		return
+		return nil
 	}
 	config := Config{DB: db, Cipher: cipher}
 	for _, option := range options {
@@ -66,7 +83,7 @@ func Register(group *gin.RouterGroup, db *gorm.DB, sessions *session.Service, ci
 	if err != nil {
 		// Unreachable after the nil checks above; returning keeps an unauthenticated
 		// or unencrypted surface from being mounted by accident.
-		return
+		return nil
 	}
 	handler := &handler{service: service}
 
@@ -84,6 +101,12 @@ func Register(group *gin.RouterGroup, db *gorm.DB, sessions *session.Service, ci
 	admin.PUT("/notification-channels/:id", handler.updateChannel)
 	admin.DELETE("/notification-channels/:id", handler.deleteChannel)
 	admin.POST("/notification-channels/:id/test", handler.testChannel)
+	// The 公众号 configuration CRUD lives in internal/channelops; only the test
+	// message needs the template sender, so it is registered from here on the same
+	// "/wechat-mp-configs/:id" node (gin merges the trees because the parameter
+	// name matches).
+	admin.POST("/wechat-mp-configs/:id/test-message", handler.testWeChatMessage)
+	return service
 }
 
 type handler struct {
@@ -267,6 +290,27 @@ func (handler *handler) testChannel(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"ok": true, "channel": channelResponse(view)})
 }
 
+type weChatTestPayload struct {
+	OpenID string `json:"openid"`
+}
+
+func (handler *handler) testWeChatMessage(ctx *gin.Context) {
+	var payload weChatTestPayload
+	if err := ctx.ShouldBindJSON(&payload); err != nil {
+		invalidRequest(ctx, "invalid request")
+		return
+	}
+	if strings.TrimSpace(payload.OpenID) == "" {
+		invalidRequest(ctx, "openid is required")
+		return
+	}
+	if err := handler.service.SendWeChatTestMessage(ctx.Request.Context(), ctx.Param("id"), payload.OpenID); err != nil {
+		respondError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // channelResponse never contains config values: only the configured field names.
 func channelResponse(view ChannelView) gin.H {
 	keys := view.ConfigKeys
@@ -285,11 +329,23 @@ func channelResponse(view ChannelView) gin.H {
 }
 
 func respondError(ctx *gin.Context, err error) {
+	// WeChat answered with errcode != 0: surface the code and message verbatim so
+	// the operator can look it up, and mark it as an upstream failure.
+	var apiError *WeChatAPIError
+	if errors.As(err, &apiError) {
+		ctx.JSON(http.StatusBadGateway, gin.H{
+			"code":    "wechat_upstream_error",
+			"message": apiError.Error(),
+			"errcode": apiError.Code,
+			"errmsg":  apiError.Message,
+		})
+		return
+	}
 	switch {
 	case errors.Is(err, ErrInvalidRequest):
 		invalidRequest(ctx, "invalid request")
 	case errors.Is(err, ErrNotFound):
-		ctx.JSON(http.StatusNotFound, gin.H{"code": "not_found", "message": "notification channel not found"})
+		ctx.JSON(http.StatusNotFound, gin.H{"code": "not_found", "message": "not found"})
 	case errors.Is(err, ErrInvalidToken), errors.Is(err, ErrTokenExpired), errors.Is(err, ErrTokenConsumed):
 		ctx.JSON(http.StatusBadRequest, gin.H{"code": "invalid_token", "message": "重置令牌无效或已过期"})
 	case errors.Is(err, ErrCodeInvalid), errors.Is(err, ErrCodeExpired),
@@ -301,6 +357,8 @@ func respondError(ctx *gin.Context, err error) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"code": "invalid_old_password", "message": "当前密码不正确"})
 	case errors.Is(err, ErrDeliveryFailed):
 		ctx.JSON(http.StatusInternalServerError, gin.H{"code": "delivery_failed", "message": "消息发送失败"})
+	case errors.Is(err, ErrNotConfigured):
+		ctx.JSON(http.StatusBadRequest, gin.H{"code": "template_not_configured", "message": "未配置 wechat.mp.template_id 或公众号配置缺失"})
 	case errors.Is(err, ErrCipherUnavailable):
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"code": "cipher_unavailable", "message": "未配置主密钥，通知通道不可用"})
 	default:

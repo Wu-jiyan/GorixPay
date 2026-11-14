@@ -68,6 +68,23 @@ func newTestCipher(t *testing.T, fill byte) *secret.Cipher {
 	return cipher
 }
 
+// openFixtureDB opens a private in-memory SQLite database and returns its closer.
+func openFixtureDB(name string) (*gorm.DB, func(), error) {
+	db, _, err := database.Open(context.Background(), config.DatabaseConfig{
+		Driver: "sqlite",
+		DSN:    "file:" + name + "?mode=memory&cache=shared",
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	cleanup := func() {
+		if sqlDB, err := db.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	}
+	return db, cleanup, nil
+}
+
 func testCipher(t *testing.T) *secret.Cipher {
 	t.Helper()
 	return newTestCipher(t, 0x2a)

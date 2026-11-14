@@ -29,34 +29,30 @@ type httpFixture struct {
 	logs          *[]string
 	adminToken    string
 	merchantToken string
+	wechat        *fakeWeChatUpstream
 }
 
 func newHTTPFixture(t *testing.T, name string) httpFixture {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	db, _, err := database.Open(context.Background(), config.DatabaseConfig{
-		Driver: "sqlite",
-		DSN:    "file:" + name + "?mode=memory&cache=shared",
-	})
+	db, cleanup, err := openFixtureDB(name)
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	t.Cleanup(func() {
-		if sqlDB, err := db.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-	})
-	if err := db.AutoMigrate(&Channel{}, &VerifyCode{}, &PasswordReset{}, &merchantRecord{}, &identitymodel.Session{}); err != nil {
+	t.Cleanup(cleanup)
+	if err := db.AutoMigrate(&Channel{}, &VerifyCode{}, &PasswordReset{}, &merchantRecord{}, &identitymodel.Session{}, &WeChatMPConfig{}, &settingRow{}); err != nil {
 		t.Fatalf("migrate fixture: %v", err)
 	}
 	sessions := session.NewService(db, time.Now)
 	source := &clock{at: fixtureStart}
 	logs := []string{}
+	upstream := newFakeWeChat(t)
 	router := gin.New()
 	Register(router.Group("/api/v1"), db, sessions, testCipher(t),
 		WithClock(source.Now),
 		WithSender(&captureSender{}),
 		WithTokenLogging(true),
+		WithWeChatTransport(upstream.server.Client(), upstream.server.URL),
 		WithLogger(func(format string, arguments ...any) {
 			logs = append(logs, fmt.Sprintf(format, arguments...))
 		}),
@@ -69,7 +65,10 @@ func newHTTPFixture(t *testing.T, name string) httpFixture {
 	if err != nil {
 		t.Fatalf("merchant session: %v", err)
 	}
-	return httpFixture{router: router, db: db, sessions: sessions, clock: source, logs: &logs, adminToken: adminToken, merchantToken: merchantToken}
+	return httpFixture{
+		router: router, db: db, sessions: sessions, clock: source, logs: &logs,
+		adminToken: adminToken, merchantToken: merchantToken, wechat: upstream,
+	}
 }
 
 func call(t *testing.T, router *gin.Engine, method, path, token string, body any) *httptest.ResponseRecorder {
@@ -380,5 +379,51 @@ func TestRegisterWithoutDependenciesMountsNothing(t *testing.T) {
 	Register(router.Group("/api/v1"), nil, nil, nil)
 	if recorder := call(t, router, http.MethodPost, "/api/v1/auth/code", "", map[string]any{"scene": "reset_password", "target": "13800000001"}); recorder.Code != http.StatusNotFound {
 		t.Fatalf("nil dependencies registered routes: %d", recorder.Code)
+	}
+}
+
+// TestWeChatTestMessageEndpoint covers the administrator test button: it must
+// surface a missing template as 400 and a WeChat rejection as 502 with the errcode.
+func TestWeChatTestMessageEndpoint(t *testing.T) {
+	fixture := newHTTPFixture(t, "notify-http-wechat")
+	seedWeChatConfig(t, fixture.db, testCipher(t), "mp-1", "wx-app-1", nil, weChatConfigStatusActive)
+	path := "/api/v1/admin/wechat-mp-configs/mp-1/test-message"
+
+	if recorder := call(t, fixture.router, http.MethodPost, path, "", map[string]any{"openid": "open-1"}); recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous test message = %d, want 401", recorder.Code)
+	}
+	if recorder := call(t, fixture.router, http.MethodPost, path, fixture.merchantToken, map[string]any{"openid": "open-1"}); recorder.Code != http.StatusForbidden {
+		t.Fatalf("merchant test message = %d, want 403", recorder.Code)
+	}
+	// No template id configured yet.
+	recorder := call(t, fixture.router, http.MethodPost, path, fixture.adminToken, map[string]any{"openid": "open-1"})
+	if recorder.Code != http.StatusBadRequest || decode(t, recorder)["code"] != "template_not_configured" {
+		t.Fatalf("missing template = %d %s", recorder.Code, recorder.Body.String())
+	}
+	if recorder := call(t, fixture.router, http.MethodPost, path, fixture.adminToken, map[string]any{}); recorder.Code != http.StatusBadRequest {
+		t.Fatalf("missing openid = %d, want 400", recorder.Code)
+	}
+
+	seedTemplateID(t, fixture.db, "tmpl-1")
+	recorder = call(t, fixture.router, http.MethodPost, path, fixture.adminToken, map[string]any{"openid": "open-1"})
+	if recorder.Code != http.StatusOK || decode(t, recorder)["ok"] != true {
+		t.Fatalf("test message = %d %s", recorder.Code, recorder.Body.String())
+	}
+	if fixture.wechat.lastTemplate["touser"] != "open-1" {
+		t.Fatalf("touser = %v", fixture.wechat.lastTemplate["touser"])
+	}
+
+	// A WeChat errcode is reported verbatim with 502.
+	fixture.wechat.mutex.Lock()
+	fixture.wechat.pendingErrCodes = []int{40003}
+	fixture.wechat.mutex.Unlock()
+	recorder = call(t, fixture.router, http.MethodPost, path, fixture.adminToken, map[string]any{"openid": "open-1"})
+	payload := decode(t, recorder)
+	if recorder.Code != http.StatusBadGateway || payload["code"] != "wechat_upstream_error" || payload["errcode"] != float64(40003) {
+		t.Fatalf("upstream error = %d %s", recorder.Code, recorder.Body.String())
+	}
+
+	if recorder := call(t, fixture.router, http.MethodPost, "/api/v1/admin/wechat-mp-configs/missing/test-message", fixture.adminToken, map[string]any{"openid": "open-1"}); recorder.Code != http.StatusNotFound {
+		t.Fatalf("unknown config = %d, want 404", recorder.Code)
 	}
 }

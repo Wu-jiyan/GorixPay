@@ -4,7 +4,7 @@
 
 `v2.0.0` 于 2026-11-13 打上第一个 tag，下面是这个版本的全部内容。之前的两个 commit 是内部开发阶段，没有对外发过。
 
-## [未发布]
+## [2.2.0] - 2026-11-14
 
 ### 结算自动化
 
@@ -109,6 +109,7 @@
 - 聚合收款码：`GET /merchant/pay-code` 返回**真 QR**（`rsc.io/qr` 编码，模块渲染成 SVG 矩形）与支付页 `/pay/code/{type}`；商户自助测试支付上限 1 元。
 - 插件定时钩子：`CronHook` 接口、`Registry.CronHooks()`、`RunCronHooks()`（跑完全部收集错误，panic 转 error），后台每分钟调用。
 - 协议补口：`/pay/{func}/{trade_no}/` 覆盖 scan、qrcode、jsapi、mini、h5、red、bank、wap 八种上游页面名，统一落到收银台；`getshop.php` 补 `act=poll` 与 `act=captcha_verify`。
+- 公众号模板消息：`stable_token` 按 `app_id` 缓存、`template/send` 发送、`errcode` 统一包装、`40001/40014/42001` 清缓存重试一次；`notifyprefs` 新增 `wechat` 渠道，没绑 openid 或没配模板时回退邮件并记警告。
 
 ## [2.1.0] - 2026-11-14
 
