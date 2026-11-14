@@ -4,6 +4,12 @@ import { fileURLToPath, URL } from 'node:url';
 
 // 依赖分包：把组件库、框架运行时、工具库拆成独立 chunk，
 // 避免所有 node_modules 被并进入口 index-*.js（首屏单 chunk 过大）。
+//
+// 注意：naive-ui 及其全部依赖必须落在**同一个** chunk 里。曾经把
+// es/data-table、es/date-picker、vueuc 单独拆成 vendor-naive-widgets，结果两个
+// chunk 互相 import，形成环，浏览器启动时报
+// "Uncaught ReferenceError: Cannot access 'X' before initialization"，
+// 页面直接白屏（构建不报错，只有真浏览器能发现）。宁可单块大一点，也不能成环。
 const VENDOR_NAIVE = [
   'naive-ui',
   'vueuc',
@@ -17,24 +23,20 @@ const VENDOR_NAIVE = [
   '@vicons',
 ];
 
+function inPackage(id: string, name: string): boolean {
+  return id.includes(`/node_modules/${name}/`);
+}
+
 function manualChunks(id: string): string | undefined {
   if (!id.includes('node_modules')) return undefined;
-  // 日期库只被日期选择器用到，单独成块，避免并进组件库主 chunk
-  if (id.includes('date-fns')) return 'vendor-date';
-  // 表格 / 日期选择器这类重型控件单独成块：体积大但变化少，命中缓存率高
-  if (
-    id.includes('naive-ui/es/data-table') ||
-    id.includes('naive-ui/es/date-picker') ||
-    id.includes('naive-ui/es/_internal/date-panel') ||
-    id.includes('vueuc')
-  ) {
-    return 'vendor-naive-widgets';
-  }
-  if (VENDOR_NAIVE.some((name) => id.includes(name))) return 'vendor-naive';
-  if (id.includes('vue-router') || id.includes('pinia')) return 'vendor-vue';
-  if (id.includes('/@vue/') || id.includes('/vue/')) return 'vendor-vue';
-  if (id.includes('axios')) return 'vendor-axios';
-  if (id.includes('dayjs')) return 'vendor-dayjs';
+  // naive-ui 全家桶（含它内部的 data-table / date-picker / vueuc）一起成块
+  if (VENDOR_NAIVE.some((name) => inPackage(id, name))) return 'vendor-naive';
+  // 日期库只被日期选择器用到，单向依赖 naive，单独成块不会成环
+  if (inPackage(id, 'date-fns')) return 'vendor-date';
+  if (inPackage(id, 'vue-router') || inPackage(id, 'pinia')) return 'vendor-vue';
+  if (inPackage(id, 'vue') || inPackage(id, '@vue')) return 'vendor-vue';
+  if (inPackage(id, 'axios')) return 'vendor-axios';
+  if (inPackage(id, 'dayjs')) return 'vendor-dayjs';
   return 'vendor-misc';
 }
 
@@ -49,15 +51,17 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8080',
+        // 与服务端 supervisor 里配置的监听端口保持一致
+        target: 'http://127.0.0.1:18088',
         changeOrigin: true,
       },
     },
   },
   build: {
     outDir: 'dist',
-    // 首屏体积靠拆分控制，阈值调回接近默认值，让后续膨胀重新可见
-    chunkSizeWarningLimit: 800,
+    // naive-ui 单块约 900 kB（gzip ~240 kB），成环比大块危险得多，阈值放到 1000 让
+    // 「又变回一个 1.6 MB 的入口」这种退化仍然能被警告抓到
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         manualChunks,
