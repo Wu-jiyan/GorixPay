@@ -8,7 +8,7 @@ import { errorMessage } from '@/api/client';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusTag from '@/components/StatusTag.vue';
 import { formatDateTime } from '@/utils/format';
-import { itemsOf } from './shared';
+import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
 
 interface MpForm {
   merchant_id: string;
@@ -48,10 +48,15 @@ const rules: FormRules = {
 
 const isEditing = computed(() => editingId.value !== null);
 
+const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } = useServerPaging(load);
+
 async function load() {
   loading.value = true;
   try {
-    rows.value = itemsOf<WechatMpConfig>(await wechatMpApi.list());
+    const data = await wechatMpApi.list({ page: page.value, page_size: pageSize.value });
+    const items = itemsOf<WechatMpConfig>(data);
+    rows.value = items;
+    total.value = numberOr(asRow(data).total, items.length);
   } catch (error) {
     message.error(errorMessage(error));
   } finally {
@@ -108,12 +113,15 @@ async function submit() {
     if (editingId.value) {
       await wechatMpApi.update(editingId.value, payload);
       message.success('公众号配置已更新');
+      showForm.value = false;
+      await load();
     } else {
       await wechatMpApi.create(payload);
       message.success('公众号配置已创建');
+      showForm.value = false;
+      resetPage();
+      await load();
     }
-    showForm.value = false;
-    await load();
   } catch (error) {
     message.error(errorMessage(error));
   } finally {
@@ -215,11 +223,14 @@ onMounted(load);
         :columns="columns"
         :data="rows"
         :loading="loading"
-        :pagination="{ pageSize: 10 }"
+        :pagination="pagination"
         :row-key="(row: WechatMpConfig) => row.id"
         :bordered="false"
         :single-line="false"
         size="small"
+        remote
+        @update:page="onPage"
+        @update:page-size="onPageSize"
       >
         <template #empty>
           <n-empty description="暂无公众号配置" size="small" />

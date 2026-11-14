@@ -51,6 +51,7 @@ const menuOptions = [
   { label: '风控与黑名单', key: '/admin/risk' },
   { label: '资金账本', key: '/admin/ledger' },
   { label: '消息队列', key: '/admin/outbox' },
+  { label: '通知通道', key: '/admin/notification-channels' },
   { label: '公告管理', key: '/admin/announcements' },
   { label: '安全设置', key: '/admin/security' },
   { label: '系统设置', key: '/admin/settings' },

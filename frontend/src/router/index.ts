@@ -115,6 +115,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'invites', component: () => import('@/pages/admin/Invites.vue'), meta: { title: '返佣记录' } },
       { path: 'ledger', component: () => import('@/pages/admin/Ledger.vue'), meta: { title: '资金账本' } },
       { path: 'outbox', component: () => import('@/pages/admin/Outbox.vue'), meta: { title: '消息队列' } },
+      { path: 'notification-channels', component: () => import('@/pages/admin/NotificationChannels.vue'), meta: { title: '通知通道' } },
       {
         path: 'announcements',
         component: () => import('@/pages/admin/Announcements.vue'),

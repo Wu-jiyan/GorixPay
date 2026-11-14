@@ -1,5 +1,5 @@
 import http from './client';
-import type { Paginated } from './types';
+import type { Paginated, PageQuery } from './types';
 
 export interface PayType {
   id: string;
@@ -50,6 +50,7 @@ export interface PayRollGenerateResult {
 }
 
 export const payTypesApi = {
+  /** 一次取全，后端最多返回 500 条 */
   async list() {
     const { data } = await http.get<Paginated<PayType> | PayType[]>('/admin/pay-types');
     return data;
@@ -71,8 +72,8 @@ export const payTypesApi = {
 };
 
 export const payRollsApi = {
-  async list() {
-    const { data } = await http.get<Paginated<PayRoll> | PayRoll[]>('/admin/pay-rolls');
+  async list(query: PageQuery = {}) {
+    const { data } = await http.get<Paginated<PayRoll> | PayRoll[]>('/admin/pay-rolls', { params: query });
     return data;
   },
   async create(payload: PayRollInput) {
@@ -113,8 +114,10 @@ export interface WechatMpInput {
 }
 
 export const wechatMpApi = {
-  async list() {
-    const { data } = await http.get<Paginated<WechatMpConfig> | WechatMpConfig[]>('/admin/wechat-mp-configs');
+  async list(query: PageQuery = {}) {
+    const { data } = await http.get<Paginated<WechatMpConfig> | WechatMpConfig[]>('/admin/wechat-mp-configs', {
+      params: query,
+    });
     return data;
   },
   async create(payload: WechatMpInput) {

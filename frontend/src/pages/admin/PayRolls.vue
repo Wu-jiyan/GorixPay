@@ -10,7 +10,7 @@ import type { PayRoll } from '@/api/payTypes';
 import { errorMessage } from '@/api/client';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusTag from '@/components/StatusTag.vue';
-import { asRow, itemsOf } from './shared';
+import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
 
 interface RollForm {
   channel_id: string;
@@ -43,6 +43,8 @@ const form = reactive<RollForm>({
   status: 'active',
 });
 
+const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } = useServerPaging(load);
+
 const statusOptions: SelectOption[] = [
   { label: '启用', value: 'active' },
   { label: '禁用', value: 'disabled' },
@@ -69,7 +71,10 @@ const isEditing = computed(() => editingId.value !== null);
 async function load() {
   loading.value = true;
   try {
-    rows.value = itemsOf<PayRoll>(await payRollsApi.list());
+    const data = await payRollsApi.list({ page: page.value, page_size: pageSize.value });
+    const items = itemsOf<PayRoll>(data);
+    rows.value = items;
+    total.value = numberOr(asRow(data).total, items.length);
   } catch (error) {
     message.error(errorMessage(error));
   } finally {
@@ -125,12 +130,16 @@ async function submit() {
     if (editingId.value) {
       await payRollsApi.update(editingId.value, payload);
       message.success('轮询配置已更新');
+      showForm.value = false;
+      await load();
     } else {
       await payRollsApi.create(payload);
       message.success('轮询配置已创建');
+      showForm.value = false;
+      // 新建后回到第一页，避免新记录在别的页看不到
+      resetPage();
+      await load();
     }
-    showForm.value = false;
-    await load();
   } catch (error) {
     message.error(errorMessage(error));
   } finally {
@@ -182,6 +191,7 @@ async function runGenerate() {
     });
     message.success(`批量生成完成，本次生成 ${countOf(result)} 条轮询配置`);
     showGenerate.value = false;
+    resetPage();
     await load();
   } catch (error) {
     message.error(errorMessage(error));
@@ -270,11 +280,14 @@ onMounted(() => {
         :columns="columns"
         :data="rows"
         :loading="loading"
-        :pagination="{ pageSize: 20 }"
+        :pagination="pagination"
         :row-key="(row: PayRoll) => row.id"
         :bordered="false"
         :single-line="false"
         size="small"
+        remote
+        @update:page="onPage"
+        @update:page-size="onPageSize"
       >
         <template #empty>
           <n-empty description="暂无轮询配置" size="small" />
