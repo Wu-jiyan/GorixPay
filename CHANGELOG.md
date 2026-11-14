@@ -66,6 +66,39 @@
 - 前端新增运营端五页（投诉、安全设置、支付方式、按日轮询、公众号配置）与商户端两处（我的投诉、找回密码 + 账户资料里的改密卡片），登录页接入图形验证码。
 - `internal/channel/router` 增加可选的按日轮询钩子（`WithRollResolver`），不注入时行为不变。
 
+### 语音设备与云打印
+
+- 新增 `voice_devices`、`voice_broadcasts`、`printers`、`print_jobs`（迁移 `000024`）。
+- 设备侧走 `device_no` + 密钥（常量时间比对，不走会话）：语音心跳取走待播报并标记已下发，打印机轮询取任务，未确认最多重投 3 次。
+- 支付成功钩子在同一事务里给本商户与全局设备入队播报、给本商户打印机入队小票，按订单判重，重放不会重复打印。
+
+### 运维小件
+
+- `POST /api/v1/admin/maintenance/cleanup`：四张表白名单，只删 30 天前数据，默认 dry-run，真删要 `confirm:"DELETE"`。
+- `POST /api/v1/admin/channels/:id/test-order`：运营端发起一笔测试订单，返回 `trade_no` 与支付动作。
+
+### 第三方登录与扫码登录
+
+- 新增 `oauth_bindings`、`qr_login_sessions`、`oauth_states`（迁移 `000025`）。
+- 微信/QQ/抖音 OAuth：一次性 state 落库，已绑定直接登录，未绑定返回 `bind_ticket` 用密码绑定，商户端可查绑定与解绑。
+- 扫码登录：SVG 二维码自己画，ticket 5 分钟，`pending → scanned → confirmed`，token 只发一次；后台每 30 分钟清理过期 state 与 ticket。
+
+### 用户组购买与红包退回
+
+- `merchant_groups.price_cents` 与 `group_purchases`（迁移 `000026`）：组买断价、余额扣款归组、退款反向入账并解组；幂等键带 `attempts` 后缀，退款后再买同一组会真的扣款。
+- 红包批次：整批撤销解冻与过期自动退回（后台每 30 分钟扫一次，超 24 小时未审核整批撤销）。
+
+### 站点皮肤
+
+- 设置项 `site.skin`（`default` / `dark` / `compact`），`/api/v1/public/site` 返回 `skin`，前端据此切换 Naive 主题与页面留白。
+
+### 修掉的三个问题
+
+- `cipher` 在 `security.New` 之前没加载，两步验证拿到 nil cipher，TOTP 绑定直接 500。
+- `decodeBool` 只认 JSON 布尔，后台写入的字符串 `"true"` 被判成 false，图形验证码开关不生效。
+- 验证码 SVG 用 `<text>` 输出字符，答案能被脚本直接读出来；改成位图矩形绘制，并补了「SVG 里不得出现 text 节点」的断言。
+- 回调钩子改为一次性挂全部：`WithHooks` 是替换语义，第二次调用会把资金、返佣、分账三个钩子丢掉。
+
 ## [2.1.0] - 2026-11-14
 
 ### 站点身份可配置
