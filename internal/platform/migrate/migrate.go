@@ -262,10 +262,14 @@ func isAlreadyAppliedStatement(err error) bool {
 
 var mysqlIndexGuard = regexp.MustCompile(`(?i)CREATE\s+(UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS`)
 
-// prepareMigration rewrites statements MySQL cannot parse. MySQL has no
-// CREATE INDEX IF NOT EXISTS, and duplicate key names are tolerated by
-// isAlreadyAppliedStatement, so the guard can be dropped for that dialect only.
+// prepareMigration rewrites statements MySQL cannot parse.
+//
+// MySQL 5.7 rejects a leading UTF-8 BOM with a syntax error ("check the manual
+// that corresponds to your MySQL server version"), while a file written by an
+// editor that adds one silently works on SQLite. The BOM is stripped for every
+// dialect so a stray one can never block a deployment again.
 func prepareMigration(dialect, content string) string {
+	content = strings.TrimPrefix(content, "\ufeff")
 	if dialect != "mysql" {
 		return content
 	}

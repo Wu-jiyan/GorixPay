@@ -1,4 +1,4 @@
-﻿-- 000019: profit sharing receivers/orders and red packet payouts.
+-- 000019: profit sharing receivers/orders and red packet payouts.
 -- Only portable SQL is used so the migration runs on SQLite, MySQL and PostgreSQL.
 
 CREATE TABLE IF NOT EXISTS profit_sharing_receivers (
