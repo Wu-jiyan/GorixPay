@@ -6,6 +6,7 @@ import { useMessage, type FormInst, type FormRules } from 'naive-ui';
 import { authApi } from '@/api';
 import { errorMessage } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
+import { siteLogo, siteName } from '@/stores/site';
 
 const router = useRouter();
 const message = useMessage();
@@ -54,8 +55,9 @@ async function handleSubmit() {
   <div class="auth-page">
     <div class="auth-brand">
       <router-link to="/" class="brand-link">
-        <span class="brand-mark">G</span>
-        <span class="brand-name">GorixPay</span>
+        <img v-if="siteLogo" :src="siteLogo" class="brand-logo" alt="" />
+        <span v-else class="brand-mark">G</span>
+        <span class="brand-name">{{ siteName }}</span>
       </router-link>
     </div>
     <n-card class="auth-card" :bordered="false">
@@ -124,6 +126,14 @@ async function handleSubmit() {
   place-items: center;
   color: #fff;
   background: linear-gradient(135deg, #2563eb, #06b6d4);
+}
+.brand-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  object-fit: cover;
+  display: block;
+  flex: none;
 }
 .auth-card {
   width: 100%;

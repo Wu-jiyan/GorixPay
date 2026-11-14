@@ -1,5 +1,11 @@
 <script setup lang="ts">
+import { onMounted } from 'vue';
 import { zhCN, dateZhCN, type GlobalThemeOverrides } from 'naive-ui';
+import { loadSite } from '@/stores/site';
+
+onMounted(() => {
+  void loadSite();
+});
 
 const themeOverrides: GlobalThemeOverrides = {
   common: {

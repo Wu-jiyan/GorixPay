@@ -16,6 +16,8 @@ interface SettingMeta {
   kind: SettingKind;
   /** 金额（分）或万分比，用于展示换算后的可读值 */
   unit?: SettingUnit;
+  /** 用多行文本框渲染（页脚、说明类文本） */
+  textarea?: boolean;
 }
 
 interface SettingRow {
@@ -24,6 +26,7 @@ interface SettingRow {
   hint: string;
   kind: SettingKind;
   unit?: SettingUnit;
+  textarea?: boolean;
   value: SettingValue;
   original: SettingValue;
   updated_at: string;
@@ -37,13 +40,19 @@ interface SettingGroup {
 const meta: Record<string, SettingMeta> = {
   'site.name': {
     label: '站点名称',
-    hint: '官网、收银台与页面标题使用的站点名',
+    hint: '显示在官网、收银台、浏览器标题，以及运营后台与商户中心左上角',
     kind: 'string',
   },
   'site.logo_url': {
     label: '站点 Logo 地址',
-    hint: '图片 URL，留空则使用文字标识',
+    hint: '可填 https:// 开头的图片地址，留空用默认图标；后台左上角按 34×34 圆角渲染',
     kind: 'string',
+  },
+  'site.footer_text': {
+    label: '页脚文本',
+    hint: '显示在官网页脚，通常填备案号或公司名，留空不显示',
+    kind: 'string',
+    textarea: true,
   },
   'payment.order_expiry_minutes': {
     label: '订单过期时间（分钟）',
@@ -184,6 +193,7 @@ async function load() {
         hint: known?.hint ?? '',
         kind,
         unit: known?.unit,
+        textarea: known?.textarea,
         value,
         original: value,
         updated_at: item.updated_at,
@@ -261,6 +271,13 @@ onMounted(load);
                     :min="0"
                     :step="1"
                     style="width: 220px"
+                  />
+                  <n-input
+                    v-else-if="row.textarea"
+                    v-model:value="row.value"
+                    type="textarea"
+                    :autosize="{ minRows: 2, maxRows: 6 }"
+                    placeholder="留空则不显示"
                   />
                   <n-input v-else v-model:value="row.value" placeholder="请输入配置值" style="width: 100%" />
                   <div class="setting-meta">

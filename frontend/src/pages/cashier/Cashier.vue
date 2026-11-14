@@ -7,6 +7,7 @@ import { useMessage } from 'naive-ui';
 import { cashierApi } from '@/api';
 import type { CashierOrder, OrderStatus, StartPaymentResult } from '@/api/types';
 import { errorMessage } from '@/api/client';
+import { siteLogo, siteName } from '@/stores/site';
 import { copyText, formatDateTime, formatMoney, paymentTypeText } from '@/utils/format';
 
 const route = useRoute();
@@ -271,9 +272,10 @@ onBeforeUnmount(() => {
   <div class="cashier-page">
     <div class="cashier-card">
       <div class="cashier-brand">
-        <span class="brand-mark">G</span>
+        <img v-if="siteLogo" :src="siteLogo" class="brand-logo" alt="" />
+        <span v-else class="brand-mark">G</span>
         <div>
-          <div class="brand-name">GorixPay</div>
+          <div class="brand-name">{{ siteName }}</div>
           <div class="brand-sub">安全收银台</div>
         </div>
       </div>
@@ -442,7 +444,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="cashier-foot">
-        <span>本页面由 GorixPay 提供，支付信息经加密传输</span>
+        <span>本页面由 {{ siteName }} 提供，支付信息仅用于本次交易</span>
         <span class="foot-sep">·</span>
         <router-link to="/doc">查看接入文档</router-link>
       </div>
@@ -484,6 +486,14 @@ onBeforeUnmount(() => {
   color: #fff;
   font-weight: 700;
   background: linear-gradient(135deg, #2563eb, #06b6d4);
+}
+.brand-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  object-fit: cover;
+  display: block;
+  flex: none;
 }
 .brand-name {
   font-weight: 700;

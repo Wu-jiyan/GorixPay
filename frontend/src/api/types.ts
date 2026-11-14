@@ -161,7 +161,8 @@ export interface Announcement {
 export interface SiteInfo {
   name: string;
   logo_url: string;
-  announcement?: string;
+  footer_text?: string;
+  announcement?: Announcement | null;
   payment_types: string[];
 }
 

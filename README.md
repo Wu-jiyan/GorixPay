@@ -330,22 +330,27 @@ $env:EPAY_PHP_BIN = "C:\php74\php.exe"
 
 ## 部署
 
-Compose 文件在 `deploy/`。起来之前要准备两样东西，缺一样 `docker compose` 会直接报错停下：
+三种方式，详细步骤在 [`docs/deployment.md`](docs/deployment.md)：Docker Compose（推荐）、Docker 单容器、源码编译加 systemd。想一条命令起站：
+
+```bash
+bash scripts/deploy.sh          # Linux，等价于下面的手动步骤，外加生成密钥、等健康检查
+pwsh -File scripts/deploy.ps1   # Windows，加 -DryRun 只看不动
+```
+
+手动跑 Compose 的话，起来之前要准备两样东西，缺一样 `docker compose` 会直接报错停下：
 
 ```bash
 # 1) 数据库口令与对外地址，compose 从同目录的 .env 读；口令同时给 postgres 和 GorixPay 的 DSN 用
-cat > deploy/.env <<'EOF'
-POSTGRES_PASSWORD=换成一个随机口令
-GORIXPAY_PUBLIC_URL=https://pay.example.com
-EOF
+cp deploy/.env.example deploy/.env   # 然后改 POSTGRES_PASSWORD 与 GORIXPAY_PUBLIC_URL
 
 # 2) 主密钥：32 字节随机数，或这 32 字节的 base64
+mkdir -p deploy/secrets
 head -c 32 /dev/urandom | base64 > deploy/secrets/master_key.txt
 
 docker compose -f deploy/compose.yaml up -d --build
 ```
 
-Compose 起三个服务：`postgres:16-alpine`、`redis:7-alpine`、`gorixpay`。前端在镜像里的 `node:22-alpine` 阶段用 `npm ci && npm run build` 构建，运行镜像只拷 `dist`，所以不需要先在本地 build 一遍。
+Compose 起三个服务：`postgres:16-alpine`、`redis:7-alpine`、`gorixpay`。前端在镜像里的 `node:22-alpine` 阶段用 `npm ci && npm run build` 构建，运行镜像只拷 `dist`，所以不需要先在本地 build 一遍。依赖源默认走国内镜像，境外网络构建时传 `--build-arg NPM_REGISTRY=https://registry.npmjs.org --build-arg GOPROXY=https://proxy.golang.org,direct`。
 
 容易踩的几处：
 
@@ -387,6 +392,7 @@ go run ./cmd/migrate-epay `
 - `huifu` 只做创建订单与回调。斗拱对 `jspay` 订单的关单接口在实测里回「交易不存在」，退款要另走接口，所以查单、关单、退款三个能力没实现。
 - 上游 `plugins/` 下 63 个渠道插件是渠道商务关系，不是协议，长尾渠道用 `generic` 配置化接入。
 - 管理后台是 Vue SPA，和上游那 55 个 `admin/*.php` 模板完全不像。只有 HTTP 协议面对齐，页面交互是重画的：代付审核有列表、通过、驳回，渠道进件没有做。
+- **运营面是上游的子集**，协议面才是全覆盖。上游有而我们没有的：分账、自动生成结算单、结算后自动打款、投诉处理链路（支付宝与微信投诉有回复时限）、用户组与费率套餐、语音播报设备与云打印机、各类 CSV 导出、后台图形验证码与两步验证。逐项对照见 [`docs/epay-coverage.md`](docs/epay-coverage.md)：11 项已实现、26 项部分实现、14 项未实现。第 7 节按场景回答了「能不能直接替换一套正在跑的易支付」。
 - V1 的 MD5 签名强度由上游决定。想用 RSA 就把商户切到 V2 凭证。
 - `v2.0.0` 是第一个 tag，还没有长期兼容承诺：2.x 里接口和迁移文件仍可能动。
 
@@ -395,6 +401,8 @@ go run ./cmd/migrate-epay `
 | 文档 | 回答什么问题 |
 | --- | --- |
 | [`docs/epay-compat-matrix.md`](docs/epay-compat-matrix.md) | 每个入口对应上游哪一行，哪些偏差修了，哪些留着 |
+| [`docs/epay-coverage.md`](docs/epay-coverage.md) | 上游每一个入口、后台页面、定时任务在我们这边是已实现、部分实现还是没做 |
+| [`docs/deployment.md`](docs/deployment.md) | 三种部署方式、反向代理、备份恢复、升级回滚、排查表、生产检查清单 |
 | [`docs/epay-v2.md`](docs/epay-v2.md) | V2 的签名、字段、错误码、防重放 |
 | [`docs/epay-contract-baseline.md`](docs/epay-contract-baseline.md) | 契约基线从哪来，怎么冻结 |
 | [`docs/plugins.md`](docs/plugins.md) | 插件契约、10 个插件的配置字段、回调、真网关凭据清单 |

@@ -1,11 +1,12 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
+import { setPageTitle } from '@/stores/site';
 
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
     component: () => import('@/pages/public/Landing.vue'),
-    meta: { title: 'GorixPay 支付系统' },
+    meta: { title: '' },
   },
   {
     path: '/register',
@@ -143,7 +144,7 @@ router.beforeEach((to) => {
 
 router.afterEach((to) => {
   const title = to.meta.title as string | undefined;
-  document.title = title ? `${title} - GorixPay` : 'GorixPay 支付系统';
+  setPageTitle(title ?? '');
 });
 
 export default router;

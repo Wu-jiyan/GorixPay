@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   NAvatar,
@@ -15,12 +15,18 @@ import {
   useMessage,
 } from 'naive-ui';
 import { useAuthStore } from '@/stores/auth';
+import { siteLogo, siteName } from '@/stores/site';
 
 const router = useRouter();
 const route = useRoute();
 const message = useMessage();
 const auth = useAuthStore();
 const collapsed = ref(false);
+// 站点 Logo 是后台填的 URL，加载失败时退回默认的「G」方块
+const logoBroken = ref(false);
+watch(siteLogo, () => {
+  logoBroken.value = false;
+});
 
 const menuOptions = [
   { label: '数据概览', key: '/admin' },
@@ -79,9 +85,16 @@ onMounted(() => {
       @expand="collapsed = false"
     >
       <div class="brand">
-        <div class="brand-mark">G</div>
+        <img
+          v-if="siteLogo && !logoBroken"
+          :src="siteLogo"
+          :alt="siteName"
+          class="brand-logo"
+          @error="logoBroken = true"
+        />
+        <div v-else class="brand-mark">G</div>
         <div v-if="!collapsed" class="brand-text">
-          <strong>GorixPay</strong>
+          <strong>{{ siteName }}</strong>
           <span>运营后台</span>
         </div>
       </div>
@@ -137,10 +150,25 @@ onMounted(() => {
   place-items: center;
   flex: none;
 }
+.brand-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  object-fit: contain;
+  background: #fff;
+  flex: none;
+}
 .brand-text {
   display: flex;
   flex-direction: column;
   line-height: 1.2;
+  min-width: 0;
+}
+.brand-text strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
 }
 .brand-text span {
   font-size: 11px;

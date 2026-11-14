@@ -308,17 +308,22 @@ EPAY_PHP_BIN=/usr/bin/php74 go test ./tests/conformance/epay -count=1
 
 ## Deploy
 
-The compose file lives in `deploy/`. Two things must exist before it starts; missing either one makes `docker compose` stop with an error:
+Three paths, all documented in [`docs/deployment.md`](docs/deployment.md): Docker Compose (recommended), a single Docker container, or compiling from source behind systemd. The one-command version:
+
+```bash
+bash scripts/deploy.sh          # Linux
+pwsh -File scripts/deploy.ps1   # Windows, add -DryRun to preview
+```
+
+Manually, the compose file lives in `deploy/`. Two things must exist before it starts; missing either one makes `docker compose` stop with an error:
 
 ```bash
 # 1) Database password and public origin. Compose reads .env from the same directory,
 #    and the password feeds both postgres and the GorixPay DSN.
-cat > deploy/.env <<'EOF'
-POSTGRES_PASSWORD=replace-with-a-random-secret
-GORIXPAY_PUBLIC_URL=https://pay.example.com
-EOF
+cp deploy/.env.example deploy/.env   # then edit POSTGRES_PASSWORD and GORIXPAY_PUBLIC_URL
 
 # 2) Master key: 32 raw bytes, or their base64
+mkdir -p deploy/secrets
 head -c 32 /dev/urandom | base64 > deploy/secrets/master_key.txt
 
 docker compose -f deploy/compose.yaml up -d --build
@@ -365,6 +370,7 @@ These are the parts that genuinely do not work yet:
 - Only Huifu has touched a live gateway. A real merchant account created a 0.01 CNY order on 2026-11-13, the response carried a `qr.alipay.com` payment code, and the response signature verified. The other eight channels have unit tests and an `httptest` upstream but no real merchant account; hit `scripts/plugin-sandbox-check.ps1` with real credentials before trusting one.
 - The `huifu` plugin only creates orders and handles callbacks. The Douggong close endpoint answers "transaction does not exist" for `jspay` orders in our tests, and refunds live on a different endpoint, so query, close and refund are not implemented.
 - Upstream's 63 channel plugins are commercial channel relationships rather than protocol, so long-tail channels go through `generic`.
+- **The protocol surface is complete, the operations surface is a subset.** What upstream has and this rewrite does not: profit sharing, automatic settlement generation, automatic payout after settlement, the Alipay and WeChat complaint loop (both have reply deadlines), merchant groups with rate plans, voice devices and receipt printers, CSV exports, admin captcha and TOTP. Item by item in [`docs/epay-coverage.md`](docs/epay-coverage.md): 11 implemented, 26 partial, 14 missing. Its section 7 answers whether a given running Epay install can be swapped outright.
 - The console is a Vue SPA and looks nothing like upstream's 55 `admin/*.php` templates. Only the HTTP surface is aligned; the UI is redrawn. Payout review has a list plus approve and reject, channel onboarding is missing.
 - V1 signature strength is whatever upstream chose: MD5 with a shared key. Switch merchants to V2 credentials if that matters.
 - `v2.0.0` is the first tag, with no long-term compatibility promise yet: APIs and migrations can still move within 2.x.
@@ -374,6 +380,8 @@ These are the parts that genuinely do not work yet:
 | Document | Answers |
 | --- | --- |
 | [`docs/epay-compat-matrix.md`](docs/epay-compat-matrix.md) | Which upstream line each endpoint follows, which deviations are fixed and which are kept |
+| [`docs/epay-coverage.md`](docs/epay-coverage.md) | Every upstream entry point, admin page and cron job, marked implemented, partial or missing |
+| [`docs/deployment.md`](docs/deployment.md) | Three deployment paths, reverse proxy, backup and restore, upgrade and rollback, troubleshooting, production checklist |
 | [`docs/epay-v2.md`](docs/epay-v2.md) | V2 signing, fields, error codes, replay protection |
 | [`docs/epay-contract-baseline.md`](docs/epay-contract-baseline.md) | Where the contract baseline comes from and how it is frozen |
 | [`docs/plugins.md`](docs/plugins.md) | Plugin contract, configuration fields for 10 channels, callbacks, real-gateway credential checklists |

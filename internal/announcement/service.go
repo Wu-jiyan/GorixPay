@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	defaultSiteName = "GorixPay"
-	settingSiteName = "site.name"
-	settingSiteLogo = "site.logo_url"
+	defaultSiteName   = "GorixPay"
+	settingSiteName   = "site.name"
+	settingSiteLogo   = "site.logo_url"
+	settingSiteFooter = "site.footer_text"
 )
 
 type Service struct {
@@ -30,6 +31,7 @@ type Page struct {
 type Site struct {
 	Name         string   `json:"name"`
 	LogoURL      string   `json:"logo_url"`
+	FooterText   string   `json:"footer_text"`
 	Announcement any      `json:"announcement"`
 	PaymentTypes []string `json:"payment_types"`
 }
@@ -165,6 +167,9 @@ func (service *Service) Site(ctx context.Context) (Site, error) {
 	if value := decodeSetting(settings[settingSiteLogo]); value != "" {
 		site.LogoURL = value
 	}
+	if value := decodeSetting(settings[settingSiteFooter]); value != "" {
+		site.FooterText = value
+	}
 	latest, err := service.LatestPublished(ctx)
 	if err != nil {
 		return Site{}, err
@@ -176,7 +181,7 @@ func (service *Service) Site(ctx context.Context) (Site, error) {
 }
 
 func (service *Service) settings(ctx context.Context) (map[string]string, error) {
-	keys := []string{settingSiteName, settingSiteLogo}
+	keys := []string{settingSiteName, settingSiteLogo, settingSiteFooter}
 	var records []systemSetting
 	if err := service.db.WithContext(ctx).Where("setting_key IN ?", keys).Find(&records).Error; err != nil {
 		return nil, err

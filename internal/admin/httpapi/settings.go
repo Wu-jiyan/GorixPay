@@ -38,6 +38,7 @@ func (auditEvent) TableName() string {
 var allowedSettings = map[string]bool{
 	"site.name":                          true,
 	"site.logo_url":                      true,
+	"site.footer_text":                   true,
 	"payment.order_expiry_minutes":       true,
 	"payment.domain_whitelist_required":  true,
 	"certification.required":             true,

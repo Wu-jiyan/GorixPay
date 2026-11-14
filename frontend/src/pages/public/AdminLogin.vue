@@ -6,6 +6,7 @@ import { useMessage, type FormInst, type FormRules } from 'naive-ui';
 import { authApi } from '@/api';
 import { errorMessage } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
+import { siteLogo, siteName } from '@/stores/site';
 
 const router = useRouter();
 const message = useMessage();
@@ -54,9 +55,10 @@ async function handleSubmit() {
   <div class="admin-auth-page">
     <div class="admin-auth-panel">
       <div class="admin-brand">
-        <span class="brand-mark">G</span>
+        <img v-if="siteLogo" :src="siteLogo" class="brand-logo" alt="" />
+        <span v-else class="brand-mark">G</span>
         <div>
-          <div class="brand-name">GorixPay</div>
+          <div class="brand-name">{{ siteName }}</div>
           <div class="brand-sub">运营后台</div>
         </div>
       </div>
@@ -131,6 +133,14 @@ async function handleSubmit() {
   color: #fff;
   font-weight: 700;
   background: linear-gradient(135deg, #1e3a8a, #0ea5e9);
+}
+.brand-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  object-fit: cover;
+  display: block;
+  flex: none;
 }
 .brand-name {
   color: #f8fafc;

@@ -1,18 +1,30 @@
+# 依赖源可以用 --build-arg 覆盖：默认走国内镜像，境外网络传官方源即可
+#   docker build -f deploy/Dockerfile \
+#     --build-arg NPM_REGISTRY=https://registry.npmjs.org \
+#     --build-arg GOPROXY=https://proxy.golang.org,direct -t gorixpay .
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+ARG GOPROXY=https://goproxy.cn|https://proxy.golang.org|direct
+
 FROM node:22-alpine AS web
+ARG NPM_REGISTRY
 WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# lock 里的 resolved 指向官方源，先改 registry 再装，否则容器里拉不动
+RUN npm config set registry "$NPM_REGISTRY" && npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
 FROM golang:1.21-alpine AS builder
+ARG GOPROXY
+ENV GOPROXY=$GOPROXY
+ENV CGO_ENABLED=0
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY migrations ./migrations
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/gorixpay ./cmd/gorixpay
+RUN GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/gorixpay ./cmd/gorixpay
 
 FROM alpine:3.20
 RUN addgroup -S gorixpay && adduser -S -G gorixpay gorixpay

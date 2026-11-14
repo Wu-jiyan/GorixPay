@@ -205,6 +205,50 @@ func TestHTTPRoutesExposePublishedToPublicAndCRUDToAdmin(t *testing.T) {
 	}
 }
 
+func TestHTTPPublicSiteReturnsFooterText(t *testing.T) {
+	service, db := announcementDatabase(t, "announcement-footer")
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	Register(router, router.Group("/api/v1/merchant"), router.Group("/api/v1/admin"), service)
+
+	// 未配置时字段存在且为空串，接口不报错。
+	response := performAnnouncement(t, router, http.MethodGet, "/api/v1/public/site", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("default site status=%d body=%s", response.Code, response.Body.String())
+	}
+	var unset struct {
+		FooterText *string `json:"footer_text"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &unset); err != nil {
+		t.Fatal(err)
+	}
+	if unset.FooterText == nil || *unset.FooterText != "" {
+		t.Fatalf("footer_text=%v", unset.FooterText)
+	}
+
+	encoded, err := json.Marshal("京ICP备12345678号")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&systemSetting{Key: settingSiteFooter, Value: string(encoded)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	response = performAnnouncement(t, router, http.MethodGet, "/api/v1/public/site", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("configured site status=%d body=%s", response.Code, response.Body.String())
+	}
+	var configured struct {
+		FooterText string `json:"footer_text"`
+		Name       string `json:"name"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &configured); err != nil {
+		t.Fatal(err)
+	}
+	if configured.FooterText != "京ICP备12345678号" || configured.Name != defaultSiteName {
+		t.Fatalf("site=%+v", configured)
+	}
+}
+
 func announcementDatabase(t *testing.T, name string) (*Service, *gorm.DB) {
 	t.Helper()
 	db, _, err := database.Open(context.Background(), config.DatabaseConfig{Driver: "sqlite", DSN: "file:" + name + "?mode=memory&cache=shared"})

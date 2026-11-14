@@ -11,6 +11,8 @@
 | [epay-contract-baseline.md](epay-contract-baseline.md) | 必须兼容的上游行为清单，机器可读事实源放在哪，冲突时以谁为准 | 改兼容层的人 |
 | [plugins.md](plugins.md) | 插件契约（`Plugin`、`Configurable`、`CallbackVerifier`）、10 个渠道的配置字段与报文细节、通用回调与状态码 | 运维、插件开发者 |
 | [architecture.md](architecture.md) | 模块分层与依赖方向、一次支付请求的 9 步链路、订单状态机、复式账本过账路径、插件契约、迁移机制、12 条已知妥协 | 改核心逻辑的人 |
+| [epay-coverage.md](epay-coverage.md) | 上游每个入口、后台页面、cron 分支在这边的实现状态，以及「能不能直接替换一套在跑的易支付」的分场景结论 | 评估迁移可行性的人 |
+| [deployment.md](deployment.md) | Docker Compose、Docker 单容器、源码三种部署方式，反向代理、备份恢复、升级回滚、排查表、上线检查清单 | 负责上线与运维的人 |
 | [plans/2026-11-13-epay-v2-vue-completion.md](plans/2026-11-13-epay-v2-vue-completion.md) | 第一轮并行开发的范围与验收口径：V2 协议、Vue 前端、Redis、商户门户 | 想知道现有形态是怎么定下来的 |
 | [plans/2026-11-13-epay-ecosystem.md](plans/2026-11-13-epay-ecosystem.md) | 第二轮并行开发的范围：实名认证、域名白名单、邀请返佣、风控、充值与保证金、首批插件、迁移工具 | 接手生态域的人 |
 | [superpowers/specs/2026-07-12-gorixpay-architecture-design.md](superpowers/specs/2026-07-12-gorixpay-architecture-design.md) | 初版架构设计与选型理由，含当时的取舍 | 想理解为什么这样分层 |

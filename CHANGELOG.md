@@ -4,6 +4,25 @@
 
 `v2.0.0` 于 2026-11-13 打上第一个 tag，下面是这个版本的全部内容。之前的两个 commit 是内部开发阶段，没有对外发过。
 
+## [2.1.0] - 2026-11-14
+
+### 站点身份可配置
+
+- `site.name`、`site.logo_url` 从"存在数据库里但只有官网读"变成整站生效：官网、收银台、商户登录、注册、运营登录、运营后台与商户中心侧栏、浏览器标题全部跟随；`logo_url` 有值时渲染图片，加载失败自动退回默认图标。
+- 新增 `site.footer_text`（页脚文本，填备案号或公司名），官网页脚单独一行渲染，留空不显示。管理端 `PUT /api/v1/admin/settings/site.footer_text`，公开端随 `/api/v1/public/site` 返回。
+- 前端新增 `stores/site.ts`：站点身份只拉一次、失败可重试，标题统一走 `setPageTitle()`。
+
+### 部署
+
+- 新增 `scripts/deploy.sh` 与 `scripts/deploy.ps1`：检查 docker、生成 `deploy/.env` 与主密钥、起容器、轮询健康检查、打印管理员创建命令，幂等且支持 dry-run。
+- 新增 `deploy/.env.example`。
+- `deploy/Dockerfile` 的依赖源可覆盖：`--build-arg NPM_REGISTRY=...`、`--build-arg GOPROXY=...`，默认走国内镜像，境外网络可换回官方源。
+- 新增 `docs/deployment.md`：三种部署方式、反向代理、备份恢复、升级回滚、排查表、生产检查清单。
+
+### 文档
+
+- 新增 `docs/epay-coverage.md`：逐个上游入口、后台页面、cron 分支对照实现状态（11 项已实现、26 项部分实现、14 项未实现），并给出"能不能直接替换"的分场景结论。
+
 ## [2.0.0] - 2026-11-13
 
 ### 协议

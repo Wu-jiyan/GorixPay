@@ -6,6 +6,7 @@ import { useMessage } from 'naive-ui';
 import { cashierApi } from '@/api';
 import type { CashierOrder } from '@/api/types';
 import { errorMessage } from '@/api/client';
+import { siteLogo, siteName } from '@/stores/site';
 import { formatDateTime, formatMoney, orderStatus, paymentTypeText } from '@/utils/format';
 
 const route = useRoute();
@@ -72,9 +73,10 @@ onMounted(() => {
   <div class="sandbox-page">
     <div class="sandbox-card">
       <div class="sandbox-brand">
-        <span class="brand-mark">G</span>
+        <img v-if="siteLogo" :src="siteLogo" class="brand-logo" alt="" />
+        <span v-else class="brand-mark">G</span>
         <div>
-          <div class="brand-name">GorixPay</div>
+          <div class="brand-name">{{ siteName }}</div>
           <div class="brand-sub">沙箱支付</div>
         </div>
       </div>
@@ -197,6 +199,14 @@ onMounted(() => {
   color: #fff;
   font-weight: 700;
   background: linear-gradient(135deg, #d97706, #f59e0b);
+}
+.brand-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  object-fit: cover;
+  display: block;
+  flex: none;
 }
 .brand-name {
   font-weight: 700;

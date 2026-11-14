@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { publicApi } from '@/api';
+import { computed } from 'vue';
 import { formatDateTime, paymentTypeText } from '@/utils/format';
+import { siteFooter, siteInfo, siteLogo, siteName } from '@/stores/site';
 import PublicNav from '@/components/PublicNav.vue';
 
 interface PaymentMethodCard {
@@ -26,9 +26,38 @@ const DEFAULT_METHODS: PaymentMethodCard[] = [
   { key: 'bank', name: '网银支付', desc: '银行卡网关直连', badge: '银', color: '#7c3aed' },
 ];
 
-const siteName = ref('GorixPay');
-const announcement = ref<AnnouncementSnippet | null>(null);
-const methods = ref<PaymentMethodCard[]>(DEFAULT_METHODS);
+// 站点名称、Logo、页脚由 stores/site 统一提供（App.vue 挂载时已请求一次）
+const announcement = computed<AnnouncementSnippet | null>(() => {
+  const item = siteInfo.value.announcement;
+  if (!item) return null;
+  const title = (item.title || '').trim();
+  const content = (item.content || '').trim();
+  if (!title && !content) return null;
+  return {
+    title: title || '平台公告',
+    content,
+    published_at: item.published_at ?? null,
+    created_at: item.created_at ?? null,
+  };
+});
+
+const methodCatalog = new Map(DEFAULT_METHODS.map((item) => [item.key, item]));
+const methods = computed<PaymentMethodCard[]>(() => {
+  const types = siteInfo.value.payment_types ?? [];
+  if (types.length === 0) return DEFAULT_METHODS;
+  return types.map<PaymentMethodCard>((key) => {
+    const known = methodCatalog.get(key);
+    if (known) return known;
+    const label = paymentTypeText(key);
+    return {
+      key,
+      name: label,
+      desc: '聚合支付通道',
+      badge: label.slice(0, 1).toUpperCase(),
+      color: '#2563eb',
+    };
+  });
+});
 
 const metrics = [
   { value: '10', label: '支付渠道插件' },
@@ -62,48 +91,6 @@ const advantages = [
   },
 ];
 
-onMounted(async () => {
-  try {
-    const site = await publicApi.site();
-    if (site.name) siteName.value = site.name;
-    // 站点公告在旧接口里是字符串，新接口返回公告对象；两种都接住，避免把对象直接渲染成 JSON
-    const raw: unknown = (site as unknown as { announcement?: unknown }).announcement;
-    if (typeof raw === 'string' && raw.trim()) {
-      announcement.value = { title: '平台公告', content: raw.trim() };
-    } else if (raw && typeof raw === 'object') {
-      const candidate = raw as AnnouncementSnippet;
-      const content = typeof candidate.content === 'string' ? candidate.content.trim() : '';
-      const title = typeof candidate.title === 'string' ? candidate.title.trim() : '';
-      if (content || title) {
-        announcement.value = {
-          title: title || '平台公告',
-          content,
-          published_at: candidate.published_at ?? null,
-          created_at: candidate.created_at ?? null,
-        };
-      }
-    }
-    const types = site.payment_types ?? [];
-    if (types.length > 0) {
-      const catalog = new Map(DEFAULT_METHODS.map((item) => [item.key, item]));
-      const list = types.map<PaymentMethodCard>((key) => {
-        const known = catalog.get(key);
-        if (known) return known;
-        const label = paymentTypeText(key);
-        return {
-          key,
-          name: label,
-          desc: '聚合支付通道',
-          badge: label.slice(0, 1).toUpperCase(),
-          color: '#2563eb',
-        };
-      });
-      methods.value = list;
-    }
-  } catch {
-    // 站点信息接口暂未就绪时静默回落到默认文案
-  }
-});
 </script>
 
 <template>
@@ -223,7 +210,8 @@ sign_type=MD5
     <footer class="footer">
       <div class="footer-inner">
         <div class="footer-brand">
-          <span class="brand-mark">G</span>
+          <img v-if="siteLogo" :src="siteLogo" class="brand-logo" alt="" />
+          <span v-else class="brand-mark">G</span>
           <div>
             <div class="footer-name">{{ siteName }}</div>
             <div class="footer-desc">聚合支付 · 易支付协议兼容 · V2 安全增强</div>
@@ -236,6 +224,7 @@ sign_type=MD5
           <a href="/admin/login">运营入口</a>
         </div>
       </div>
+      <div v-if="siteFooter" class="footer-meta">{{ siteFooter }}</div>
       <div class="footer-copy">© {{ new Date().getFullYear() }} {{ siteName }}. 保留所有权利。</div>
     </footer>
   </div>
@@ -553,6 +542,14 @@ sign_type=MD5
   font-weight: 700;
   background: linear-gradient(135deg, #2563eb, #06b6d4);
 }
+.brand-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  object-fit: cover;
+  display: block;
+  flex: none;
+}
 .footer-name {
   font-weight: 600;
   color: #fff;
@@ -573,6 +570,15 @@ sign_type=MD5
 }
 .footer-links a:hover {
   color: #fff;
+}
+.footer-meta {
+  max-width: 1160px;
+  margin: 22px auto 0;
+  font-size: 12px;
+  line-height: 1.8;
+  color: #94a3b8;
+  text-align: center;
+  word-break: break-all;
 }
 .footer-copy {
   max-width: 1160px;

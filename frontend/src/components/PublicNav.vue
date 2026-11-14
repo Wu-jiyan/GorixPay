@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router';
+import { siteLogo, siteName } from '@/stores/site';
 
 const router = useRouter();
 </script>
@@ -8,8 +9,9 @@ const router = useRouter();
   <header class="public-nav">
     <div class="nav-inner">
       <router-link to="/" class="brand">
-        <span class="brand-mark">G</span>
-        <span class="brand-name">GorixPay</span>
+        <img v-if="siteLogo" :src="siteLogo" class="brand-logo" alt="" />
+        <span v-else class="brand-mark">G</span>
+        <span class="brand-name">{{ siteName }}</span>
       </router-link>
       <nav class="nav-links">
         <router-link to="/" class="nav-link">首页</router-link>
@@ -57,6 +59,14 @@ const router = useRouter();
   place-items: center;
   color: #fff;
   background: linear-gradient(135deg, #2563eb, #06b6d4);
+}
+.brand-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  object-fit: cover;
+  display: block;
+  flex: none;
 }
 .nav-links {
   display: flex;
