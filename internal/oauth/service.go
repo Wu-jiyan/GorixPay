@@ -12,6 +12,7 @@ import (
 	identitymodel "gorixpay/internal/identity/model"
 	"gorixpay/internal/identity/session"
 	"gorixpay/internal/platform/secret"
+	"gorixpay/internal/settings"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -201,17 +202,16 @@ func (service *Service) credentials(ctx context.Context, name string) (string, s
 	for _, record := range records {
 		values[record.Key] = record.Value
 	}
-	appID := strings.TrimSpace(values[appIDKey])
-	encrypted := strings.TrimSpace(values[secretKey])
-	if appID == "" || encrypted == "" || service.cipher == nil {
-		return "", "", ErrNotConfigured
+	appID := settings.Text(values[appIDKey])
+	appSecret, err := settings.Decrypt(service.cipher, secretKey, values[secretKey])
+	if err != nil && service.cipher != nil {
+		// Legacy ciphertexts were produced with the provider name as the AEAD
+		// context. Accept them so a hand provisioned deployment keeps working.
+		if plain, _, legacyErr := service.cipher.Decrypt(settings.Text(values[secretKey]), []byte("oauth:"+name)); legacyErr == nil {
+			appSecret, err = strings.TrimSpace(string(plain)), nil
+		}
 	}
-	plain, _, err := service.cipher.Decrypt(encrypted, []byte("oauth:"+name))
-	if err != nil {
-		return "", "", ErrNotConfigured
-	}
-	appSecret := strings.TrimSpace(string(plain))
-	if appSecret == "" {
+	if appID == "" || appSecret == "" || err != nil {
 		return "", "", ErrNotConfigured
 	}
 	return appID, appSecret, nil

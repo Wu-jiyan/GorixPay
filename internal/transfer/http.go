@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -27,6 +28,7 @@ func RegisterMerchant(group *gin.RouterGroup, service *Service) {
 	group.POST("/transfers", handler.merchantCreate)
 	group.GET("/transfers/red", handler.merchantRedBatches)
 	group.POST("/transfers/red", handler.merchantCreateRed)
+	group.POST("/transfers/red/:batch_no/cancel", handler.merchantCancelRed)
 	group.GET("/transfers/:id", handler.merchantGet)
 }
 
@@ -320,6 +322,55 @@ func (handler *Handler) listRedBatches(ctx *gin.Context, merchantID string) {
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{"items": batches, "total": total, "page": page.Number, "page_size": page.Size})
+}
+
+// RedBatchOwner returns the merchant that created a red packet batch, so a
+// merchant scoped route can refuse somebody else's batch.
+func (service *Service) RedBatchOwner(ctx context.Context, batchNo string) (string, error) {
+	batchNo = strings.TrimSpace(batchNo)
+	if batchNo == "" {
+		return "", ErrInvalidRequest
+	}
+	var merchantID string
+	if err := service.db.WithContext(ctx).Model(&Order{}).
+		Where("batch_no = ?", batchNo).Limit(1).Pluck("merchant_id", &merchantID).Error; err != nil {
+		return "", err
+	}
+	if merchantID == "" {
+		return "", ErrNotFound
+	}
+	return merchantID, nil
+}
+
+// merchantCancelRed lets a merchant withdraw its own still-pending red packets.
+func (handler *Handler) merchantCancelRed(ctx *gin.Context) {
+	merchantID := identityhttp.MustSession(ctx).PrincipalID
+	batchNo := ctx.Param("batch_no")
+	owner, err := handler.service.RedBatchOwner(ctx.Request.Context(), batchNo)
+	if err != nil {
+		writeTransferError(ctx, err)
+		return
+	}
+	if owner != merchantID {
+		// Same answer as an unknown batch: whether somebody else has a batch is not
+		// this merchant's business.
+		ctx.JSON(http.StatusNotFound, gin.H{"code": "not_found", "message": "red packet batch not found"})
+		return
+	}
+	reason := ""
+	if ctx.Request.ContentLength > 0 {
+		var request struct {
+			Reason string `json:"reason"`
+		}
+		_ = ctx.ShouldBindJSON(&request)
+		reason = request.Reason
+	}
+	cancelled, err := handler.service.CancelRedBatch(ctx.Request.Context(), batchNo, reason)
+	if err != nil {
+		writeTransferError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"batch_no": batchNo, "cancelled": cancelled})
 }
 
 func (handler *Handler) adminCancelRed(ctx *gin.Context) {

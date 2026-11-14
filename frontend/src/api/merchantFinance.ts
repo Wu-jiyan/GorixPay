@@ -52,13 +52,11 @@ export interface ProfitSharingOrder {
   created_at: string;
 }
 
-export interface RedPacket {
-  id: string;
-  out_no?: string | null;
+export interface RedPacketBatch {
+  batch_no: string;
   transfer_no?: string | null;
-  /** 兼容后端两种命名：total_amount 或 amount（单位：分） */
-  total_amount?: number | null;
-  amount?: number | null;
+  merchant_id?: string | null;
+  amount: number;
   count: number;
   claimed_count?: number | null;
   status: string;
@@ -70,6 +68,11 @@ export interface RedPacketPayload {
   amount: number;
   count: number;
   remark?: string;
+}
+
+export interface RedPacketCancelResult {
+  batch_no: string;
+  cancelled: number;
 }
 
 const clean = (params: object) => {
@@ -116,12 +119,20 @@ export const financeApi = {
     });
     return data;
   },
-  async redPackets(query: RecordsQuery = {}) {
-    const { data } = await http.get<Paginated<RedPacket>>('/merchant/transfers/red', { params: clean(query) });
+  async redBatches(query: RecordsQuery = {}) {
+    const { data } = await http.get<Paginated<RedPacketBatch>>('/merchant/transfers/red', { params: clean(query) });
     return data;
   },
   async createRedPacket(payload: RedPacketPayload) {
-    const { data } = await http.post<RedPacket>('/merchant/transfers/red', payload);
+    const { data } = await http.post<RedPacketBatch>('/merchant/transfers/red', payload);
+    return data;
+  },
+  /** 整批撤销待审核红包；后端返回被撤销的个数 */
+  async cancelRedBatch(batchNo: string, reason: string) {
+    const { data } = await http.post<RedPacketCancelResult>(
+      `/merchant/transfers/red/${encodeURIComponent(batchNo)}/cancel`,
+      { reason },
+    );
     return data;
   },
 };

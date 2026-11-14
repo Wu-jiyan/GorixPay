@@ -268,7 +268,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		settleService := settlement.New(db, finance, transferService, merchantGroups.RateBp, time.Now)
 		outboxQuery := outbox.NewQuery(db)
 
-		notifyPrefs := notifyprefs.New(db, logger)
+		notifyPrefs := notifyprefs.New(db, logger).WithCipher(cipher)
 		if notifyService != nil {
 			notifyPrefs = notifyPrefs.WithWeChat(notifyService.WeChatSender())
 		}
@@ -281,7 +281,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		adminGroup := router.Group("/api/v1/admin", identityhttp.Authenticate(sessions), identityhttp.RequireAdministrator())
 		invitecode.RegisterAdmin(adminGroup, inviteCodes)
 		reporting.RegisterMerchantExports(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions))
-		adminhttp.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions), channelConfigs, ledgerquery.New(db), ledgerWriter, finance, outboxQuery)
+		adminhttp.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions), channelConfigs, ledgerquery.New(db), ledgerWriter, finance, outboxQuery, adminhttp.WithCipher(cipher))
 		adminhttp.RegisterExtras(adminGroup, db)
 
 		epaypayment.Register(router, db, credentials, orders, cfg.HTTP.PublicURL, orchestrator)

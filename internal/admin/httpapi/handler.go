@@ -18,6 +18,7 @@ import (
 	ledgerservice "gorixpay/internal/ledger/service"
 	"gorixpay/internal/outbox"
 	paymentmodel "gorixpay/internal/payment/model"
+	"gorixpay/internal/platform/secret"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -31,6 +32,18 @@ type Handler struct {
 	ledgerWriter *ledgerservice.Service
 	finance      *financeservice.Service
 	outbox       *outbox.QueryService
+	// cipher encrypts credential settings (api secrets, SMTP password, SMS token)
+	// at rest. Nil means the deployment runs without a master key, and credential
+	// settings are refused instead of being stored in the clear.
+	cipher *secret.Cipher
+}
+
+// Option tweaks what Register builds.
+type Option func(*Handler)
+
+// WithCipher enables encryption of credential settings at rest.
+func WithCipher(cipher *secret.Cipher) Option {
+	return func(handler *Handler) { handler.cipher = cipher }
 }
 
 type channelRequest struct {
@@ -101,8 +114,11 @@ func (request channelRequest) validate() bool {
 	return false
 }
 
-func Register(group *gin.RouterGroup, db *gorm.DB, sessions gin.HandlerFunc, configs *channelconfig.Service, ledger *ledgerquery.Service, ledgerWriter *ledgerservice.Service, finance *financeservice.Service, outboxQuery *outbox.QueryService) {
+func Register(group *gin.RouterGroup, db *gorm.DB, sessions gin.HandlerFunc, configs *channelconfig.Service, ledger *ledgerquery.Service, ledgerWriter *ledgerservice.Service, finance *financeservice.Service, outboxQuery *outbox.QueryService, options ...Option) {
 	handler := &Handler{db: db, configs: configs, ledger: ledger, ledgerWriter: ledgerWriter, finance: finance, outbox: outboxQuery}
+	for _, option := range options {
+		option(handler)
+	}
 	admin := group.Group("/admin", sessions, identityhttp.RequireAdministrator())
 	admin.Use(handler.audit)
 	admin.GET("/dashboard", handler.dashboard)

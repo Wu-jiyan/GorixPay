@@ -16,6 +16,8 @@ import (
 
 	identitymodel "gorixpay/internal/identity/model"
 
+	"gorixpay/internal/platform/secret"
+
 	"gorm.io/gorm"
 )
 
@@ -97,6 +99,9 @@ type Service struct {
 	mail   Mailer
 	sms    SMSSender
 	wechat WeChatTemplateSender
+	// cipher decrypts the credential settings (SMTP password, SMS token) that the
+	// admin API stores encrypted.
+	cipher *secret.Cipher
 }
 
 func New(db *gorm.DB, logger *slog.Logger) *Service {
@@ -108,6 +113,17 @@ func New(db *gorm.DB, logger *slog.Logger) *Service {
 		mail: &settingsMailer{db: db},
 		sms:  &settingsSMS{db: db},
 	}
+}
+
+// WithCipher lets the settings backed senders decrypt stored credentials. Without
+// it an encrypted SMTP password or SMS token is reported as unconfigured instead
+// of being sent as ciphertext.
+func (service *Service) WithCipher(cipher *secret.Cipher) *Service {
+	copied := *service
+	copied.cipher = cipher
+	copied.mail = &settingsMailer{db: service.db, cipher: cipher}
+	copied.sms = &settingsSMS{db: service.db, cipher: cipher}
+	return &copied
 }
 
 // WithSenders replaces the outbound channels, which is how tests stub delivery.
@@ -276,11 +292,11 @@ func (service *Service) sendWeChat(ctx context.Context, merchantID, scene, email
 	if openID == "" {
 		return fallback("no_openid")
 	}
-	settings, err := loadSettings(ctx, service.db, WeChatTemplateSettingKey)
+	settings, err := loadSettings(ctx, service.db, service.cipher, WeChatTemplateSettingKey)
 	if err != nil {
 		return fallback("settings_lookup_failed", "error", err)
 	}
-	templateID := strings.Trim(strings.TrimSpace(settings[WeChatTemplateSettingKey]), `"`)
+	templateID := settings[WeChatTemplateSettingKey]
 	if templateID == "" {
 		return fallback("template_not_configured")
 	}

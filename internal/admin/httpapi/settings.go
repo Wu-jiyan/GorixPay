@@ -7,6 +7,7 @@ import (
 	"time"
 
 	identityhttp "gorixpay/internal/identity/httpapi"
+	"gorixpay/internal/settings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -69,6 +70,9 @@ var allowedSettings = map[string]bool{
 	"notification.poll_interval_seconds": true,
 }
 
+// settings lists the operator editable settings. Credential keys are never
+// returned: the API answers with "configured" instead, so a ciphertext (or a
+// plaintext) credential cannot be read back through the console.
 func (handler *Handler) settings(ctx *gin.Context) {
 	var records []systemSetting
 	if err := handler.db.WithContext(ctx.Request.Context()).Order("setting_key ASC").Find(&records).Error; err != nil {
@@ -78,6 +82,14 @@ func (handler *Handler) settings(ctx *gin.Context) {
 	items := make([]gin.H, 0, len(records))
 	for _, record := range records {
 		if !allowedSettings[record.Key] {
+			continue
+		}
+		if settings.Secret(record.Key) {
+			items = append(items, gin.H{
+				"key": record.Key, "secret": true,
+				"configured": strings.TrimSpace(record.Value) != "",
+				"updated_at": record.UpdatedAt,
+			})
 			continue
 		}
 		var value any
@@ -102,18 +114,57 @@ func (handler *Handler) updateSetting(ctx *gin.Context) {
 		invalidRequest(ctx)
 		return
 	}
+	now := time.Now().UTC()
+	if settings.Secret(key) {
+		handler.updateSecretSetting(ctx, key, request.Value, now)
+		return
+	}
 	encoded, err := json.Marshal(request.Value)
 	if err != nil || len(encoded) > 4096 {
 		invalidRequest(ctx)
 		return
 	}
-	now := time.Now().UTC()
 	record := systemSetting{Key: key, Value: string(encoded), UpdatedAt: now}
 	if err := handler.db.WithContext(ctx.Request.Context()).Save(&record).Error; err != nil {
 		internalError(ctx)
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{"key": key, "value": request.Value, "updated_at": now})
+}
+
+// updateSecretSetting stores a credential encrypted. An empty value means "keep
+// whatever is stored", because the console never receives the current value and a
+// blank form field must not wipe a working credential.
+func (handler *Handler) updateSecretSetting(ctx *gin.Context, key string, raw any, now time.Time) {
+	plain, ok := raw.(string)
+	if !ok {
+		invalidRequest(ctx)
+		return
+	}
+	plain = strings.TrimSpace(plain)
+	var existing systemSetting
+	existingErr := handler.db.WithContext(ctx.Request.Context()).First(&existing, "setting_key = ?", key).Error
+	configured := existingErr == nil && strings.TrimSpace(existing.Value) != ""
+	if plain == "" {
+		ctx.JSON(http.StatusOK, gin.H{"key": key, "secret": true, "configured": configured, "updated_at": now})
+		return
+	}
+	encrypted, err := settings.Encrypt(handler.cipher, key, plain)
+	if err != nil {
+		ctx.JSON(http.StatusConflict, gin.H{"code": "cipher_missing", "message": "master key is not configured, credential settings cannot be stored"})
+		return
+	}
+	encoded, err := json.Marshal(encrypted)
+	if err != nil || len(encoded) > 4096 {
+		invalidRequest(ctx)
+		return
+	}
+	record := systemSetting{Key: key, Value: string(encoded), UpdatedAt: now}
+	if err := handler.db.WithContext(ctx.Request.Context()).Save(&record).Error; err != nil {
+		internalError(ctx)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"key": key, "secret": true, "configured": true, "updated_at": now})
 }
 
 func (handler *Handler) auditEvents(ctx *gin.Context) {

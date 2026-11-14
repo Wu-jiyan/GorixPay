@@ -2,6 +2,7 @@
 import { computed, h, onMounted, reactive, ref } from 'vue';
 import { NButton, NPopconfirm, NSpace, NTag, useMessage } from 'naive-ui';
 import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-ui';
+import { adminApi } from '@/api';
 import { groupsApi } from '@/api/groups';
 import type { MerchantGroup } from '@/api/groups';
 import { errorMessage } from '@/api/client';
@@ -16,6 +17,14 @@ interface GroupForm {
   pay_types: string[];
   settle_mode: string;
   price_yuan: number | null;
+}
+
+/** 归组弹窗里挑商户用：后端 merchants 列表序列化的是 GroupID（结构体没有 json tag） */
+interface MerchantOption {
+  id: string;
+  name: string;
+  email: string;
+  groupId: string | null;
 }
 
 const message = useMessage();
@@ -35,6 +44,10 @@ const assignGroupId = ref<string | null>(null);
 const assignMerchantId = ref('');
 const assignSubmitting = ref(false);
 const assignResult = ref('');
+const assignLoading = ref(false);
+const merchantKeyword = ref('');
+const merchantOptions = ref<MerchantOption[]>([]);
+const allGroups = ref<MerchantGroup[]>([]);
 
 const { page, pageSize, total, pagination, onPage, onPageSize } = useServerPaging(load);
 
@@ -74,12 +87,76 @@ const rules: FormRules = {
 
 const isEditing = computed(() => editingId.value !== null);
 
-const groupOptions = computed<SelectOption[]>(() =>
-  rows.value.map((group) => ({
-    label: `${group.name || group.id}（${(numberOr(group.rate_bp, 0) / 100).toFixed(2)}%）`,
-    value: group.id,
-  })),
+function groupOptionOf(group: MerchantGroup): SelectOption {
+  return { label: `${group.name || group.id}（${(numberOr(group.rate_bp, 0) / 100).toFixed(2)}%）`, value: group.id };
+}
+
+const assignGroupOptions = computed<SelectOption[]>(() =>
+  (allGroups.value.length > 0 ? allGroups.value : rows.value).map(groupOptionOf),
 );
+
+const groupNameById = computed(() => {
+  const map = new Map<string, string>();
+  const source = allGroups.value.length > 0 ? allGroups.value : rows.value;
+  source.forEach((group) => map.set(group.id, group.name || group.id));
+  return map;
+});
+
+const filteredMerchants = computed<MerchantOption[]>(() => {
+  const keyword = merchantKeyword.value.trim().toLowerCase();
+  if (keyword === '') return merchantOptions.value;
+  return merchantOptions.value.filter(
+    (item) =>
+      item.name.toLowerCase().includes(keyword) ||
+      item.id.toLowerCase().includes(keyword) ||
+      item.email.toLowerCase().includes(keyword),
+  );
+});
+
+const selectedMerchant = computed<MerchantOption | null>(
+  () => merchantOptions.value.find((item) => item.id === assignMerchantId.value) ?? null,
+);
+
+const currentGroupText = computed(() => {
+  const merchant = selectedMerchant.value;
+  if (!merchant) return '';
+  if (!merchant.groupId) return '未分组';
+  return groupNameById.value.get(merchant.groupId) ?? merchant.groupId;
+});
+
+const merchantColumns = computed<DataTableColumns<MerchantOption>>(() => [
+  {
+    title: '商户',
+    key: 'name',
+    minWidth: 180,
+    ellipsis: true,
+    render: (row) => h('div', [
+      h('div', row.name || row.id),
+      h('div', { class: 'mono', style: 'font-size: 12px; color: #94a3b8' }, row.id),
+    ]),
+  },
+  {
+    title: '所属组',
+    key: 'groupId',
+    width: 160,
+    render: (row) =>
+      row.groupId
+        ? h('span', groupNameById.value.get(row.groupId) ?? row.groupId)
+        : h('span', { class: 'muted' }, '未分组'),
+  },
+]);
+
+function merchantRowProps(row: MerchantOption) {
+  return {
+    style: `cursor: pointer;${row.id === assignMerchantId.value ? ' background: #eff6ff;' : ''}`,
+    onClick: () => {
+      assignMerchantId.value = row.id;
+      // 选中后把目标组预置成它当前的组，用户仍可改
+      if (row.groupId) assignGroupId.value = row.groupId;
+      assignResult.value = '';
+    },
+  };
+}
 
 async function load() {
   loading.value = true;
@@ -201,23 +278,57 @@ function openAssign(row: MerchantGroup | null) {
   assignGroupId.value = row ? row.id : null;
   assignMerchantId.value = '';
   assignResult.value = '';
+  merchantKeyword.value = '';
   showAssign.value = true;
+  void loadAssignData();
+}
+
+async function loadAssignData() {
+  assignLoading.value = true;
+  try {
+    const [merchantPage, groupPage] = await Promise.all([
+      adminApi.merchants({ page: 1, page_size: 100 }),
+      groupsApi.list({ page: 1, page_size: 100 }),
+    ]);
+    merchantOptions.value = itemsOf<Record<string, unknown>>(merchantPage).map((item) => {
+      const raw = asRow(item);
+      // 后端 Merchant 结构体没有 json tag，组字段序列化出来是 GroupID；这里同时兼容 snake_case
+      const rawGroupId = raw.GroupID ?? raw.group_id;
+      return {
+        id: textOf(raw.id, ''),
+        name: textOf(raw.display_name, ''),
+        email: textOf(raw.email, ''),
+        groupId: typeof rawGroupId === 'string' && rawGroupId !== '' ? rawGroupId : null,
+      };
+    });
+    allGroups.value = itemsOf<MerchantGroup>(groupPage);
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    assignLoading.value = false;
+  }
 }
 
 /** 按 group_id 归组；选「不分组」时传 null 表示移出所有组 */
 async function submitAssign(moveOut = false) {
   const merchantId = assignMerchantId.value.trim();
   if (merchantId === '') {
-    message.warning('请输入商户 ID');
+    message.warning('请先选择商户');
     return;
   }
   assignSubmitting.value = true;
   try {
     const result = await groupsApi.assignMerchant(merchantId, moveOut ? null : assignGroupId.value);
     const data = asRow(result);
-    assignResult.value = `商户已归组：group_id=${textOf(data.group_id, '无')}，settle_mode=${textOf(data.settle_mode, '-')}`;
+    const groupId = textOf(data.group_id, '');
+    assignResult.value =
+      groupId === ''
+        ? `商户 ${merchantId} 已移出用户组，结算模式 settle_mode=${textOf(data.settle_mode, '-')}`
+        : `商户 ${merchantId} 已归入「${groupNameById.value.get(groupId) ?? groupId}」`;
     message.success(moveOut ? '商户已移出用户组' : '商户已归组');
     await load();
+    // 归组会改变商户的 group_id，重新拉一次列表让「所属组」列立刻更新
+    await loadAssignData();
   } catch (error) {
     message.error(errorMessage(error));
   } finally {
@@ -430,19 +541,52 @@ onMounted(load);
       </template>
     </n-modal>
 
-    <n-modal v-model:show="showAssign" preset="card" title="商户归组" style="width: 560px; max-width: 94vw">
+    <n-modal v-model:show="showAssign" preset="card" title="商户归组" style="width: 720px; max-width: 94vw">
       <n-alert type="info" :bordered="false" style="margin-bottom: 14px">
         归组后该商户的费率、可用支付方式与结算模式按用户组生效，会覆盖商户原有设置。
       </n-alert>
-      <n-form label-placement="left" label-width="110">
-        <n-form-item label="商户 ID">
-          <n-input v-model:value="assignMerchantId" placeholder="要归组的商户 ID" />
+      <div class="assign-toolbar">
+        <n-input
+          v-model:value="merchantKeyword"
+          placeholder="按商户名称 / ID / 邮箱过滤"
+          clearable
+          size="small"
+          style="width: 260px"
+        />
+        <span class="muted small">共 {{ filteredMerchants.length }} 个商户</span>
+      </div>
+      <n-data-table
+        :columns="merchantColumns"
+        :data="filteredMerchants"
+        :loading="assignLoading"
+        :row-props="merchantRowProps"
+        :max-height="260"
+        :pagination="false"
+        :bordered="false"
+        :single-line="false"
+        size="small"
+        :row-key="(row: MerchantOption) => row.id"
+      >
+        <template #empty>
+          <n-empty description="没有匹配到商户" size="small" />
+        </template>
+      </n-data-table>
+
+      <n-form label-placement="left" label-width="110" style="margin-top: 16px">
+        <n-form-item label="当前所属组">
+          <n-space align="center">
+            <n-tag v-if="assignMerchantId" size="small" :type="currentGroupText === '未分组' ? 'default' : 'success'" round>
+              {{ currentGroupText }}
+            </n-tag>
+            <span v-else class="muted small">先在上表点一个商户</span>
+            <span v-if="assignMerchantId" class="mono small muted">{{ assignMerchantId }}</span>
+          </n-space>
         </n-form-item>
         <n-form-item label="目标用户组">
           <n-select
             v-model:value="assignGroupId"
-            :options="groupOptions"
-            placeholder="选择用户组"
+            :options="assignGroupOptions"
+            placeholder="选择要归入的用户组"
           />
         </n-form-item>
       </n-form>
@@ -450,8 +594,23 @@ onMounted(load);
       <template #footer>
         <n-space justify="end">
           <n-button @click="showAssign = false">取消</n-button>
-          <n-button type="error" secondary :loading="assignSubmitting" @click="submitAssign(true)">移出用户组</n-button>
-          <n-button type="primary" :loading="assignSubmitting" @click="submitAssign(false)">确认归组</n-button>
+          <n-button
+            type="error"
+            secondary
+            :loading="assignSubmitting"
+            :disabled="assignMerchantId === ''"
+            @click="submitAssign(true)"
+          >
+            移出用户组
+          </n-button>
+          <n-button
+            type="primary"
+            :loading="assignSubmitting"
+            :disabled="assignMerchantId === '' || assignGroupId === null"
+            @click="submitAssign(false)"
+          >
+            确认归组
+          </n-button>
         </n-space>
       </template>
     </n-modal>
@@ -467,6 +626,12 @@ onMounted(load);
 }
 .small {
   font-size: 12px;
+}
+.assign-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 .tag-cell {
   display: flex;

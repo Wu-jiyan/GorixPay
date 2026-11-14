@@ -5,6 +5,7 @@ import { NButton, useMessage, type DataTableColumns, type SelectOption } from 'n
 import { merchantApi } from '@/api';
 import type { Order, PageQuery } from '@/api/types';
 import { errorMessage } from '@/api/client';
+import { downloadMerchantCsv, type MerchantExportQuery } from '@/api/merchantExports';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusTag from '@/components/StatusTag.vue';
 import MoneyText from '@/components/MoneyText.vue';
@@ -13,6 +14,7 @@ import { centsToYuan, formatDateTime, formatMoney, paymentTypeText, yuanToCents 
 const message = useMessage();
 
 const loading = ref(false);
+const exporting = ref(false);
 const orders = ref<Order[]>([]);
 const total = ref(0);
 const page = ref(1);
@@ -214,6 +216,36 @@ function buildQuery(): PageQuery {
   return query;
 }
 
+function buildExportQuery(): MerchantExportQuery {
+  const query: MerchantExportQuery = {};
+  if (filters.status) query.status = filters.status;
+  if (filters.payment_type) query.payment_type = filters.payment_type;
+  if (filters.keyword.trim()) query.keyword = filters.keyword.trim();
+  if (filters.range && filters.range.length === 2) {
+    // 导出接口按 RFC3339 解析时间区间
+    query.created_from = dayjs(filters.range[0]).startOf('day').toISOString();
+    query.created_to = dayjs(filters.range[1]).endOf('day').toISOString();
+  }
+  return query;
+}
+
+async function handleExport() {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const result = await downloadMerchantCsv('orders', buildExportQuery());
+    if (result.truncated) {
+      message.warning(`导出达到行数上限，仅包含前 ${result.rows} 行：${result.filename}`);
+    } else {
+      message.success(`已导出 ${result.filename}`);
+    }
+  } catch (err) {
+    message.error(errorMessage(err));
+  } finally {
+    exporting.value = false;
+  }
+}
+
 async function load() {
   loading.value = true;
   try {
@@ -262,6 +294,7 @@ onMounted(() => {
     <PageHeader title="我的订单" subtitle="按状态、支付方式、时间范围筛选订单，已支付订单可直接申请退款">
       <template #actions>
         <n-button size="small" :loading="loading" @click="load">刷新</n-button>
+        <n-button size="small" type="primary" :loading="exporting" @click="handleExport">导出 CSV</n-button>
       </template>
     </PageHeader>
 

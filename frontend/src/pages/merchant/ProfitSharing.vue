@@ -13,6 +13,7 @@ import {
   type ProfitSharingReceiver,
 } from '@/api/merchantFinance';
 import { errorMessage } from '@/api/client';
+import { downloadMerchantCsv } from '@/api/merchantExports';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusTag from '@/components/StatusTag.vue';
 import MoneyText from '@/components/MoneyText.vue';
@@ -276,6 +277,25 @@ function handleRefresh() {
   void loadOrders();
 }
 
+const exporting = ref(false);
+
+async function handleExport() {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const result = await downloadMerchantCsv('profit-sharing');
+    if (result.truncated) {
+      message.warning(`导出达到行数上限，仅包含前 ${result.rows} 行：${result.filename}`);
+    } else {
+      message.success(`已导出 ${result.filename}`);
+    }
+  } catch (err) {
+    message.error(errorMessage(err));
+  } finally {
+    exporting.value = false;
+  }
+}
+
 onMounted(() => {
   handleRefresh();
 });
@@ -286,6 +306,7 @@ onMounted(() => {
     <PageHeader title="分账管理" subtitle="维护分账接收方，查看每笔订单的分账流水">
       <template #actions>
         <n-button size="small" :loading="receiverLoading" @click="handleRefresh">刷新</n-button>
+        <n-button size="small" type="primary" :loading="exporting" @click="handleExport">导出 CSV</n-button>
         <n-button size="small" type="primary" @click="openCreate">新增接收方</n-button>
       </template>
     </PageHeader>

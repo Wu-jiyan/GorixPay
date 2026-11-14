@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useMessage } from 'naive-ui';
-import { adminApi } from '@/api';
+import axios from 'axios';
+import { adminSettingsApi } from '@/api/adminSettings';
 import { errorMessage } from '@/api/client';
 import PageHeader from '@/components/PageHeader.vue';
 import { formatDateTime, formatMoney } from '@/utils/format';
@@ -30,6 +31,10 @@ interface SettingRow {
   unit?: SettingUnit;
   textarea?: boolean;
   options?: { label: string; value: string }[];
+  /** 凭据类：后端不回显值，只能写入 */
+  secret?: boolean;
+  /** 凭据类当前是否已配置 */
+  configured?: boolean;
   value: SettingValue;
   original: SettingValue;
   updated_at: string;
@@ -195,22 +200,26 @@ function unitPreview(row: SettingRow): string {
 async function load() {
   loading.value = true;
   try {
-    const items = await adminApi.settings();
+    const items = await adminSettingsApi.list();
     rows.value = items.map((item) => {
       const known = meta[item.key];
-      const kind = known?.kind ?? inferKind(item.value);
-      const value = normalizeValue(item.value, kind);
+      const secret = item.secret === true || isCredentialKey(item.key);
+      // 凭据类后端不回显值：表单初始一律留空，避免把占位当成明文
+      const kind: SettingKind = secret ? 'string' : (known?.kind ?? inferKind(item.value));
+      const value = secret ? '' : normalizeValue(item.value, kind);
       return {
         key: item.key,
         label: known?.label ?? item.key,
-        hint: known?.hint ?? '',
+        hint: known?.hint ?? (secret ? '密钥类设置后端不回显，输入新值才会覆盖' : ''),
         kind,
         unit: known?.unit,
         textarea: known?.textarea,
         options: known?.options,
+        secret,
+        configured: item.configured === true,
         value,
         original: value,
-        updated_at: item.updated_at,
+        updated_at: item.updated_at ?? '',
       };
     });
   } catch (error) {
@@ -218,6 +227,18 @@ async function load() {
   } finally {
     loading.value = false;
   }
+}
+
+/** 老版本里 secret 标记可能缺失时，按键名兜底识别凭据类设置 */
+function isCredentialKey(key: string): boolean {
+  return /(^|\.)app_secret$/.test(key) || /password$/.test(key) || /_token$/.test(key);
+}
+
+function isCipherMissing(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  if (error.response?.status !== 409) return false;
+  const data = error.response?.data as Record<string, unknown> | undefined;
+  return data?.code === 'cipher_missing';
 }
 
 function isSaving(key: string): boolean {
@@ -239,12 +260,21 @@ async function save(row: SettingRow) {
   } else {
     payload = row.value === null ? '' : String(row.value);
   }
+  if (row.secret && payload === '') {
+    // 后端对凭据键传空串是「保留原值」，这里直接不发请求，语义更直白
+    message.info('留空表示不修改，未提交');
+    return;
+  }
   saving.value = { ...saving.value, [row.key]: true };
   try {
-    await adminApi.updateSetting(row.key, payload);
+    await adminSettingsApi.update(row.key, payload);
     message.success(`${row.label} 已保存`);
     await load();
   } catch (error) {
+    if (isCipherMissing(error)) {
+      message.error('未配置主密钥，无法保存密钥类设置（服务端需先配置 GORIXPAY_MASTER_KEY_FILE）');
+      return;
+    }
     message.error(errorMessage(error));
   } finally {
     saving.value = { ...saving.value, [row.key]: false };
@@ -275,7 +305,19 @@ onMounted(load);
             <div v-for="row in group.rows" :key="row.key" class="setting-row">
               <n-form-item :label="row.label">
                 <div class="setting-control">
-                  <n-switch v-if="row.kind === 'boolean'" v-model:value="row.value">
+                  <div v-if="row.secret" class="secret-row">
+                    <n-input
+                      v-model:value="row.value"
+                      type="password"
+                      show-password-on="click"
+                      :placeholder="row.configured ? '已配置，留空表示不修改' : '尚未配置，请输入密钥'"
+                      style="width: 320px"
+                    />
+                    <n-tag size="small" round :type="row.configured ? 'success' : 'warning'">
+                      {{ row.configured ? '已配置' : '未配置' }}
+                    </n-tag>
+                  </div>
+                  <n-switch v-else-if="row.kind === 'boolean'" v-model:value="row.value">
                     <template #checked>开启</template>
                     <template #unchecked>关闭</template>
                   </n-switch>
@@ -304,12 +346,13 @@ onMounted(load);
                     <span class="mono key">{{ row.key }}</span>
                     <span v-if="row.unit" class="unit">当前值：{{ unitPreview(row) }}</span>
                     <span v-if="row.hint" class="muted hint">{{ row.hint }}</span>
+                    <span v-if="row.secret" class="muted hint">写入后立即生效，页面只显示「已配置/未配置」</span>
                     <span class="muted hint">更新于 {{ formatDateTime(row.updated_at) }}</span>
                   </div>
                 </div>
               </n-form-item>
               <div class="setting-actions">
-                <n-button size="small" :disabled="isSaving(row.key)" @click="reset(row)">还原</n-button>
+                <n-button v-if="!row.secret" size="small" :disabled="isSaving(row.key)" @click="reset(row)">还原</n-button>
                 <n-button size="small" type="primary" :loading="isSaving(row.key)" @click="save(row)">保存</n-button>
               </div>
             </div>
@@ -360,6 +403,12 @@ onMounted(load);
 }
 .setting-meta .key {
   color: #475569;
+}
+.secret-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 .setting-meta .unit {
   color: #0f766e;

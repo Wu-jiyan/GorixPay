@@ -13,6 +13,11 @@ import { copyText, formatDateTime, yuanToCents } from '@/utils/format';
 
 const message = useMessage();
 
+/** 后端返回的 SVG 走 data URL + <img> 渲染，避免 v-html 注入面 */
+function svgDataUrl(svg: string): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 const activeTab = ref<'code' | 'test'>('code');
 
 const FALLBACK_TYPES: PublicPayType[] = [
@@ -159,7 +164,12 @@ onMounted(() => {
 
           <div v-if="codeResult" class="result-box">
             <div class="code-image">
-              <span v-if="codeResult.code_svg" class="code-svg" v-html="codeResult.code_svg"></span>
+              <img
+                v-if="codeResult.code_svg"
+                class="code-svg"
+                :src="svgDataUrl(codeResult.code_svg)"
+                alt="收款二维码"
+              />
               <span v-else class="code-empty">渠道未返回二维码</span>
             </div>
             <div class="result-meta">
@@ -306,11 +316,6 @@ onMounted(() => {
   flex: none;
 }
 .code-svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-.code-svg :deep(svg) {
   display: block;
   width: 100%;
   height: 100%;

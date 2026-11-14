@@ -3,6 +3,7 @@ package outbox
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"gorm.io/gorm"
@@ -17,13 +18,31 @@ type Options struct {
 	MaxAttempts   int
 	Backoff       func(int) time.Duration
 	PollInterval  time.Duration
+	// RetentionDays keeps completed messages for this many days before the
+	// worker deletes them. Zero means the default of 7 days.
+	RetentionDays int
+	// PurgeBatchSize caps one purge batch. Zero means 500 rows.
+	PurgeBatchSize int
+	// PurgeInterval is how often a purge cycle may run. Zero means 5 minutes.
+	PurgeInterval time.Duration
+	// PurgeMaxBatches caps the batches per cycle so a large backlog cannot park
+	// the worker for minutes. Zero means 10 batches.
+	PurgeMaxBatches int
 }
 
+const (
+	defaultRetentionDays = 7
+	defaultPurgeBatch    = 500
+	defaultPurgeInterval = 5 * time.Minute
+	defaultPurgeBatches  = 10
+)
+
 type Worker struct {
-	db      *gorm.DB
-	handler Handler
-	now     func() time.Time
-	options Options
+	db        *gorm.DB
+	handler   Handler
+	now       func() time.Time
+	options   Options
+	lastPurge time.Time
 }
 
 func NewWorker(db *gorm.DB, handler Handler, now func() time.Time, options Options) *Worker {
@@ -42,11 +61,29 @@ func NewWorker(db *gorm.DB, handler Handler, now func() time.Time, options Optio
 	if options.PollInterval <= 0 {
 		options.PollInterval = time.Second
 	}
+	if options.RetentionDays <= 0 {
+		options.RetentionDays = defaultRetentionDays
+	}
+	if options.PurgeBatchSize <= 0 {
+		options.PurgeBatchSize = defaultPurgeBatch
+	}
+	if options.PurgeInterval <= 0 {
+		options.PurgeInterval = defaultPurgeInterval
+	}
+	if options.PurgeMaxBatches <= 0 {
+		options.PurgeMaxBatches = defaultPurgeBatches
+	}
 	return &Worker{db: db, handler: handler, now: now, options: options}
 }
 
 func (worker *Worker) Run(ctx context.Context) error {
 	for {
+		if now := worker.now().UTC(); worker.purgeDue(now) {
+			worker.lastPurge = now
+			if _, err := worker.Purge(ctx); err != nil && ctx.Err() == nil {
+				slog.Warn("outbox purge failed", "error", err)
+			}
+		}
 		processed, err := worker.ProcessOne(ctx)
 		if ctx.Err() != nil {
 			return nil
@@ -64,6 +101,44 @@ func (worker *Worker) Run(ctx context.Context) error {
 		case <-timer.C:
 		}
 	}
+}
+
+func (worker *Worker) purgeDue(now time.Time) bool {
+	return worker.lastPurge.IsZero() || now.Sub(worker.lastPurge) >= worker.options.PurgeInterval
+}
+
+// Purge deletes completed messages older than the retention window. Dead
+// messages are deliberately kept: they are the operational record of failed
+// deliveries. The delete is done by id because DELETE ... LIMIT is not portable
+// across the three supported dialects.
+func (worker *Worker) Purge(ctx context.Context) (int64, error) {
+	cutoff := worker.now().UTC().Add(-time.Duration(worker.options.RetentionDays) * 24 * time.Hour)
+	deleted := int64(0)
+	for batch := 0; batch < worker.options.PurgeMaxBatches; batch++ {
+		var ids []string
+		if err := worker.db.WithContext(ctx).Model(&Message{}).
+			Where("status = ? AND updated_at < ?", StatusCompleted, cutoff).
+			Order("updated_at ASC, id ASC").Limit(worker.options.PurgeBatchSize).
+			Pluck("id", &ids).Error; err != nil {
+			return deleted, err
+		}
+		if len(ids) == 0 {
+			break
+		}
+		result := worker.db.WithContext(ctx).Where("id IN ?", ids).Delete(&Message{})
+		if result.Error != nil {
+			return deleted, result.Error
+		}
+		deleted += result.RowsAffected
+		if len(ids) < worker.options.PurgeBatchSize {
+			break
+		}
+	}
+	if deleted > 0 {
+		slog.Debug("outbox purged completed messages", "deleted", deleted,
+			"retention_days", worker.options.RetentionDays)
+	}
+	return deleted, nil
 }
 
 func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {

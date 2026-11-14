@@ -1,10 +1,10 @@
 // Package reporting renders CSV exports, platform statistics and the merchant
-// ledger statement. Every export shares one row cap and one encoding: UTF-8 with
-// a BOM so Excel on Windows opens the file without mojibake.
+// ledger statement. Exports stream page by page so a large dump never holds the
+// whole result in memory, and every row is written as one complete CSV record.
 package reporting
 
 import (
-	"bytes"
+	"bufio"
 	"encoding/csv"
 	"fmt"
 	"net/http"
@@ -22,9 +22,12 @@ import (
 )
 
 // maxExportRows bounds every export. A full-table dump would hold the request
-// open for minutes and blow up memory, so the query asks for one extra row and
-// reports truncation when it comes back.
+// open for minutes, so the caller only ever sees this many rows.
 var maxExportRows = 100000
+
+// exportPageSize is how many rows one streaming page pulls from the database.
+// Paging keeps the SQLite connection from being parked in one long query.
+const exportPageSize = 500
 
 const truncationNotice = "结果超过导出上限 %d 行，已截断，请缩小时间范围或增加筛选条件"
 
@@ -73,22 +76,16 @@ func (handler *Handler) exportOrders(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	var items []paymentmodel.Order
-	if err := orderQuery(handler.db.WithContext(ctx.Request.Context()), filter).
-		Order("created_at DESC, id DESC").Limit(maxExportRows + 1).Find(&items).Error; err != nil {
-		internalError(ctx)
-		return
-	}
-	items, truncated := trimExport(items)
-	rows := make([][]string, 0, len(items))
-	for _, item := range items {
-		rows = append(rows, []string{
-			item.TradeNo, item.OutTradeNo, item.MerchantID, item.PaymentType, string(item.Kind), item.Name,
-			yuan(item.Amount), item.Currency, string(item.Status), textPointer(item.Buyer), textPointer(item.ClientIP),
-			textPointer(item.ChannelTradeNo), timePointer(item.PaidAt), timeValue(item.ExpiresAt), timeValue(item.CreatedAt),
+	streamQueryExport(ctx, "orders", orderHeader,
+		func() *gorm.DB { return orderQuery(handler.db.WithContext(ctx.Request.Context()), filter) },
+		"created_at DESC, id DESC",
+		func(item paymentmodel.Order) []string {
+			return []string{
+				item.TradeNo, item.OutTradeNo, item.MerchantID, item.PaymentType, string(item.Kind), item.Name,
+				yuan(item.Amount), item.Currency, string(item.Status), textPointer(item.Buyer), textPointer(item.ClientIP),
+				textPointer(item.ChannelTradeNo), timePointer(item.PaidAt), timeValue(item.ExpiresAt), timeValue(item.CreatedAt),
+			}
 		})
-	}
-	writeExport(ctx, "orders", orderHeader, rows, truncated)
 }
 
 func (handler *Handler) exportMerchantOrders(ctx *gin.Context) {
@@ -96,22 +93,16 @@ func (handler *Handler) exportMerchantOrders(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	var items []paymentmodel.Order
-	if err := orderQuery(handler.db.WithContext(ctx.Request.Context()), filter).
-		Order("created_at DESC, id DESC").Limit(maxExportRows + 1).Find(&items).Error; err != nil {
-		internalError(ctx)
-		return
-	}
-	items, truncated := trimExport(items)
-	rows := make([][]string, 0, len(items))
-	for _, item := range items {
-		rows = append(rows, []string{
-			item.TradeNo, item.OutTradeNo, item.PaymentType, string(item.Kind), item.Name,
-			yuan(item.Amount), item.Currency, string(item.Status), textPointer(item.Buyer), textPointer(item.ClientIP),
-			textPointer(item.ChannelTradeNo), timePointer(item.PaidAt), timeValue(item.ExpiresAt), timeValue(item.CreatedAt),
+	streamQueryExport(ctx, "orders", merchantOrderHeader,
+		func() *gorm.DB { return orderQuery(handler.db.WithContext(ctx.Request.Context()), filter) },
+		"created_at DESC, id DESC",
+		func(item paymentmodel.Order) []string {
+			return []string{
+				item.TradeNo, item.OutTradeNo, item.PaymentType, string(item.Kind), item.Name,
+				yuan(item.Amount), item.Currency, string(item.Status), textPointer(item.Buyer), textPointer(item.ClientIP),
+				textPointer(item.ChannelTradeNo), timePointer(item.PaidAt), timeValue(item.ExpiresAt), timeValue(item.CreatedAt),
+			}
 		})
-	}
-	writeExport(ctx, "orders", merchantOrderHeader, rows, truncated)
 }
 
 func (handler *Handler) exportRefunds(ctx *gin.Context) {
@@ -120,32 +111,28 @@ func (handler *Handler) exportRefunds(ctx *gin.Context) {
 		invalidRequest(ctx)
 		return
 	}
-	query := handler.db.WithContext(ctx.Request.Context()).Model(&financemodel.Refund{})
-	if merchantID := strings.TrimSpace(ctx.Query("merchant_id")); merchantID != "" {
-		query = query.Where("merchant_id = ?", merchantID)
+	base := func() *gorm.DB {
+		query := handler.db.WithContext(ctx.Request.Context()).Model(&financemodel.Refund{})
+		if merchantID := strings.TrimSpace(ctx.Query("merchant_id")); merchantID != "" {
+			query = query.Where("merchant_id = ?", merchantID)
+		}
+		if status != "" {
+			query = query.Where("status = ?", status)
+		}
+		if keyword := strings.TrimSpace(ctx.Query("keyword")); keyword != "" {
+			like := "%" + keyword + "%"
+			query = query.Where("refund_no LIKE ? OR out_refund_no LIKE ?", like, like)
+		}
+		return query
 	}
-	if status != "" {
-		query = query.Where("status = ?", status)
-	}
-	if keyword := strings.TrimSpace(ctx.Query("keyword")); keyword != "" {
-		like := "%" + keyword + "%"
-		query = query.Where("refund_no LIKE ? OR out_refund_no LIKE ?", like, like)
-	}
-	var items []financemodel.Refund
-	if err := query.Order("created_at DESC, id DESC").Limit(maxExportRows + 1).Find(&items).Error; err != nil {
-		internalError(ctx)
-		return
-	}
-	items, truncated := trimExport(items)
-	rows := make([][]string, 0, len(items))
-	for _, item := range items {
-		rows = append(rows, []string{
-			item.RefundNo, item.MerchantID, item.PaymentOrderID, item.OutRefundNo, yuan(item.Amount),
-			item.Currency, item.Reason, string(item.Status), textPointer(item.RejectionReason),
-			textPointer(item.ProcessedBy), timePointer(item.ProcessedAt), timeValue(item.CreatedAt),
+	streamQueryExport(ctx, "refunds", refundHeader, base, "created_at DESC, id DESC",
+		func(item financemodel.Refund) []string {
+			return []string{
+				item.RefundNo, item.MerchantID, item.PaymentOrderID, item.OutRefundNo, yuan(item.Amount),
+				item.Currency, item.Reason, string(item.Status), textPointer(item.RejectionReason),
+				textPointer(item.ProcessedBy), timePointer(item.ProcessedAt), timeValue(item.CreatedAt),
+			}
 		})
-	}
-	writeExport(ctx, "refunds", refundHeader, rows, truncated)
 }
 
 func (handler *Handler) exportSettlements(ctx *gin.Context) {
@@ -154,90 +141,80 @@ func (handler *Handler) exportSettlements(ctx *gin.Context) {
 		invalidRequest(ctx)
 		return
 	}
-	query := handler.db.WithContext(ctx.Request.Context()).Model(&financemodel.Settlement{})
-	if merchantID := strings.TrimSpace(ctx.Query("merchant_id")); merchantID != "" {
-		query = query.Where("merchant_id = ?", merchantID)
+	base := func() *gorm.DB {
+		query := handler.db.WithContext(ctx.Request.Context()).Model(&financemodel.Settlement{})
+		if merchantID := strings.TrimSpace(ctx.Query("merchant_id")); merchantID != "" {
+			query = query.Where("merchant_id = ?", merchantID)
+		}
+		if status != "" {
+			query = query.Where("status = ?", status)
+		}
+		if keyword := strings.TrimSpace(ctx.Query("keyword")); keyword != "" {
+			like := "%" + keyword + "%"
+			query = query.Where("settlement_no LIKE ? OR out_settlement_no LIKE ?", like, like)
+		}
+		return query
 	}
-	if status != "" {
-		query = query.Where("status = ?", status)
-	}
-	if keyword := strings.TrimSpace(ctx.Query("keyword")); keyword != "" {
-		like := "%" + keyword + "%"
-		query = query.Where("settlement_no LIKE ? OR out_settlement_no LIKE ?", like, like)
-	}
-	var items []financemodel.Settlement
-	if err := query.Order("created_at DESC, id DESC").Limit(maxExportRows + 1).Find(&items).Error; err != nil {
-		internalError(ctx)
-		return
-	}
-	items, truncated := trimExport(items)
-	rows := make([][]string, 0, len(items))
-	for _, item := range items {
-		rows = append(rows, []string{
-			item.SettlementNo, item.MerchantID, item.OutSettlementNo, yuan(item.Amount), item.Currency,
-			item.Destination, string(item.Status), textPointer(item.RejectionReason),
-			textPointer(item.ProcessedBy), timePointer(item.ProcessedAt), timeValue(item.CreatedAt),
+	streamQueryExport(ctx, "settlements", settlementHeader, base, "created_at DESC, id DESC",
+		func(item financemodel.Settlement) []string {
+			return []string{
+				item.SettlementNo, item.MerchantID, item.OutSettlementNo, yuan(item.Amount), item.Currency,
+				item.Destination, string(item.Status), textPointer(item.RejectionReason),
+				textPointer(item.ProcessedBy), timePointer(item.ProcessedAt), timeValue(item.CreatedAt),
+			}
 		})
-	}
-	writeExport(ctx, "settlements", settlementHeader, rows, truncated)
 }
 
 func (handler *Handler) exportTransfers(ctx *gin.Context) {
-	query := handler.db.WithContext(ctx.Request.Context()).Model(&transfer.Order{})
-	if merchantID := strings.TrimSpace(ctx.Query("merchant_id")); merchantID != "" {
-		query = query.Where("merchant_id = ?", merchantID)
-	}
-	if status := strings.TrimSpace(ctx.Query("status")); status != "" {
-		if !transfer.ValidStatus(transfer.Status(status)) {
-			invalidRequest(ctx)
-			return
-		}
-		query = query.Where("status = ?", status)
-	}
-	var items []transfer.Order
-	if err := query.Order("created_at DESC, id DESC").Limit(maxExportRows + 1).Find(&items).Error; err != nil {
-		internalError(ctx)
+	status := strings.TrimSpace(ctx.Query("status"))
+	if status != "" && !transfer.ValidStatus(transfer.Status(status)) {
+		invalidRequest(ctx)
 		return
 	}
-	items, truncated := trimExport(items)
-	rows := make([][]string, 0, len(items))
-	for _, item := range items {
-		rows = append(rows, []string{
-			item.TransferNo, item.MerchantID, item.OutTransferNo, yuan(item.Amount), item.Currency,
-			item.AccountName, item.AccountNo, item.BankName, item.BranchName, string(item.Status),
-			textPointer(item.RejectionReason), timePointer(item.ProcessedAt), timeValue(item.CreatedAt),
-		})
+	base := func() *gorm.DB {
+		query := handler.db.WithContext(ctx.Request.Context()).Model(&transfer.Order{})
+		if merchantID := strings.TrimSpace(ctx.Query("merchant_id")); merchantID != "" {
+			query = query.Where("merchant_id = ?", merchantID)
+		}
+		if status != "" {
+			query = query.Where("status = ?", status)
+		}
+		return query
 	}
-	writeExport(ctx, "transfers", transferHeader, rows, truncated)
+	streamQueryExport(ctx, "transfers", transferHeader, base, "created_at DESC, id DESC",
+		func(item transfer.Order) []string {
+			return []string{
+				item.TransferNo, item.MerchantID, item.OutTransferNo, yuan(item.Amount), item.Currency,
+				item.AccountName, item.AccountNo, item.BankName, item.BranchName, string(item.Status),
+				textPointer(item.RejectionReason), timePointer(item.ProcessedAt), timeValue(item.CreatedAt),
+			}
+		})
 }
 
 func (handler *Handler) exportMerchants(ctx *gin.Context) {
-	query := handler.db.WithContext(ctx.Request.Context()).Model(&identitymodel.Merchant{})
-	if keyword := strings.TrimSpace(ctx.Query("keyword")); keyword != "" {
-		like := "%" + keyword + "%"
-		query = query.Where("display_name LIKE ? OR email LIKE ? OR phone LIKE ?", like, like, like)
-	}
-	if status := strings.TrimSpace(ctx.Query("status")); status != "" {
-		if status != string(identitymodel.StatusActive) && status != string(identitymodel.StatusDisabled) {
-			invalidRequest(ctx)
-			return
-		}
-		query = query.Where("status = ?", status)
-	}
-	var items []identitymodel.Merchant
-	if err := query.Order("created_at DESC, id DESC").Limit(maxExportRows + 1).Find(&items).Error; err != nil {
-		internalError(ctx)
+	status := strings.TrimSpace(ctx.Query("status"))
+	if status != "" && status != string(identitymodel.StatusActive) && status != string(identitymodel.StatusDisabled) {
+		invalidRequest(ctx)
 		return
 	}
-	items, truncated := trimExport(items)
-	rows := make([][]string, 0, len(items))
-	for _, item := range items {
-		rows = append(rows, []string{
-			item.ID, intPointer(item.LegacyUID), item.DisplayName, textPointer(item.Email),
-			textPointer(item.Phone), string(item.Status), timeValue(item.CreatedAt),
-		})
+	base := func() *gorm.DB {
+		query := handler.db.WithContext(ctx.Request.Context()).Model(&identitymodel.Merchant{})
+		if keyword := strings.TrimSpace(ctx.Query("keyword")); keyword != "" {
+			like := "%" + keyword + "%"
+			query = query.Where("display_name LIKE ? OR email LIKE ? OR phone LIKE ?", like, like, like)
+		}
+		if status != "" {
+			query = query.Where("status = ?", status)
+		}
+		return query
 	}
-	writeExport(ctx, "merchants", merchantHeader, rows, truncated)
+	streamQueryExport(ctx, "merchants", merchantHeader, base, "created_at DESC, id DESC",
+		func(item identitymodel.Merchant) []string {
+			return []string{
+				item.ID, intPointer(item.LegacyUID), item.DisplayName, textPointer(item.Email),
+				textPointer(item.Phone), string(item.Status), timeValue(item.CreatedAt),
+			}
+		})
 }
 
 func (handler *Handler) exportLedger(ctx *gin.Context) {
@@ -245,20 +222,20 @@ func (handler *Handler) exportLedger(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	items, truncated, err := loadLedgerRows(handler.db.WithContext(ctx.Request.Context()), filter, maxExportRows)
-	if err != nil {
-		internalError(ctx)
-		return
+	pages := func() *gorm.DB {
+		return applyLedgerFilter(ledgerBase(handler.db.WithContext(ctx.Request.Context())), filter).Select(ledgerColumns)
 	}
-	rows := make([][]string, 0, len(items))
-	for _, item := range items {
-		rows = append(rows, []string{
-			timeValue(item.CreatedAt), item.EntryID, item.AccountID, item.OwnerType, item.OwnerID,
-			item.Purpose, item.Currency, item.Direction, item.Bucket, yuan(item.Amount),
-			yuan(item.BalanceAfter), item.ReferenceType, item.ReferenceID, item.Description,
+	count := func() *gorm.DB {
+		return applyLedgerFilter(ledgerBase(handler.db.WithContext(ctx.Request.Context())), filter)
+	}
+	streamExport(ctx, "ledger", ledgerHeader, count, pages, "e.created_at DESC, e.sequence DESC",
+		func(item ledgerRow) []string {
+			return []string{
+				timeValue(item.CreatedAt), item.EntryID, item.AccountID, item.OwnerType, item.OwnerID,
+				item.Purpose, item.Currency, item.Direction, item.Bucket, yuan(item.Amount),
+				yuan(item.BalanceAfter), item.ReferenceType, item.ReferenceID, item.Description,
+			}
 		})
-	}
-	writeExport(ctx, "ledger", ledgerHeader, rows, truncated)
 }
 
 func (handler *Handler) exportMerchantRecords(ctx *gin.Context) {
@@ -267,23 +244,24 @@ func (handler *Handler) exportMerchantRecords(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	items, truncated, err := loadLedgerRows(handler.db.WithContext(ctx.Request.Context()), filter, maxExportRows)
-	if err != nil {
-		internalError(ctx)
-		return
+	pages := func() *gorm.DB {
+		return applyLedgerFilter(ledgerBase(handler.db.WithContext(ctx.Request.Context())), filter).Select(ledgerColumns)
 	}
-	rows := make([][]string, 0, len(items))
-	for _, item := range items {
-		rows = append(rows, []string{
-			timeValue(item.CreatedAt), item.ReferenceType, item.Direction,
-			yuan(item.Amount), yuan(item.BalanceAfter), item.ReferenceID,
+	count := func() *gorm.DB {
+		return applyLedgerFilter(ledgerBase(handler.db.WithContext(ctx.Request.Context())), filter)
+	}
+	streamExport(ctx, "records", recordHeader, count, pages, "e.created_at DESC, e.sequence DESC",
+		func(item ledgerRow) []string {
+			return []string{
+				timeValue(item.CreatedAt), item.ReferenceType, item.Direction,
+				yuan(item.Amount), yuan(item.BalanceAfter), item.ReferenceID,
+			}
 		})
-	}
-	writeExport(ctx, "records", recordHeader, rows, truncated)
 }
 
-// exportBuyers dumps the same aggregation the buyers statistics endpoint shows,
-// without pagination but still bounded by the shared row cap.
+// exportBuyers dumps the same aggregation the buyers statistics endpoint shows.
+// The result set is already materialised by the grouping query, so it streams
+// from memory but still respects the shared row cap.
 func (handler *Handler) exportBuyers(ctx *gin.Context) {
 	filter, ok := buyerFilterFromQuery(ctx)
 	if !ok {
@@ -294,14 +272,21 @@ func (handler *Handler) exportBuyers(ctx *gin.Context) {
 		internalError(ctx)
 		return
 	}
-	rows := make([][]string, 0, len(items))
-	for _, item := range items {
-		rows = append(rows, []string{
-			item.Buyer, strconv.FormatInt(item.OrderCount, 10), yuan(item.PaidAmount),
-			timePointer(item.FirstPaidAt), timePointer(item.LastPaidAt),
-		})
+	total := int64(len(items))
+	if truncated {
+		total = int64(maxExportRows) + 1
 	}
-	writeExport(ctx, "buyers", buyerHeader, rows, truncated)
+	writeStreamedExport(ctx, "buyers", buyerHeader, total, func(yield func([]string) bool) error {
+		for _, item := range items {
+			if !yield([]string{
+				item.Buyer, strconv.FormatInt(item.OrderCount, 10), yuan(item.PaidAmount),
+				timePointer(item.FirstPaidAt), timePointer(item.LastPaidAt),
+			}) {
+				break
+			}
+		}
+		return nil
+	})
 }
 
 type ledgerFilter struct {
@@ -385,58 +370,113 @@ func applyLedgerFilter(query *gorm.DB, filter ledgerFilter) *gorm.DB {
 	return query
 }
 
-func loadLedgerRows(db *gorm.DB, filter ledgerFilter, limit int) ([]ledgerRow, bool, error) {
-	var items []ledgerRow
-	if err := applyLedgerFilter(ledgerBase(db), filter).
-		Select(ledgerColumns).
-		Order("e.created_at DESC, e.sequence DESC").
-		Limit(limit + 1).Find(&items).Error; err != nil {
-		return nil, false, err
-	}
-	items, truncated := trimExport(items)
-	return items, truncated, nil
+// streamQueryExport counts the filtered rows and then streams them page by page.
+// The count happens before the response body starts, because once the first byte
+// is written the status code and the truncation headers can no longer change.
+func streamQueryExport[T any](ctx *gin.Context, baseName string, header []string, base func() *gorm.DB, order string, build func(T) []string) {
+	streamExport(ctx, baseName, header, base, base, order, build)
 }
 
-func writeExport(ctx *gin.Context, baseName string, header []string, rows [][]string, truncated bool) {
+func streamExport[T any](ctx *gin.Context, baseName string, header []string, count func() *gorm.DB, pages func() *gorm.DB, order string, build func(T) []string) {
+	var total int64
+	if err := count().Count(&total).Error; err != nil {
+		internalError(ctx)
+		return
+	}
+	writeStreamedExport(ctx, baseName, header, total, func(yield func([]string) bool) error {
+		written := 0
+		offset := 0
+		for written < maxExportRows {
+			limit := exportPageSize
+			if remaining := maxExportRows - written; remaining < limit {
+				limit = remaining
+			}
+			var items []T
+			if err := pages().Order(order).Offset(offset).Limit(limit).Find(&items).Error; err != nil {
+				return err
+			}
+			if len(items) == 0 {
+				return nil
+			}
+			for _, item := range items {
+				if !yield(build(item)) {
+					return nil
+				}
+			}
+			written += len(items)
+			offset += len(items)
+			if len(items) < limit {
+				return nil
+			}
+		}
+		return nil
+	})
+}
+
+// writeStreamedExport writes the BOM, the optional truncation notice, the header
+// and then each emitted record straight to the response writer. A failing query
+// can no longer change the status code, so it appends one complete notice row
+// and records the error for the access log instead of leaving a partial line.
+func writeStreamedExport(ctx *gin.Context, baseName string, header []string, total int64, emit func(yield func([]string) bool) error) {
+	truncated := total > int64(maxExportRows)
+	visible := total
+	if visible > int64(maxExportRows) {
+		visible = int64(maxExportRows)
+	}
 	name := baseName
 	if truncated {
 		name += "-truncated"
 	}
 	filename := fmt.Sprintf("%s-%s.csv", name, time.Now().UTC().Format("20060102-150405"))
-	var buffer bytes.Buffer
-	buffer.WriteString("\uFEFF")
-	writer := csv.NewWriter(&buffer)
-	if truncated {
-		// The notice keeps the full column width so strict CSV readers (Go,
-		// Python csv, PostgreSQL COPY) do not reject the ragged first row.
-		notice := make([]string, len(header))
-		notice[0] = fmt.Sprintf(truncationNotice, maxExportRows)
-		if err := writer.Write(neutralizeRow(notice)); err != nil {
-			internalError(ctx)
-			return
-		}
-	}
-	if err := writer.Write(neutralizeRow(header)); err != nil {
-		internalError(ctx)
-		return
-	}
-	for index := range rows {
-		rows[index] = neutralizeRow(rows[index])
-	}
-	if err := writer.WriteAll(rows); err != nil {
-		internalError(ctx)
-		return
-	}
-	writer.Flush()
-	if err := writer.Error(); err != nil {
-		internalError(ctx)
-		return
-	}
+	ctx.Header("Content-Type", "text/csv; charset=utf-8")
 	ctx.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	ctx.Header("X-Export-Truncated", strconv.FormatBool(truncated))
 	ctx.Header("X-Export-Row-Limit", strconv.Itoa(maxExportRows))
-	ctx.Header("X-Export-Rows", strconv.Itoa(len(rows)))
-	ctx.Data(http.StatusOK, "text/csv; charset=utf-8", buffer.Bytes())
+	ctx.Header("X-Export-Rows", strconv.FormatInt(visible, 10))
+	ctx.Writer.WriteHeader(http.StatusOK)
+
+	buffered := bufio.NewWriterSize(ctx.Writer, 32*1024)
+	if _, err := buffered.WriteString("\uFEFF"); err != nil {
+		ctx.Error(err)
+		return
+	}
+	writer := csv.NewWriter(buffered)
+	write := func(record []string) bool {
+		if err := writer.Write(neutralizeRow(record)); err != nil {
+			ctx.Error(err)
+			return false
+		}
+		return true
+	}
+	flush := func() {
+		writer.Flush()
+		_ = buffered.Flush()
+	}
+	if truncated {
+		notice := make([]string, len(header))
+		notice[0] = fmt.Sprintf(truncationNotice, maxExportRows)
+		if !write(notice) {
+			flush()
+			return
+		}
+	}
+	if !write(header) {
+		flush()
+		return
+	}
+	emitErr := emit(write)
+	flush()
+	if emitErr != nil {
+		ctx.Error(emitErr)
+		notice := make([]string, len(header))
+		notice[0] = fmt.Sprintf("导出中断：%v", emitErr)
+		_ = writer.Write(neutralizeRow(notice))
+		flush()
+		return
+	}
+	if err := writer.Error(); err != nil {
+		ctx.Error(err)
+	}
 }
 
 func trimExport[T any](items []T) ([]T, bool) {
@@ -444,6 +484,24 @@ func trimExport[T any](items []T) ([]T, bool) {
 		return items, false
 	}
 	return items[:maxExportRows], true
+}
+
+// writeExport streams an already materialised row set. It stays for the merchant
+// exports whose rows are built in memory, and keeps the exact headers, BOM and
+// truncation behaviour of the query based path.
+func writeExport(ctx *gin.Context, baseName string, header []string, rows [][]string, truncated bool) {
+	total := int64(len(rows))
+	if truncated {
+		total = int64(maxExportRows) + 1
+	}
+	writeStreamedExport(ctx, baseName, header, total, func(yield func([]string) bool) error {
+		for _, row := range rows {
+			if !yield(row) {
+				break
+			}
+		}
+		return nil
+	})
 }
 
 // neutralizeRow defuses spreadsheet formula injection. A merchant controlled

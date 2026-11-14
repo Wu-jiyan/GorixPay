@@ -3,6 +3,7 @@ import { computed, h, onMounted, ref } from 'vue';
 import { NButton, NTag, useMessage, type DataTableColumns } from 'naive-ui';
 import { complaintApi, type Complaint, type ComplaintDetail, type ComplaintMessage } from '@/api/merchantComplaints';
 import { errorMessage } from '@/api/client';
+import { downloadMerchantCsv } from '@/api/merchantExports';
 import PageHeader from '@/components/PageHeader.vue';
 import MoneyText from '@/components/MoneyText.vue';
 import { formatDateTime, paymentTypeText } from '@/utils/format';
@@ -11,6 +12,7 @@ import dayjs from 'dayjs';
 const message = useMessage();
 
 const loading = ref(true);
+const exporting = ref(false);
 const items = ref<Complaint[]>([]);
 const total = ref(0);
 const page = ref(1);
@@ -162,6 +164,23 @@ async function openDetail(row: Complaint) {
   }
 }
 
+async function handleExport() {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const result = await downloadMerchantCsv('complaints');
+    if (result.truncated) {
+      message.warning(`导出达到行数上限，仅包含前 ${result.rows} 行：${result.filename}`);
+    } else {
+      message.success(`已导出 ${result.filename}`);
+    }
+  } catch (err) {
+    message.error(errorMessage(err));
+  } finally {
+    exporting.value = false;
+  }
+}
+
 function handlePageChange(value: number) {
   page.value = value;
   void load();
@@ -183,6 +202,7 @@ onMounted(() => {
     <PageHeader title="我的投诉" subtitle="查看渠道投诉的处理进度与平台回复（只读）">
       <template #actions>
         <n-button size="small" :loading="loading" @click="load">刷新</n-button>
+        <n-button size="small" type="primary" :loading="exporting" @click="handleExport">导出 CSV</n-button>
       </template>
     </PageHeader>
 

@@ -45,7 +45,7 @@ The PHP original is a monolith: merchant balances stored as columns on the user 
 | Site skin | `site.skin` with three presets (default / dark / compact); name, logo, footer and skin all live in the console and apply on refresh |
 | Reliability | Transactional outbox with lease-based claiming and CAS updates, notification retries, optional Redis |
 | Legacy migration | `cmd/migrate-epay`, MySQL or SQLite into GorixPay, preflight, dry run, idempotent |
-| Releases | `v2.2.1` (2026-11-14); the first tag was `v2.0.0` (2026-11-13) |
+| Releases | `v2.2.2` (2026-11-14); the first tag was `v2.0.0` (2026-11-13) |
 
 ## Screenshots
 
