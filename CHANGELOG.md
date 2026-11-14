@@ -35,6 +35,37 @@
 - 前端新增 7 个页面：运营端的用户组、结算规则、分账、报表；商户端的资金明细、分账管理、红包。
 - 修复 `internal/settlement` 测试里用墙钟纳秒做幂等键导致的偶发失败。
 
+### 投诉处理
+
+- 新增 `complaints` 与 `complaint_messages`（迁移 `000020`）：运营端手工登记、回复、关闭，商户端只读自己的。
+- 状态机 `pending → replied → closed`，超期派生 `overdue`；`(channel, complaint_no)` 唯一，重复登记 409，关闭后回复 409，跨商户详情 404。
+- 渠道自动拉取留了 `Puller` 接口，插件侧还没有拉取接口，所以目前是人工闭环。
+
+### 后台安全
+
+- 新增 `admin_totp`、`login_attempts`、`captcha_challenges`（迁移 `000022`）。
+- 两步验证按 RFC 6238 自己实现（HMAC-SHA1、30 秒、±1 窗口），密钥用 AES-GCM 加密入库。
+- 图形验证码用 SVG 现画，库里只存 `sha256(id:code)`，2 分钟过期、一次性消费。
+- 登录接口新增 `captcha_id`/`captcha_code`/`totp_code` 三个可选字段；设置项 `security.captcha_required` 打开后强制验证码，失败与成功都写 `login_attempts`。
+
+### 支付方式与按日轮询
+
+- 新增 `pay_types`、`pay_rolls`、`wechat_mp_configs`（迁移 `000023`）。
+- 公开接口 `GET /api/v1/public/pay-types`；`/api/v1/public/site` 的 `payment_types` 改为读这张表。
+- 按日轮询接进渠道选择：当天有记录就替换权重，`weight=0` 表示当天不参与，没有记录按原权重。
+- 公众号配置的 `app_secret`/`aes_key` 加密存储，列表只回 `secret_configured`。
+
+### 通知与找回密码
+
+- 新增 `notification_channels`、`verify_codes`、`password_resets`（迁移 `000021`）。
+- 短信与邮件通道可配可测；没注入真实网关时打到 stdout，并在页面提示。
+- 验证码同 target 60 秒一次、每天 10 次；token 只存哈希、一次性；重置后作废该商户全部会话；改密复用 Argon2id 升级序列，下限 8 位。
+
+### 工程（第二批）
+
+- 前端新增运营端五页（投诉、安全设置、支付方式、按日轮询、公众号配置）与商户端两处（我的投诉、找回密码 + 账户资料里的改密卡片），登录页接入图形验证码。
+- `internal/channel/router` 增加可选的按日轮询钩子（`WithRollResolver`），不注入时行为不变。
+
 ## [2.1.0] - 2026-11-14
 
 ### 站点身份可配置
