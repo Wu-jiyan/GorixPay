@@ -20,6 +20,12 @@ export const siteInfo = state;
 export const siteName = computed(() => state.value.name || DEFAULT_NAME);
 export const siteLogo = computed(() => state.value.logo_url || '');
 export const siteFooter = computed(() => state.value.footer_text || '');
+export const siteSkin = computed(() => state.value.skin || 'default');
+
+function applySkin() {
+  if (typeof document === 'undefined') return;
+  document.documentElement.dataset.skin = siteSkin.value;
+}
 
 /** 站点身份只拉一次，多个页面同时挂载也只发一个请求。失败不缓存，下次还能重试。 */
 export function loadSite(): Promise<void> {
@@ -34,6 +40,7 @@ export function loadSite(): Promise<void> {
         payment_types: site?.payment_types ?? [],
         announcement: site?.announcement ?? null,
       };
+      applySkin();
       if (lastPageTitle) setPageTitle(lastPageTitle);
     })
     .catch(() => {

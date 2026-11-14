@@ -8,13 +8,14 @@ import { errorMessage } from '@/api/client';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusTag from '@/components/StatusTag.vue';
 import { formatDateTime, paymentTypeText } from '@/utils/format';
-import { asRow, httpStatus, itemsOf, numberOr, stringList, useServerPaging } from './shared';
+import { asRow, httpStatus, itemsOf, numberOr, stringList, textOf, useServerPaging } from './shared';
 
 interface GroupForm {
   name: string;
   rate_percent: number | null;
   pay_types: string[];
   settle_mode: string;
+  price_yuan: number | null;
 }
 
 const message = useMessage();
@@ -34,6 +35,7 @@ const form = reactive<GroupForm>({
   rate_percent: 0,
   pay_types: [],
   settle_mode: 'normal',
+  price_yuan: 0,
 });
 
 const payTypeOptions: SelectOption[] = [
@@ -83,6 +85,7 @@ function resetForm() {
   form.rate_percent = 0;
   form.pay_types = [];
   form.settle_mode = 'normal';
+  form.price_yuan = 0;
 }
 
 function openCreate() {
@@ -99,6 +102,7 @@ function openEdit(row: MerchantGroup) {
   form.rate_percent = numberOr(row.rate_bp, 0) / 100;
   form.pay_types = stringList(row.pay_types);
   form.settle_mode = row.settle_mode || 'normal';
+  form.price_yuan = numberOr(row.price_cents, 0) / 100;
   showForm.value = true;
 }
 
@@ -118,12 +122,27 @@ async function submit() {
       settle_mode: form.settle_mode,
       status: editingStatus.value,
     };
+    const priceCents = Math.round(numberOr(form.price_yuan, 0) * 100);
     if (editingId.value) {
       await groupsApi.update(editingId.value, payload);
       message.success('用户组已更新');
+      try {
+        // 买断价走独立接口，单位分
+        await groupsApi.setPrice(editingId.value, priceCents);
+      } catch (error) {
+        message.error(`买断价保存失败：${errorMessage(error)}`);
+      }
     } else {
-      await groupsApi.create(payload);
+      const created = await groupsApi.create(payload);
       message.success('用户组已创建');
+      const newId = textOf(asRow(created).id, '');
+      if (newId) {
+        try {
+          await groupsApi.setPrice(newId, priceCents);
+        } catch (error) {
+          message.error(`买断价保存失败：${errorMessage(error)}`);
+        }
+      }
     }
     showForm.value = false;
     await load();
@@ -319,6 +338,18 @@ onMounted(load);
         </n-form-item>
         <n-form-item label="结算模式" path="settle_mode">
           <n-select v-model:value="form.settle_mode" :options="settleModeOptions" />
+        </n-form-item>
+        <n-form-item label="买断价（元）">
+          <div class="rate-row">
+            <n-input-number
+              v-model:value="form.price_yuan"
+              :min="0"
+              :step="10"
+              :precision="2"
+              style="width: 180px"
+            />
+            <span class="muted small">0 表示不单独售卖；保存走 PATCH /admin/groups/:id/price</span>
+          </div>
         </n-form-item>
       </n-form>
       <template #footer>

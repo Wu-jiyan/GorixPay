@@ -162,6 +162,7 @@ export interface SiteInfo {
   name: string;
   logo_url: string;
   footer_text?: string;
+  skin?: string;
   announcement?: Announcement | null;
   payment_types: string[];
 }

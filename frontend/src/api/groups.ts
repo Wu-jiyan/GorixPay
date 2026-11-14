@@ -11,6 +11,8 @@ export interface MerchantGroup {
   settle_mode?: string;
   status?: string;
   merchant_count?: number;
+  /** 买断价（分），0 表示不卖 */
+  price_cents?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -38,6 +40,10 @@ export const groupsApi = {
   },
   async setStatus(id: string, status: string) {
     await http.patch(`/admin/groups/${id}/status`, { status });
+  },
+  /** 买断价单独一个接口，单位分 */
+  async setPrice(id: string, priceCents: number) {
+    await http.patch(`/admin/groups/${id}/price`, { price_cents: priceCents });
   },
   async remove(id: string) {
     await http.delete(`/admin/groups/${id}`);

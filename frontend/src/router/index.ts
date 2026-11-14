@@ -24,6 +24,11 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '找回密码' },
   },
   {
+    path: '/qr-login',
+    component: () => import('@/pages/public/QrLogin.vue'),
+    meta: { title: '扫码登录确认' },
+  },
+  {
     path: '/admin/login',
     component: () => import('@/pages/public/AdminLogin.vue'),
     meta: { title: '运营登录' },
@@ -73,6 +78,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'domains', component: () => import('@/pages/merchant/Domains.vue'), meta: { title: '支付域名' } },
       { path: 'invite', component: () => import('@/pages/merchant/Invite.vue'), meta: { title: '邀请返佣' } },
       { path: 'recharge', component: () => import('@/pages/merchant/Recharge.vue'), meta: { title: '余额充值' } },
+      { path: 'group-plans', component: () => import('@/pages/merchant/GroupPlans.vue'), meta: { title: '用户组' } },
       {
         path: 'credentials',
         component: () => import('@/pages/merchant/Credentials.vue'),
@@ -91,6 +97,9 @@ const routes: RouteRecordRaw[] = [
       { path: 'groups', component: () => import('@/pages/admin/Groups.vue'), meta: { title: '用户组与费率' } },
       { path: 'orders', component: () => import('@/pages/admin/Orders.vue'), meta: { title: '订单管理' } },
       { path: 'channels', component: () => import('@/pages/admin/Channels.vue'), meta: { title: '支付渠道' } },
+      { path: 'test-payment', component: () => import('@/pages/admin/TestPayment.vue'), meta: { title: '测试支付' } },
+      { path: 'devices', component: () => import('@/pages/admin/Devices.vue'), meta: { title: '语音设备与打印机' } },
+      { path: 'group-purchases', component: () => import('@/pages/admin/GroupPurchases.vue'), meta: { title: '用户组购买' } },
       { path: 'pay-types', component: () => import('@/pages/admin/PayTypes.vue'), meta: { title: '支付方式' } },
       { path: 'pay-rolls', component: () => import('@/pages/admin/PayRolls.vue'), meta: { title: '按日轮询' } },
       { path: 'wechat-mp', component: () => import('@/pages/admin/WechatMp.vue'), meta: { title: '公众号配置' } },
@@ -124,6 +133,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'security', component: () => import('@/pages/admin/Security.vue'), meta: { title: '安全设置' } },
       { path: 'settings', component: () => import('@/pages/admin/Settings.vue'), meta: { title: '系统设置' } },
       { path: 'audit', component: () => import('@/pages/admin/Audit.vue'), meta: { title: '审计日志' } },
+      { path: 'maintenance', component: () => import('@/pages/admin/Maintenance.vue'), meta: { title: '数据清理' } },
       { path: 'reports', component: () => import('@/pages/admin/Reports.vue'), meta: { title: '报表' } },
     ],
   },

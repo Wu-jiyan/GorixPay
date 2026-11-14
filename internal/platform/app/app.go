@@ -18,9 +18,11 @@ import (
 	epaypayment "gorixpay/internal/compat/epay/payment"
 	epayv2 "gorixpay/internal/compat/epay/v2"
 	"gorixpay/internal/complaint"
+	"gorixpay/internal/device"
 	"gorixpay/internal/domainauth"
 	financeservice "gorixpay/internal/finance/service"
 	"gorixpay/internal/funding"
+	"gorixpay/internal/groupshop"
 	"gorixpay/internal/identity/auth"
 	identityhttp "gorixpay/internal/identity/httpapi"
 	"gorixpay/internal/identity/session"
@@ -32,6 +34,7 @@ import (
 	"gorixpay/internal/merchantgroup"
 	epaynotification "gorixpay/internal/notification/epay"
 	"gorixpay/internal/notify"
+	"gorixpay/internal/oauth"
 	"gorixpay/internal/outbox"
 	paymentcallback "gorixpay/internal/payment/callback"
 	"gorixpay/internal/payment/cashier"
@@ -100,25 +103,12 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	router := httpserver.NewRouter(logger, mode)
 	health.Register(router, databaseChecker{db: db})
 	sessions := session.NewService(db, time.Now)
-	// cipher stays nil when no master key file is configured: 渠道与商户密钥类
-	// 功能会在使用点报错，登录、验证码这些不依赖密钥的功能照常可用。
-	var cipher *secret.Cipher
-	securityService := security.New(db, cipher)
-	authService := auth.NewService(db, sessions).WithChallenge(securityService)
-	identityhttp.Register(router.Group("/api/v1"), authService, sessions)
-	security.Register(router.Group("/api/v1"), identityhttp.Authenticate(sessions), securityService)
-	notify.Register(router.Group("/api/v1"), db, sessions, cipher)
 	application := &App{cfg: cfg, db: db, router: router}
 
-	redisClient, redisErr := redisx.Open(redisx.Config{
-		Addr: cfg.Redis.Addr, Password: cfg.Redis.Password, DB: cfg.Redis.DB, Prefix: cfg.Redis.Prefix,
-	})
-	if redisErr != nil {
-		logger.Warn("redis unavailable, continuing without it", "error", redisErr)
-		redisClient = nil
-	}
-	application.redis = redisClient
-
+	// 主密钥可以缺省：cipher 为 nil 时，渠道与商户密钥类功能在使用点报错，
+	// 登录、验证码、找回密码这些不依赖密钥的功能照常可用。cipher 必须在
+	// security.New 之前加载，否则两步验证会拿到 nil cipher。
+	var cipher *secret.Cipher
 	if cfg.Security.MasterKeyFile != "" {
 		key, err := secret.LoadKeyFile(cfg.Security.MasterKeyFile)
 		if err != nil {
@@ -130,6 +120,23 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			application.closeResources()
 			return nil, err
 		}
+	}
+	securityService := security.New(db, cipher)
+	authService := auth.NewService(db, sessions).WithChallenge(securityService)
+	identityhttp.Register(router.Group("/api/v1"), authService, sessions)
+	security.Register(router.Group("/api/v1"), identityhttp.Authenticate(sessions), securityService)
+	notify.Register(router.Group("/api/v1"), db, sessions, cipher)
+
+	redisClient, redisErr := redisx.Open(redisx.Config{
+		Addr: cfg.Redis.Addr, Password: cfg.Redis.Password, DB: cfg.Redis.DB, Prefix: cfg.Redis.Prefix,
+	})
+	if redisErr != nil {
+		logger.Warn("redis unavailable, continuing without it", "error", redisErr)
+		redisClient = nil
+	}
+	application.redis = redisClient
+
+	if cipher != nil {
 		credentials := credential.NewService(db, cipher, time.Now)
 		channelConfigs := channelconfig.NewService(cipher)
 		ledgerWriter := ledgerservice.New(db, time.Now)
@@ -143,8 +150,10 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		orders := paymentservice.New(db, time.Now).WithGuards(
 			certService.Guard(), domainService.Guard(), riskService.Guard(), fundingService.Guard(),
 		)
-		callbacks := paymentcallback.NewWithLedger(db, time.Now, ledgerWriter).
-			WithHooks(fundingService, inviteService.Hook(), profitSharing.Hook())
+		// Hooks are attached once, after every hook owner exists: WithHooks
+		// replaces the slice, so a second call would silently drop the earlier
+		// hooks (funding, invite rebate, profit sharing).
+		callbacks := paymentcallback.NewWithLedger(db, time.Now, ledgerWriter)
 
 		plugins := pluginpayment.NewRegistry()
 		if err := plugins.Register(epayplugin.New(nil)); err != nil {
@@ -172,6 +181,10 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		channelops.Mount(router.Group("/api/v1"), identityhttp.Authenticate(sessions), channelOps)
 		channels = channels.WithRollResolver(channelOps)
 		orchestrator := paymentorchestrator.NewConfigured(db, channels, time.Now, channelConfigs, cfg.HTTP.PublicURL)
+		deviceService := device.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions), device.Deps{Orders: orders, Starter: orchestrator})
+		groupshop.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions), ledgerWriter)
+		callbacks = callbacks.WithHooks(fundingService, inviteService.Hook(), profitSharing.Hook(), deviceService.PaymentHook())
+		oauthService := oauth.Register(router.Group("/api/v1"), db, sessions, cipher, cfg.HTTP.PublicURL)
 		finance := financeservice.New(db, ledgerWriter, time.Now)
 		transferService := transfer.New(db, ledgerWriter, time.Now)
 		settleService := settlement.New(db, finance, transferService, merchantGroups.RateBp, time.Now)
@@ -256,6 +269,25 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			}
 		}()
 		settleService.Start(workerContext, time.Minute)
+		go func() {
+			ticker := time.NewTicker(30 * time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-workerContext.Done():
+					return
+				case <-ticker.C:
+					if _, err := transferService.ExpireRedBatches(workerContext, time.Now().UTC(), 24*time.Hour); err != nil {
+						logger.Warn("expire red packet batches", "error", err)
+					}
+					if oauthService != nil {
+						if _, err := oauthService.PurgeExpired(workerContext); err != nil {
+							logger.Warn("purge oauth login state", "error", err)
+						}
+					}
+				}
+			}
+		}()
 	}
 	return application, nil
 }

@@ -652,3 +652,100 @@ func redAccountName(remark string) string {
 	}
 	return "红包 " + remark
 }
+
+// CancelRedBatch rejects every still-pending packet of a red batch, releases the
+// frozen funds and returns how many packets were cancelled. A packet that was
+// already reviewed blocks the whole batch with ErrStateConflict.
+func (service *Service) CancelRedBatch(ctx context.Context, batchNo, reason string) (int, error) {
+	batchNo = strings.TrimSpace(batchNo)
+	if batchNo == "" {
+		return 0, ErrInvalidRequest
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "红包批次已撤销"
+	}
+	if len(reason) > 255 {
+		reason = reason[:255]
+	}
+	if service.ledger == nil {
+		return 0, ErrInvalidRequest
+	}
+	cancelled := 0
+	err := service.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var orders []Order
+		if err := tx.WithContext(ctx).
+			Where("batch_no = ? AND kind = ?", batchNo, KindRed).
+			Order("out_transfer_no ASC").Find(&orders).Error; err != nil {
+			return err
+		}
+		if len(orders) == 0 {
+			return ErrNotFound
+		}
+		for _, order := range orders {
+			switch order.Status {
+			case StatusPending, StatusRejected:
+				// Rejected packets were cancelled by an earlier call; the batch
+				// cancel is idempotent for those.
+			default:
+				return ErrStateConflict
+			}
+		}
+		txLedger := ledgerservice.New(tx, service.now)
+		now := service.now().UTC()
+		for _, order := range orders {
+			if order.Status != StatusPending {
+				continue
+			}
+			if _, err := txLedger.Release(ctx, "transfer:"+order.ID); err != nil &&
+				!errors.Is(err, ledgerservice.ErrFreezeNotFound) {
+				return err
+			}
+			update := tx.Model(&Order{}).Where("id = ? AND status = ?", order.ID, StatusPending).
+				Updates(map[string]any{"status": StatusRejected, "rejection_reason": reason, "updated_at": now})
+			if update.Error != nil {
+				return update.Error
+			}
+			if update.RowsAffected != 1 {
+				return ErrStateConflict
+			}
+			cancelled++
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return cancelled, nil
+}
+
+// ExpireRedBatches cancels the red batches whose packets are still pending and
+// older than olderThan, releasing the frozen money. It returns the number of
+// batches cancelled, skips batches that were reviewed in the meantime, and is
+// safe to call from any scheduler: no ticker is started here.
+func (service *Service) ExpireRedBatches(ctx context.Context, now time.Time, olderThan time.Duration) (int, error) {
+	if olderThan <= 0 {
+		return 0, ErrInvalidRequest
+	}
+	cutoff := now.UTC().Add(-olderThan)
+	var batchNos []string
+	if err := service.db.WithContext(ctx).Model(&Order{}).
+		Where("kind = ? AND status = ? AND created_at <= ? AND batch_no IS NOT NULL", KindRed, StatusPending, cutoff).
+		Distinct("batch_no").Pluck("batch_no", &batchNos).Error; err != nil {
+		return 0, err
+	}
+	cancelled := 0
+	for _, batchNo := range batchNos {
+		if strings.TrimSpace(batchNo) == "" {
+			continue
+		}
+		if _, err := service.CancelRedBatch(ctx, batchNo, "红包超时未领取，自动退回"); err != nil {
+			if errors.Is(err, ErrStateConflict) || errors.Is(err, ErrNotFound) {
+				continue
+			}
+			return cancelled, err
+		}
+		cancelled++
+	}
+	return cancelled, nil
+}

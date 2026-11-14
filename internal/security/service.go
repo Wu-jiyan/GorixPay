@@ -420,11 +420,20 @@ func decodeBool(raw string) bool {
 	if trimmed == "" {
 		return false
 	}
-	var parsed bool
-	if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
-		return parsed
+	// Settings are stored as JSON, and the console writes the string "true"
+	// rather than the literal true, so accept both shapes.
+	var anyValue any
+	if err := json.Unmarshal([]byte(trimmed), &anyValue); err == nil {
+		switch value := anyValue.(type) {
+		case bool:
+			return value
+		case string:
+			trimmed = strings.ToLower(strings.TrimSpace(value))
+		case float64:
+			return value != 0
+		}
 	}
-	switch strings.ToLower(trimmed) {
+	switch strings.ToLower(strings.Trim(trimmed, `"`)) {
 	case "true", "1", "yes":
 		return true
 	default:

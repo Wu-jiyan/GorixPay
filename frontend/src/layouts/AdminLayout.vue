@@ -33,10 +33,12 @@ const menuOptions = [
   { label: '报表', key: '/admin/reports' },
   { label: '商户管理', key: '/admin/merchants' },
   { label: '用户组与费率', key: '/admin/groups' },
+  { label: '用户组购买', key: '/admin/group-purchases' },
   { label: '实名审核', key: '/admin/certifications' },
   { label: '域名审核', key: '/admin/domains' },
   { label: '订单管理', key: '/admin/orders' },
   { label: '支付渠道', key: '/admin/channels' },
+  { label: '测试支付', key: '/admin/test-payment' },
   { label: '支付方式', key: '/admin/pay-types' },
   { label: '按日轮询', key: '/admin/pay-rolls' },
   { label: '公众号配置', key: '/admin/wechat-mp' },
@@ -52,10 +54,12 @@ const menuOptions = [
   { label: '资金账本', key: '/admin/ledger' },
   { label: '消息队列', key: '/admin/outbox' },
   { label: '通知通道', key: '/admin/notification-channels' },
+  { label: '设备与打印', key: '/admin/devices' },
   { label: '公告管理', key: '/admin/announcements' },
   { label: '安全设置', key: '/admin/security' },
   { label: '系统设置', key: '/admin/settings' },
   { label: '审计日志', key: '/admin/audit' },
+  { label: '数据清理', key: '/admin/maintenance' },
 ];
 
 const activeKey = computed(() => (route.path === '/admin/' ? '/admin' : route.path));

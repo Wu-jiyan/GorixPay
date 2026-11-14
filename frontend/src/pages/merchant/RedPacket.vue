@@ -74,6 +74,15 @@ const columns: DataTableColumns<RedPacket> = [
     width: 170,
     render: (row) => formatDateTime(row.created_at),
   },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 130,
+    render: (row) =>
+      row.status === 'pending'
+        ? h(NTag, { size: 'small', type: 'warning', bordered: false }, () => '等待审核')
+        : h('span', { class: 'muted-text' }, '-'),
+  },
 ];
 
 const pagination = computed(() => ({
@@ -249,6 +258,10 @@ onMounted(() => {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12.5px;
   color: #334155;
+}
+:deep(.muted-text) {
+  color: #94a3b8;
+  font-size: 12.5px;
 }
 @media (max-width: 1100px) {
   .create-grid {

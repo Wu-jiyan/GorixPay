@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
-import { zhCN, dateZhCN, type GlobalThemeOverrides } from 'naive-ui';
-import { loadSite } from '@/stores/site';
+import { darkTheme, zhCN, dateZhCN, type GlobalThemeOverrides } from 'naive-ui';
+import { loadSite, siteSkin } from '@/stores/site';
 
 onMounted(() => {
   void loadSite();
@@ -27,11 +27,18 @@ const themeOverrides: GlobalThemeOverrides = {
 </script>
 
 <template>
-  <n-config-provider :locale="zhCN" :date-locale="dateZhCN" :theme-overrides="themeOverrides">
+  <n-config-provider
+    :locale="zhCN"
+    :date-locale="dateZhCN"
+    :theme="siteSkin === 'dark' ? darkTheme : null"
+    :theme-overrides="themeOverrides"
+  >
     <n-message-provider>
       <n-dialog-provider>
         <n-notification-provider>
-          <router-view />
+          <div class="app-shell" :class="`skin-${siteSkin}`">
+            <router-view />
+          </div>
         </n-notification-provider>
       </n-dialog-provider>
     </n-message-provider>

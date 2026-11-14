@@ -16,6 +16,7 @@ const (
 	settingSiteName   = "site.name"
 	settingSiteLogo   = "site.logo_url"
 	settingSiteFooter = "site.footer_text"
+	settingSiteSkin   = "site.skin"
 )
 
 type Service struct {
@@ -32,6 +33,7 @@ type Site struct {
 	Name         string   `json:"name"`
 	LogoURL      string   `json:"logo_url"`
 	FooterText   string   `json:"footer_text"`
+	Skin         string   `json:"skin"`
 	Announcement any      `json:"announcement"`
 	PaymentTypes []string `json:"payment_types"`
 }
@@ -158,6 +160,7 @@ func (service *Service) Site(ctx context.Context) (Site, error) {
 	}
 	site := Site{
 		Name:         defaultSiteName,
+		Skin:         "default",
 		LogoURL:      "",
 		PaymentTypes: service.paymentTypes(ctx),
 	}
@@ -169,6 +172,9 @@ func (service *Service) Site(ctx context.Context) (Site, error) {
 	}
 	if value := decodeSetting(settings[settingSiteFooter]); value != "" {
 		site.FooterText = value
+	}
+	if value := decodeSetting(settings[settingSiteSkin]); value != "" {
+		site.Skin = value
 	}
 	latest, err := service.LatestPublished(ctx)
 	if err != nil {
@@ -196,7 +202,7 @@ func (service *Service) paymentTypes(ctx context.Context) []string {
 }
 
 func (service *Service) settings(ctx context.Context) (map[string]string, error) {
-	keys := []string{settingSiteName, settingSiteLogo, settingSiteFooter}
+	keys := []string{settingSiteName, settingSiteLogo, settingSiteFooter, settingSiteSkin}
 	var records []systemSetting
 	if err := service.db.WithContext(ctx).Where("setting_key IN ?", keys).Find(&records).Error; err != nil {
 		return nil, err

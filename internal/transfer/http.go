@@ -40,6 +40,7 @@ func RegisterAdmin(group *gin.RouterGroup, service *Service) {
 	group.GET("/transfers", handler.adminList)
 	group.GET("/transfers/red", handler.adminRedBatches)
 	group.POST("/transfers/red", handler.adminCreateRed)
+	group.POST("/transfers/red/:batch_no/cancel", handler.adminCancelRed)
 	group.GET("/transfers/:id", handler.adminGet)
 	group.POST("/transfers/:id/process", handler.adminProcess)
 }
@@ -254,6 +255,23 @@ func (handler *Handler) listRedBatches(ctx *gin.Context, merchantID string) {
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{"items": batches, "total": total, "page": page.Number, "page_size": page.Size})
+}
+
+func (handler *Handler) adminCancelRed(ctx *gin.Context) {
+	reason := ""
+	if ctx.Request.ContentLength > 0 {
+		var request struct {
+			Reason string `json:"reason"`
+		}
+		_ = ctx.ShouldBindJSON(&request)
+		reason = request.Reason
+	}
+	cancelled, err := handler.service.CancelRedBatch(ctx.Request.Context(), ctx.Param("batch_no"), reason)
+	if err != nil {
+		writeTransferError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"batch_no": ctx.Param("batch_no"), "cancelled": cancelled})
 }
 
 func pageFromQuery(ctx *gin.Context) (Page, bool) {

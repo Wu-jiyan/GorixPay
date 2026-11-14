@@ -67,3 +67,21 @@ a {
     padding: 16px 12px 32px;
   }
 }
+
+/* 站点皮肤：site.skin（default / dark / compact）。
+   dark 走 Naive UI 的 darkTheme，这里只处理页面底色与滚动条；
+   compact 收紧页面的纵向留白，表格行高由组件的 size 控制，这里不动。 */
+html[data-skin='dark'],
+html[data-skin='dark'] body {
+  background: #101014;
+  color: #e5e7eb;
+  color-scheme: dark;
+}
+
+html[data-skin='compact'] .page {
+  padding: 12px 16px 24px;
+}
+
+html[data-skin='compact'] .n-card {
+  margin-bottom: 8px;
+}

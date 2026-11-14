@@ -18,6 +18,8 @@ interface SettingMeta {
   unit?: SettingUnit;
   /** 用多行文本框渲染（页脚、说明类文本） */
   textarea?: boolean;
+  /** 有选项时渲染成下拉框 */
+  options?: { label: string; value: string }[];
 }
 
 interface SettingRow {
@@ -27,6 +29,7 @@ interface SettingRow {
   kind: SettingKind;
   unit?: SettingUnit;
   textarea?: boolean;
+  options?: { label: string; value: string }[];
   value: SettingValue;
   original: SettingValue;
   updated_at: string;
@@ -53,6 +56,16 @@ const meta: Record<string, SettingMeta> = {
     hint: '显示在官网页脚，通常填备案号或公司名，留空不显示',
     kind: 'string',
     textarea: true,
+  },
+  'site.skin': {
+    label: '界面皮肤',
+    hint: '保存后刷新生效；dark 为深色，compact 为紧凑排版',
+    kind: 'string',
+    options: [
+      { label: '默认（default）', value: 'default' },
+      { label: '深色（dark）', value: 'dark' },
+      { label: '紧凑（compact）', value: 'compact' },
+    ],
   },
   'payment.order_expiry_minutes': {
     label: '订单过期时间（分钟）',
@@ -194,6 +207,7 @@ async function load() {
         kind,
         unit: known?.unit,
         textarea: known?.textarea,
+        options: known?.options,
         value,
         original: value,
         updated_at: item.updated_at,
@@ -270,6 +284,12 @@ onMounted(load);
                     v-model:value="row.value"
                     :min="0"
                     :step="1"
+                    style="width: 220px"
+                  />
+                  <n-select
+                    v-else-if="row.options"
+                    v-model:value="row.value"
+                    :options="row.options"
                     style="width: 220px"
                   />
                   <n-input

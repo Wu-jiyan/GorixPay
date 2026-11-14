@@ -26,7 +26,7 @@ func TestNewCaptchaDrawsFourAlphabetCharacters(t *testing.T) {
 	}
 }
 
-func TestNewCaptchaSVGContainsEveryCharacterDistinctly(t *testing.T) {
+func TestNewCaptchaSVGPaintsGlyphsWithoutTextNodes(t *testing.T) {
 	first, err := NewCaptcha()
 	if err != nil {
 		t.Fatal(err)
@@ -38,10 +38,18 @@ func TestNewCaptchaSVGContainsEveryCharacterDistinctly(t *testing.T) {
 	if first.SVG == second.SVG {
 		t.Fatal("two captcha images are identical")
 	}
+	// The answer must not be recoverable from the markup: no text nodes, and
+	// none of the code's characters may appear as element content.
+	if strings.Contains(first.SVG, "<text") {
+		t.Fatal("svg uses <text> elements; the code would be readable by a script")
+	}
 	for _, char := range first.Code {
-		if !strings.Contains(first.SVG, ">"+string(char)+"</text>") {
-			t.Fatalf("svg missing glyph %q", char)
+		if strings.Contains(first.SVG, ">"+string(char)+"<") {
+			t.Fatalf("svg leaks glyph %q as text content", char)
 		}
+	}
+	if !strings.Contains(first.SVG, "<rect ") {
+		t.Fatal("svg paints no glyph pixels")
 	}
 	if !strings.Contains(first.SVG, "<line ") {
 		t.Fatal("svg has no noise lines")

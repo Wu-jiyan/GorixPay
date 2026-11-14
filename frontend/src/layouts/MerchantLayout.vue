@@ -38,6 +38,7 @@ const menuOptions = [
   { label: '分账管理', key: '/merchant/profit-sharing' },
   { label: '红包', key: '/merchant/red-packet' },
   { label: '余额充值', key: '/merchant/recharge' },
+  { label: '用户组', key: '/merchant/group-plans' },
   { label: '实名认证', key: '/merchant/certification' },
   { label: '支付域名', key: '/merchant/domains' },
   { label: '邀请返佣', key: '/merchant/invite' },

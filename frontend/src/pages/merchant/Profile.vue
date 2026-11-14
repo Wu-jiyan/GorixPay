@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue';
 import { useMessage, type FormInst, type FormRules } from 'naive-ui';
 import { merchantApi } from '@/api';
 import { accountSecurityApi } from '@/api/accountSecurity';
+import { merchantOauthApi, type OAuthBinding } from '@/api/merchantOauth';
 import type { Merchant } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import PageHeader from '@/components/PageHeader.vue';
@@ -152,8 +153,51 @@ async function handleChangePassword() {
   }
 }
 
+// 第三方账号绑定
+const PROVIDER_LABELS: Record<string, string> = {
+  wechat: '微信',
+  qq: 'QQ',
+  douyin: '抖音',
+  weibo: '微博',
+  github: 'GitHub',
+};
+
+const oauthLoading = ref(true);
+const bindings = ref<OAuthBinding[]>([]);
+const unbinding = ref('');
+
+function providerText(provider?: string): string {
+  return PROVIDER_LABELS[provider ?? ''] ?? (provider || '-');
+}
+
+async function loadBindings() {
+  oauthLoading.value = true;
+  try {
+    bindings.value = await merchantOauthApi.bindings();
+  } catch (err) {
+    message.error(errorMessage(err));
+  } finally {
+    oauthLoading.value = false;
+  }
+}
+
+async function handleUnbind(provider: string) {
+  if (unbinding.value) return;
+  unbinding.value = provider;
+  try {
+    await merchantOauthApi.unbind(provider);
+    message.success('已解除绑定');
+    await loadBindings();
+  } catch (err) {
+    message.error(errorMessage(err));
+  } finally {
+    unbinding.value = '';
+  }
+}
+
 onMounted(() => {
   void loadProfile();
+  void loadBindings();
 });
 </script>
 
@@ -254,6 +298,35 @@ onMounted(() => {
           </n-button>
         </n-form>
       </n-card>
+
+      <n-card :bordered="false" title="第三方账号绑定" class="profile-card oauth-card">
+        <p class="profile-desc">
+          绑定后可以直接用第三方账号登录商户中心；解绑后该平台账号将不能再用于登录。
+        </p>
+        <n-spin :show="oauthLoading">
+          <div v-if="bindings.length" class="oauth-list">
+            <div v-for="item in bindings" :key="item.provider" class="oauth-item">
+              <div class="oauth-main">
+                <span class="oauth-provider">{{ providerText(item.provider) }}</span>
+                <span class="oauth-name">{{ item.nickname || '已绑定' }}</span>
+              </div>
+              <div class="oauth-side">
+                <span class="oauth-time">{{ formatDateTime(item.created_at) }}</span>
+                <n-popconfirm @positive-click="handleUnbind(item.provider)">
+                  <template #trigger>
+                    <n-button text type="error" size="small" :loading="unbinding === item.provider">解绑</n-button>
+                  </template>
+                  解绑后该平台账号将不能再用于登录，确认解绑？
+                </n-popconfirm>
+              </div>
+            </div>
+          </div>
+          <n-empty v-else description="还没有绑定第三方账号" size="small" />
+        </n-spin>
+        <n-alert type="info" :bordered="false" class="profile-alert">
+          绑定入口在登录页的第三方登录按钮：首次授权成功后会自动绑定当前商户账号。
+        </n-alert>
+      </n-card>
     </div>
   </div>
 </template>
@@ -276,6 +349,53 @@ onMounted(() => {
 }
 .password-card {
   grid-column: 1 / -1;
+}
+.oauth-card {
+  grid-column: 1 / -1;
+}
+.oauth-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.oauth-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.oauth-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.oauth-provider {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  flex: none;
+}
+.oauth-name {
+  font-size: 12.5px;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oauth-side {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+.oauth-time {
+  font-size: 12px;
+  color: #94a3b8;
 }
 .profile-alert {
   margin-top: 18px;
