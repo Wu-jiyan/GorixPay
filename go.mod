@@ -17,6 +17,7 @@ require (
 	gorm.io/driver/postgres v1.5.11
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.30.0
+	rsc.io/qr v0.2.0
 )
 
 require (

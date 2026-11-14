@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	identitymodel "gorixpay/internal/identity/model"
 	ledgermodel "gorixpay/internal/ledger/model"
 	ledgerservice "gorixpay/internal/ledger/service"
 	"gorixpay/internal/platform/config"
@@ -148,12 +149,15 @@ func transferFixture(t *testing.T, name string) (*Service, *gorm.DB, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&Order{}, &ledgermodel.Account{}, &ledgermodel.Balance{}, &ledgermodel.Transaction{}, &ledgermodel.Entry{}, &ledgermodel.Freeze{}); err != nil {
+	if err := db.AutoMigrate(&Order{}, &identitymodel.Merchant{}, &ledgermodel.Account{}, &ledgermodel.Balance{}, &ledgermodel.Transaction{}, &ledgermodel.Entry{}, &ledgermodel.Freeze{}); err != nil {
 		t.Fatal(err)
 	}
 	now := func() time.Time { return time.Date(2026, 11, 13, 10, 0, 0, 0, time.UTC) }
 	ledger := ledgerservice.New(db, now)
 	merchantID := "merchant-1"
+	if err := db.Create(&identitymodel.Merchant{ID: merchantID, DisplayName: "merchant", Status: identitymodel.StatusActive}).Error; err != nil {
+		t.Fatal(err)
+	}
 	merchant, err := ledger.CreateAccount(context.Background(), ledgerservice.AccountRequest{
 		OwnerType: "merchant", OwnerID: merchantID, Purpose: "balance", Category: ledgermodel.CategoryLiability, Currency: "CNY",
 	})

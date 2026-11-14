@@ -70,6 +70,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'records', component: () => import('@/pages/merchant/Records.vue'), meta: { title: '资金明细' } },
       { path: 'profit-sharing', component: () => import('@/pages/merchant/ProfitSharing.vue'), meta: { title: '分账管理' } },
       { path: 'red-packet', component: () => import('@/pages/merchant/RedPacket.vue'), meta: { title: '红包' } },
+      { path: 'pay-code', component: () => import('@/pages/merchant/PayCode.vue'), meta: { title: '收款码' } },
       {
         path: 'certification',
         component: () => import('@/pages/merchant/Certification.vue'),
@@ -122,6 +123,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'risk', component: () => import('@/pages/admin/Risk.vue'), meta: { title: '风控与黑名单' } },
       { path: 'plugins', component: () => import('@/pages/admin/Plugins.vue'), meta: { title: '插件与渠道' } },
       { path: 'invites', component: () => import('@/pages/admin/Invites.vue'), meta: { title: '返佣记录' } },
+      { path: 'invite-codes', component: () => import('@/pages/admin/InviteCodes.vue'), meta: { title: '邀请码' } },
       { path: 'ledger', component: () => import('@/pages/admin/Ledger.vue'), meta: { title: '资金账本' } },
       { path: 'outbox', component: () => import('@/pages/admin/Outbox.vue'), meta: { title: '消息队列' } },
       { path: 'notification-channels', component: () => import('@/pages/admin/NotificationChannels.vue'), meta: { title: '通知通道' } },

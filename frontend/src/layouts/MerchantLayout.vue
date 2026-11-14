@@ -37,6 +37,7 @@ const menuOptions = [
   { label: '代付申请', key: '/merchant/transfers' },
   { label: '分账管理', key: '/merchant/profit-sharing' },
   { label: '红包', key: '/merchant/red-packet' },
+  { label: '收款码', key: '/merchant/pay-code' },
   { label: '余额充值', key: '/merchant/recharge' },
   { label: '用户组', key: '/merchant/group-plans' },
   { label: '实名认证', key: '/merchant/certification' },

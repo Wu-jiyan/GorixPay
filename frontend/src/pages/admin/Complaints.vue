@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { NButton, NTag, useMessage } from 'naive-ui';
+import { NButton, NPopconfirm, NSpace, NTag, useMessage } from 'naive-ui';
 import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-ui';
 import dayjs from 'dayjs';
+import { complaintAutoRulesApi } from '@/api/complaintAutoRules';
+import type { ComplaintAutoRule } from '@/api/complaintAutoRules';
 import { complaintsApi } from '@/api/adminComplaints';
 import type { Complaint } from '@/api/adminComplaints';
 import { errorMessage } from '@/api/client';
 import MoneyText from '@/components/MoneyText.vue';
 import PageHeader from '@/components/PageHeader.vue';
+import StatusTag from '@/components/StatusTag.vue';
 import { formatDateTime } from '@/utils/format';
 import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
 
@@ -50,6 +53,20 @@ const replyText = ref('');
 const replying = ref(false);
 const closeReason = ref('');
 const closing = ref(false);
+
+const showRules = ref(false);
+const autoRules = ref<ComplaintAutoRule[]>([]);
+const rulesLoading = ref(false);
+const showRuleForm = ref(false);
+const ruleEditingId = ref<string | null>(null);
+const ruleFormRef = ref<FormInst | null>(null);
+const ruleSubmitting = ref(false);
+const ruleForm = reactive({
+  channel: 'alipay',
+  reply_text: '',
+  close_after_hours: 24,
+  status: 'active',
+});
 
 const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } = useServerPaging(load);
 
@@ -218,6 +235,134 @@ async function closeComplaint() {
   }
 }
 
+async function loadRules() {
+  rulesLoading.value = true;
+  try {
+    autoRules.value = itemsOf<ComplaintAutoRule>(await complaintAutoRulesApi.list());
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    rulesLoading.value = false;
+  }
+}
+
+function openRules() {
+  showRules.value = true;
+  void loadRules();
+}
+
+function openRuleCreate() {
+  ruleEditingId.value = null;
+  ruleForm.channel = channel.value || 'alipay';
+  ruleForm.reply_text = '';
+  ruleForm.close_after_hours = 24;
+  ruleForm.status = 'active';
+  showRuleForm.value = true;
+}
+
+function openRuleEdit(row: ComplaintAutoRule) {
+  ruleEditingId.value = row.id;
+  ruleForm.channel = row.channel || 'alipay';
+  ruleForm.reply_text = row.reply_text || '';
+  ruleForm.close_after_hours = typeof row.close_after_hours === 'number' ? row.close_after_hours : 0;
+  ruleForm.status = row.status || 'active';
+  showRuleForm.value = true;
+}
+
+async function submitRule() {
+  if (ruleForm.reply_text.trim() === '') {
+    message.warning('请填写自动回复内容');
+    return;
+  }
+  ruleSubmitting.value = true;
+  try {
+    const payload = {
+      channel: ruleForm.channel,
+      reply_text: ruleForm.reply_text.trim(),
+      close_after_hours: ruleForm.close_after_hours ?? 0,
+      status: ruleForm.status,
+    };
+    if (ruleEditingId.value) {
+      await complaintAutoRulesApi.update(ruleEditingId.value, payload);
+      message.success('自动规则已更新');
+    } else {
+      await complaintAutoRulesApi.create(payload);
+      message.success('自动规则已创建');
+    }
+    showRuleForm.value = false;
+    await loadRules();
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    ruleSubmitting.value = false;
+  }
+}
+
+async function removeRule(row: ComplaintAutoRule) {
+  try {
+    await complaintAutoRulesApi.remove(row.id);
+    message.success('自动规则已删除');
+    await loadRules();
+  } catch (error) {
+    message.error(errorMessage(error));
+  }
+}
+
+function ruleColumns(): DataTableColumns<ComplaintAutoRule> {
+  return [
+    {
+      title: '渠道',
+      key: 'channel',
+      width: 100,
+      render: (row) => channelLabels[row.channel ?? ''] ?? row.channel ?? '-',
+    },
+    { title: '自动回复', key: 'reply_text', minWidth: 220, ellipsis: true, render: (row) => row.reply_text || '-' },
+    {
+      title: '几小时后关闭',
+      key: 'close_after_hours',
+      width: 130,
+      align: 'right',
+      render: (row) =>
+        typeof row.close_after_hours === 'number' && row.close_after_hours > 0 ? `${row.close_after_hours} 小时` : '不自动关闭',
+    },
+    {
+      title: '状态',
+      key: 'status',
+      width: 90,
+      render: (row) => h(StatusTag, { status: row.status, kind: 'active' }),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 150,
+      fixed: 'right',
+      render: (row) =>
+        h(
+          NSpace,
+          { size: 4, wrap: false },
+          {
+            default: () => [
+              h(
+                NButton,
+                { size: 'tiny', quaternary: true, type: 'info', onClick: () => openRuleEdit(row) },
+                { default: () => '编辑' },
+              ),
+              h(
+                NPopconfirm,
+                { onPositiveClick: () => removeRule(row) },
+                {
+                  trigger: () =>
+                    h(NButton, { size: 'tiny', quaternary: true, type: 'error' }, { default: () => '删除' }),
+                  default: () => '确认删除该自动规则？',
+                },
+              ),
+            ],
+          },
+        ),
+    },
+  ];
+}
+
 function statusMeta(value?: string) {
   return statusMap[value ?? ''] ?? { text: value || '-', type: 'default' as const };
 }
@@ -312,6 +457,7 @@ onMounted(load);
     <PageHeader title="投诉管理" subtitle="渠道投诉登记、回复与关闭，超期未处理会标红">
       <template #actions>
         <n-button secondary :loading="loading" @click="load">刷新</n-button>
+        <n-button secondary type="primary" @click="openRules">自动规则</n-button>
         <n-button type="primary" @click="openCreate">手工登记</n-button>
       </template>
     </PageHeader>
@@ -462,12 +608,83 @@ onMounted(load);
         </n-space>
       </template>
     </n-modal>
+
+    <n-drawer v-model:show="showRules" :width="720" placement="right">
+      <n-drawer-content title="客诉自动规则" closable>
+        <n-alert type="info" :bordered="false" style="margin-bottom: 14px">
+          规则按渠道匹配：命中渠道的新投诉会自动回复，并按设定小时数自动关闭（填 0 表示只回复不关闭）。
+        </n-alert>
+        <div class="rules-toolbar">
+          <n-button type="primary" size="small" @click="openRuleCreate">新建规则</n-button>
+          <n-button size="small" :loading="rulesLoading" @click="loadRules">刷新</n-button>
+        </div>
+        <n-data-table
+          :columns="ruleColumns()"
+          :data="autoRules"
+          :loading="rulesLoading"
+          :pagination="{ pageSize: 10 }"
+          :row-key="(row: ComplaintAutoRule) => row.id"
+          :bordered="false"
+          :single-line="false"
+          size="small"
+        >
+          <template #empty>
+            <n-empty description="还没有自动规则" size="small" />
+          </template>
+        </n-data-table>
+      </n-drawer-content>
+    </n-drawer>
+
+    <n-modal
+      v-model:show="showRuleForm"
+      preset="card"
+      :title="ruleEditingId ? '编辑自动规则' : '新建自动规则'"
+      style="width: 560px; max-width: 94vw"
+    >
+      <n-form ref="ruleFormRef" :model="ruleForm" label-placement="left" label-width="120">
+        <n-form-item label="适用渠道">
+          <n-select v-model:value="ruleForm.channel" :options="channelOptions" tag filterable />
+        </n-form-item>
+        <n-form-item label="自动回复">
+          <n-input
+            v-model:value="ruleForm.reply_text"
+            type="textarea"
+            :autosize="{ minRows: 3, maxRows: 6 }"
+            placeholder="命中渠道后自动发给我方/商户的回复内容"
+          />
+        </n-form-item>
+        <n-form-item label="几小时后关闭">
+          <n-input-number v-model:value="ruleForm.close_after_hours" :min="0" :step="1" style="width: 160px" />
+          <span class="muted small" style="margin-left: 10px">0 表示不自动关闭</span>
+        </n-form-item>
+        <n-form-item label="状态">
+          <n-select
+            v-model:value="ruleForm.status"
+            :options="[
+              { label: '启用', value: 'active' },
+              { label: '禁用', value: 'disabled' },
+            ]"
+          />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showRuleForm = false">取消</n-button>
+          <n-button type="primary" :loading="ruleSubmitting" @click="submitRule">保存</n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 
 <style scoped>
 .small {
   font-size: 12px;
+}
+.rules-toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 .msg-list {
   display: flex;

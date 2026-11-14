@@ -21,6 +21,7 @@ type Kind string
 const (
 	KindNormal Kind = "normal"
 	KindRed    Kind = "red"
+	KindManual Kind = "manual"
 )
 
 var (
@@ -63,7 +64,7 @@ func ValidStatus(status Status) bool {
 
 // ValidKind reports whether a kind is understood. The empty value means normal.
 func ValidKind(kind Kind) bool {
-	return kind == "" || kind == KindNormal || kind == KindRed
+	return kind == "" || kind == KindNormal || kind == KindRed || kind == KindManual
 }
 
 // NormalizeKind maps the empty value onto the ordinary withdrawal kind.

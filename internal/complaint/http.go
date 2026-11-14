@@ -45,6 +45,10 @@ func Register(group *gin.RouterGroup, db *gorm.DB, sessions gin.HandlerFunc) {
 	admin.POST("/complaints", service.adminCreate)
 	admin.POST("/complaints/:id/messages", service.adminReply)
 	admin.POST("/complaints/:id/close", service.adminClose)
+	admin.GET("/complaint-auto-rules", service.listAutoRules)
+	admin.POST("/complaint-auto-rules", service.createAutoRule)
+	admin.PUT("/complaint-auto-rules/:id", service.updateAutoRule)
+	admin.DELETE("/complaint-auto-rules/:id", service.deleteAutoRule)
 
 	merchant := group.Group("/merchant", sessions, requireMerchant())
 	merchant.GET("/complaints", service.merchantList)
@@ -277,4 +281,62 @@ func writeError(ctx *gin.Context, err error) {
 
 func invalidRequest(ctx *gin.Context) {
 	ctx.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "invalid request"})
+}
+
+type autoRulePayload struct {
+	Channel         string `json:"channel"`
+	ReplyText       string `json:"reply_text"`
+	CloseAfterHours int    `json:"close_after_hours"`
+	Status          string `json:"status"`
+}
+
+func (service *Service) listAutoRules(ctx *gin.Context) {
+	rules, err := service.ListAutoRules(ctx.Request.Context())
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"items": rules})
+}
+
+func (service *Service) createAutoRule(ctx *gin.Context) {
+	var payload autoRulePayload
+	if err := ctx.ShouldBindJSON(&payload); err != nil {
+		invalidRequest(ctx)
+		return
+	}
+	rule, err := service.CreateAutoRule(ctx.Request.Context(), AutoRuleInput{
+		Channel: payload.Channel, ReplyText: payload.ReplyText,
+		CloseAfterHours: payload.CloseAfterHours, Status: payload.Status,
+	})
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusCreated, rule)
+}
+
+func (service *Service) updateAutoRule(ctx *gin.Context) {
+	var payload autoRulePayload
+	if err := ctx.ShouldBindJSON(&payload); err != nil {
+		invalidRequest(ctx)
+		return
+	}
+	rule, err := service.UpdateAutoRule(ctx.Request.Context(), ctx.Param("id"), AutoRuleInput{
+		Channel: payload.Channel, ReplyText: payload.ReplyText,
+		CloseAfterHours: payload.CloseAfterHours, Status: payload.Status,
+	})
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, rule)
+}
+
+func (service *Service) deleteAutoRule(ctx *gin.Context) {
+	if err := service.DeleteAutoRule(ctx.Request.Context(), ctx.Param("id")); err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
 }

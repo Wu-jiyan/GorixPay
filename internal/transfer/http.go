@@ -38,6 +38,8 @@ func RegisterAdmin(group *gin.RouterGroup, service *Service) {
 	}
 	handler := &Handler{service: service}
 	group.GET("/transfers", handler.adminList)
+	group.POST("/transfers", handler.adminCreateTransfer)
+	group.POST("/transfers/batch", handler.adminCreateTransferBatch)
 	group.GET("/transfers/red", handler.adminRedBatches)
 	group.POST("/transfers/red", handler.adminCreateRed)
 	group.POST("/transfers/red/:batch_no/cancel", handler.adminCancelRed)
@@ -69,6 +71,69 @@ type processRequest struct {
 	RejectionReason string `json:"rejection_reason"`
 	Reason          string `json:"reason"`
 	ProcessedBy     string `json:"processed_by"`
+}
+
+type adminCreateRequest struct {
+	MerchantID     string `json:"merchant_id"`
+	AmountCents    int64  `json:"amount_cents"`
+	Destination    string `json:"destination"`
+	Remark         string `json:"remark"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+type adminBatchItem struct {
+	AmountCents int64  `json:"amount_cents"`
+	Destination string `json:"destination"`
+}
+
+type adminBatchRequest struct {
+	MerchantID     string           `json:"merchant_id"`
+	Items          []adminBatchItem `json:"items"`
+	Remark         string           `json:"remark"`
+	IdempotencyKey string           `json:"idempotency_key"`
+}
+
+func (handler *Handler) adminCreateTransfer(ctx *gin.Context) {
+	var payload adminCreateRequest
+	if err := ctx.ShouldBindJSON(&payload); err != nil {
+		invalidTransferRequest(ctx)
+		return
+	}
+	order, _, err := handler.service.CreateAdmin(ctx.Request.Context(), AdminRequest{
+		MerchantID:     payload.MerchantID,
+		Amount:         payload.AmountCents,
+		Destination:    payload.Destination,
+		Remark:         payload.Remark,
+		IdempotencyKey: payload.IdempotencyKey,
+	})
+	if err != nil {
+		writeTransferError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusCreated, transferResponse(order))
+}
+
+func (handler *Handler) adminCreateTransferBatch(ctx *gin.Context) {
+	var payload adminBatchRequest
+	if err := ctx.ShouldBindJSON(&payload); err != nil {
+		invalidTransferRequest(ctx)
+		return
+	}
+	items := make([]AdminBatchItem, 0, len(payload.Items))
+	for _, item := range payload.Items {
+		items = append(items, AdminBatchItem{Amount: item.AmountCents, Destination: item.Destination})
+	}
+	result, err := handler.service.CreateAdminBatch(ctx.Request.Context(), AdminBatchRequest{
+		MerchantID:     payload.MerchantID,
+		Items:          items,
+		Remark:         payload.Remark,
+		IdempotencyKey: payload.IdempotencyKey,
+	})
+	if err != nil {
+		writeTransferError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusCreated, gin.H{"batch_no": result.BatchNo, "created": result.Created})
 }
 
 func (handler *Handler) merchantList(ctx *gin.Context) {

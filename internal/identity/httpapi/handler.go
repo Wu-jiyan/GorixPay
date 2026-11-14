@@ -57,6 +57,9 @@ type registerMerchantRequest struct {
 	Identifier string `json:"identifier" binding:"required"`
 	Password   string `json:"password" binding:"required,min=4"`
 	Invite     string `json:"invite"`
+	// InviteCode is a registration invite code issued by the operator, separate
+	// from the inviter code above.
+	InviteCode string `json:"invite_code"`
 }
 
 func (handler *Handler) registerMerchant(ctx *gin.Context) {
@@ -65,13 +68,17 @@ func (handler *Handler) registerMerchant(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "invalid request"})
 		return
 	}
-	result, err := handler.auth.RegisterMerchantWithInvite(ctx.Request.Context(), request.Identifier, request.Password, request.Invite, auth.LoginMetadata{
+	result, err := handler.auth.RegisterMerchantWithCodes(ctx.Request.Context(), request.Identifier, request.Password, request.Invite, request.InviteCode, auth.LoginMetadata{
 		IPAddress: ctx.ClientIP(),
 		UserAgent: ctx.Request.UserAgent(),
 	})
 	if err != nil {
 		if errors.Is(err, auth.ErrMerchantExists) {
 			ctx.JSON(http.StatusConflict, gin.H{"code": "merchant_exists", "message": "merchant already exists"})
+			return
+		}
+		if errors.Is(err, auth.ErrInviteCodeInvalid) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"code": "invite_code_invalid", "message": "invite code is invalid"})
 			return
 		}
 		ctx.JSON(http.StatusInternalServerError, gin.H{"code": "internal_error", "message": "internal server error"})

@@ -27,13 +27,16 @@ import (
 	identityhttp "gorixpay/internal/identity/httpapi"
 	"gorixpay/internal/identity/session"
 	"gorixpay/internal/invite"
+	"gorixpay/internal/invitecode"
 	ledgerquery "gorixpay/internal/ledger/query"
 	ledgerservice "gorixpay/internal/ledger/service"
 	"gorixpay/internal/merchant/credential"
 	merchanthttp "gorixpay/internal/merchant/httpapi"
 	"gorixpay/internal/merchantgroup"
+	"gorixpay/internal/merchanttools"
 	epaynotification "gorixpay/internal/notification/epay"
 	"gorixpay/internal/notify"
+	"gorixpay/internal/notifyprefs"
 	"gorixpay/internal/oauth"
 	"gorixpay/internal/outbox"
 	paymentcallback "gorixpay/internal/payment/callback"
@@ -122,7 +125,8 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		}
 	}
 	securityService := security.New(db, cipher)
-	authService := auth.NewService(db, sessions).WithChallenge(securityService)
+	inviteCodes := invitecode.New(db)
+	authService := auth.NewService(db, sessions).WithChallenge(securityService).WithInviteCodes(inviteCodes)
 	identityhttp.Register(router.Group("/api/v1"), authService, sessions)
 	security.Register(router.Group("/api/v1"), identityhttp.Authenticate(sessions), securityService)
 	notify.Register(router.Group("/api/v1"), db, sessions, cipher)
@@ -184,18 +188,29 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		deviceService := device.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions), device.Deps{Orders: orders, Starter: orchestrator})
 		groupshop.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions), ledgerWriter)
 		callbacks = callbacks.WithHooks(fundingService, inviteService.Hook(), profitSharing.Hook(), deviceService.PaymentHook())
+		merchanttools.Register(router, merchanttools.Deps{
+			DB:        db,
+			Sessions:  identityhttp.Authenticate(sessions),
+			PublicURL: cfg.HTTP.PublicURL,
+			Orders:    orders,
+			Starter:   orchestrator,
+		})
 		oauthService := oauth.Register(router.Group("/api/v1"), db, sessions, cipher, cfg.HTTP.PublicURL)
 		finance := financeservice.New(db, ledgerWriter, time.Now)
 		transferService := transfer.New(db, ledgerWriter, time.Now)
 		settleService := settlement.New(db, finance, transferService, merchantGroups.RateBp, time.Now)
 		outboxQuery := outbox.NewQuery(db)
 
+		notifyPrefs := notifyprefs.New(db, logger)
+		notifyprefs.RegisterMerchant(router.Group("/api/v1/merchant", identityhttp.Authenticate(sessions)), notifyPrefs)
 		merchant := merchanthttp.Register(router.Group("/api/v1/merchant"), sessions, credentials)
 		merchanthttp.RegisterOrders(merchant, paymentquery.New(db))
 		merchanthttp.RegisterFinance(merchant, finance)
 		merchanthttp.RegisterProfile(merchant, db)
 
 		adminGroup := router.Group("/api/v1/admin", identityhttp.Authenticate(sessions), identityhttp.RequireAdministrator())
+		invitecode.RegisterAdmin(adminGroup, inviteCodes)
+		reporting.RegisterMerchantExports(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions))
 		adminhttp.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions), channelConfigs, ledgerquery.New(db), ledgerWriter, finance, outboxQuery)
 		adminhttp.RegisterExtras(adminGroup, db)
 
@@ -256,7 +271,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 
 		router.NoRoute(serveSPA(cfg.HTTP.PublicURL))
 		notifier := epaynotification.NewSenderWithSigner(db, credentials, nil, signer)
-		epaypage.Register(router, db, cfg.HTTP.PublicURL, notifier)
+		epaypage.Register(router, db, cfg.HTTP.PublicURL, notifier, epaypage.WithCaptchaVerifier(securityService.VerifyCaptcha))
 		worker := outbox.NewWorker(db, notifier, time.Now, outbox.Options{})
 		workerContext, workerCancel := context.WithCancel(context.Background())
 		workerDone := make(chan struct{})
@@ -269,6 +284,26 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			}
 		}()
 		settleService.Start(workerContext, time.Minute)
+		complaintService := complaint.New(db, time.Now)
+		go func() {
+			ticker := time.NewTicker(time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-workerContext.Done():
+					return
+				case <-ticker.C:
+					if replied, closed, err := complaintService.RunAutoRules(workerContext, time.Now()); err != nil {
+						logger.Warn("complaint auto rules", "error", err)
+					} else if replied > 0 || closed > 0 {
+						logger.Info("complaint auto rules applied", "replied", replied, "closed", closed)
+					}
+					if failures := pluginpayment.RunCronHooks(workerContext, plugins.CronHooks()); len(failures) > 0 {
+						logger.Warn("plugin cron hooks failed", "errors", failures)
+					}
+				}
+			}
+		}()
 		go func() {
 			ticker := time.NewTicker(30 * time.Minute)
 			defer ticker.Stop()

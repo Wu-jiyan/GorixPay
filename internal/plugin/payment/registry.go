@@ -1,6 +1,8 @@
 package payment
 
 import (
+	"context"
+	"fmt"
 	"sort"
 	"sync"
 )
@@ -8,6 +10,9 @@ import (
 type Registry struct {
 	mu      sync.RWMutex
 	plugins map[string]Plugin
+	// order records the registration sequence so CronHooks can tick plugins in
+	// a stable order instead of map iteration order.
+	order []string
 }
 
 func NewRegistry() *Registry {
@@ -25,7 +30,51 @@ func (registry *Registry) Register(plugin Plugin) error {
 		return ErrDuplicatePlugin
 	}
 	registry.plugins[metadata.Code] = plugin
+	registry.order = append(registry.order, metadata.Code)
 	return nil
+}
+
+// CronHooks returns every registered plugin that implements CronHook, in
+// registration order. A registry without hooks yields an empty slice.
+func (registry *Registry) CronHooks() []CronHook {
+	registry.mu.RLock()
+	defer registry.mu.RUnlock()
+	hooks := make([]CronHook, 0)
+	for _, code := range registry.order {
+		plugin, exists := registry.plugins[code]
+		if !exists {
+			continue
+		}
+		if hook, ok := plugin.(CronHook); ok {
+			hooks = append(hooks, hook)
+		}
+	}
+	return hooks
+}
+
+// RunCronHooks ticks every hook and collects the failures instead of stopping at
+// the first one. A panicking hook becomes an error, so one broken plugin cannot
+// take the scheduler down.
+func RunCronHooks(ctx context.Context, hooks []CronHook) []error {
+	failures := make([]error, 0, len(hooks))
+	for _, hook := range hooks {
+		if hook == nil {
+			continue
+		}
+		if err := runCronHook(ctx, hook); err != nil {
+			failures = append(failures, err)
+		}
+	}
+	return failures
+}
+
+func runCronHook(ctx context.Context, hook CronHook) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("cron hook panicked: %v", recovered)
+		}
+	}()
+	return hook.Cron(ctx)
 }
 
 func (registry *Registry) Resolve(code string, capability Capability) (Plugin, error) {

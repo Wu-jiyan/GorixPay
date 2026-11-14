@@ -57,6 +57,13 @@ var allowedSettings = map[string]bool{
 	"risk.daily_order_limit":             true,
 	"risk.ip_daily_limit":                true,
 	"merchant.deposit_required_cents":    true,
+	"notify.smtp_host":                   true,
+	"notify.smtp_port":                   true,
+	"notify.smtp_username":               true,
+	"notify.smtp_password":               true,
+	"notify.smtp_from":                   true,
+	"notify.sms_endpoint":                true,
+	"notify.sms_token":                   true,
 	"notification.max_attempts":          true,
 	"notification.poll_interval_seconds": true,
 }

@@ -59,9 +59,10 @@ type AdministratorLogin struct {
 }
 
 type Service struct {
-	db        *gorm.DB
-	sessions  *session.Service
-	challenge Challenge
+	db          *gorm.DB
+	sessions    *session.Service
+	challenge   Challenge
+	inviteCodes InviteCodeConsumer
 }
 
 func NewService(db *gorm.DB, sessions *session.Service) *Service {

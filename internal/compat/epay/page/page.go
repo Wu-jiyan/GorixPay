@@ -12,6 +12,8 @@ package page
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"html"
@@ -36,18 +38,50 @@ type Handler struct {
 	db      *gorm.DB
 	signer  Signer
 	siteURL string
+	captcha CaptchaVerifier
+}
+
+// CaptchaVerifier checks a captcha answer. internal/security implements it; a
+// nil verifier means captcha verification is not wired, and the compatibility
+// endpoint answers with code -1 instead of pretending the code was right.
+type CaptchaVerifier func(ctx context.Context, id, code string) error
+
+// Option customises the page handler without changing the four positional
+// parameters every caller already passes.
+type Option func(*Handler)
+
+// WithCaptchaVerifier wires the captcha check used by getshop.php?act=captcha_verify.
+func WithCaptchaVerifier(verifier CaptchaVerifier) Option {
+	return func(handler *Handler) {
+		handler.captcha = verifier
+	}
 }
 
 // Register mounts the browser payment pages. siteURL is the public base URL used
 // to build the cashier link; it is trimmed of a trailing slash.
-func Register(router *gin.Engine, db *gorm.DB, siteURL string, signer Signer) {
+func Register(router *gin.Engine, db *gorm.DB, siteURL string, signer Signer, options ...Option) {
 	handler := &Handler{db: db, signer: signer, siteURL: strings.TrimRight(siteURL, "/")}
+	for _, option := range options {
+		option(handler)
+	}
 	router.GET("/pay/submit/:trade_no/", handler.submit)
 	router.GET("/pay/checkpay/:trade_no/", handler.checkpay)
 	router.GET("/pay/return/:trade_no/", handler.returnToMerchant)
 	router.GET("/pay/ok/:trade_no/", handler.ok)
 	router.GET("/submit2.php", handler.submit2)
+	// Upstream renders one private payment page per channel family. GorixPay
+	// renders all of them in the cashier SPA, so every family name lands on the
+	// same page instead of answering 404 for a URL a merchant may have cached.
+	for _, name := range channelPageFuncs {
+		router.GET("/pay/"+name+"/:trade_no/", handler.channelPage)
+	}
+	router.GET("/getshop.php", handler.getshop)
 }
+
+// channelPageFuncs are the private payment page names upstream ships in
+// includes/pages and lib/Plugin. Keeping the list explicit avoids a wildcard
+// route, which would collide with /pay/submit/ and the other fixed names.
+var channelPageFuncs = []string{"scan", "qrcode", "jsapi", "mini", "h5", "red", "bank", "wap"}
 
 // submit2 is the retry page upstream links from a failed channel attempt
 // (Epay/submit2.php). It re-opens an unpaid order: a missing order and a paid
@@ -91,6 +125,73 @@ func (handler *Handler) submit(ctx *gin.Context) {
 		return
 	}
 	ctx.Redirect(http.StatusFound, handler.cashierPath(order.TradeNo))
+}
+
+// channelPage answers the per-channel private payment pages. Upstream renders a
+// different template per channel family; here they all land on the cashier,
+// which knows how to render the action the channel returned.
+func (handler *Handler) channelPage(ctx *gin.Context) {
+	order, err := handler.load(ctx)
+	if err != nil {
+		handler.notFound(ctx)
+		return
+	}
+	if order.Status == model.StatusPaid {
+		ctx.Redirect(http.StatusFound, handler.returnPath(order.TradeNo))
+		return
+	}
+	target := handler.cashierPath(order.TradeNo)
+	if name := strings.TrimSpace(ctx.Param("func")); name != "" {
+		target += "&func=" + url.QueryEscape(name)
+	}
+	ctx.Redirect(http.StatusFound, target)
+}
+
+// getshop covers Epay/getshop.php: the cashier polls act=poll for the payment
+// state, and act=captcha_verify trades a solved captcha for a short-lived key.
+// Both answer HTTP 200 with a code field, the way upstream does.
+func (handler *Handler) getshop(ctx *gin.Context) {
+	act := strings.TrimSpace(ctx.Query("act"))
+	switch act {
+	case "captcha_verify":
+		if handler.captcha == nil {
+			ctx.JSON(http.StatusOK, gin.H{"code": -1, "msg": "验证码未启用"})
+			return
+		}
+		if err := handler.captcha(ctx.Request.Context(), ctx.Query("captcha_id"), ctx.Query("captcha_code")); err != nil {
+			ctx.JSON(http.StatusOK, gin.H{"code": -1, "msg": "验证码错误"})
+			return
+		}
+		key, err := randomKey()
+		if err != nil {
+			ctx.JSON(http.StatusOK, gin.H{"code": -1, "msg": "系统繁忙"})
+			return
+		}
+		ctx.JSON(http.StatusOK, gin.H{"code": 1, "key": key})
+	case "", "poll":
+		tradeNo := strings.TrimSpace(ctx.Query("trade_no"))
+		var order model.Order
+		if err := handler.db.WithContext(ctx.Request.Context()).Where("trade_no = ?", tradeNo).First(&order).Error; err != nil {
+			ctx.JSON(http.StatusOK, gin.H{"code": -1, "msg": "订单不存在"})
+			return
+		}
+		paid := order.Status == model.StatusPaid
+		status := "pending"
+		if paid {
+			status = "paid"
+		}
+		ctx.JSON(http.StatusOK, gin.H{"code": 1, "trade_no": order.TradeNo, "status": status, "paid": paid})
+	default:
+		ctx.JSON(http.StatusOK, gin.H{"code": -1, "msg": "不支持的操作"})
+	}
+}
+
+func randomKey() (string, error) {
+	buffer := make([]byte, 16)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buffer), nil
 }
 
 // checkpay mirrors upstream's polling page: a paid order moves on to the return

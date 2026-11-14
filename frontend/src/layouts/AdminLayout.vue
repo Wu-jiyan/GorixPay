@@ -50,6 +50,7 @@ const menuOptions = [
   { label: '分账', key: '/admin/profit-sharing' },
   { label: '代付管理', key: '/admin/transfers' },
   { label: '返佣记录', key: '/admin/invites' },
+  { label: '邀请码', key: '/admin/invite-codes' },
   { label: '风控与黑名单', key: '/admin/risk' },
   { label: '资金账本', key: '/admin/ledger' },
   { label: '消息队列', key: '/admin/outbox' },

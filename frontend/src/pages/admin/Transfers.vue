@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue';
+import { computed, h, onMounted, reactive, ref } from 'vue';
 import { NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui';
-import type { DataTableColumns, SelectOption } from 'naive-ui';
+import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-ui';
 import { adminApi } from '@/api';
 import type { Transfer } from '@/api';
+import { adminTransfersApi } from '@/api/adminTransfers';
 import { errorMessage } from '@/api/client';
 import MoneyText from '@/components/MoneyText.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusTag from '@/components/StatusTag.vue';
-import { formatDateTime } from '@/utils/format';
-import { httpStatus, useServerPaging } from './shared';
+import { formatDateTime, formatMoney } from '@/utils/format';
+import { asRow, httpStatus, numberOr, useServerPaging } from './shared';
 
 const message = useMessage();
 
@@ -24,6 +25,46 @@ const processing = ref(false);
 const showReject = ref(false);
 const rejectTarget = ref<Transfer | null>(null);
 const rejectionReason = ref('');
+
+interface ManualForm {
+  merchant_id: string;
+  amount_yuan: number | null;
+  destination: string;
+  remark: string;
+  idempotency_key: string;
+}
+
+interface BatchRow {
+  amount_yuan: number | null;
+  destination: string;
+}
+
+const showManual = ref(false);
+const manualSubmitting = ref(false);
+const manualFormRef = ref<FormInst | null>(null);
+const manualForm = reactive<ManualForm>({
+  merchant_id: '',
+  amount_yuan: null,
+  destination: '',
+  remark: '',
+  idempotency_key: '',
+});
+
+const showBatch = ref(false);
+const batchSubmitting = ref(false);
+const batchMerchantId = ref('');
+const batchRemark = ref('');
+const batchRows = ref<BatchRow[]>([{ amount_yuan: null, destination: '' }]);
+
+const manualRules: FormRules = {
+  merchant_id: { required: true, message: '请输入商户 ID', trigger: ['blur', 'input'] },
+  amount_yuan: { required: true, type: 'number', message: '请输入金额', trigger: ['blur', 'change'] },
+  destination: { required: true, message: '请输入收款账户', trigger: ['blur', 'input'] },
+};
+
+const batchTotalCents = computed(() =>
+  batchRows.value.reduce((acc, row) => acc + Math.round(numberOr(row.amount_yuan, 0) * 100), 0),
+);
 
 const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } = useServerPaging(load);
 
@@ -105,6 +146,98 @@ async function submitReject() {
     message.error(errorMessage(error));
   } finally {
     processing.value = false;
+  }
+}
+
+function openManual() {
+  manualForm.merchant_id = merchantId.value.trim();
+  manualForm.amount_yuan = null;
+  manualForm.destination = '';
+  manualForm.remark = '';
+  manualForm.idempotency_key = '';
+  showManual.value = true;
+}
+
+async function submitManual() {
+  try {
+    await manualFormRef.value?.validate();
+  } catch {
+    return;
+  }
+  const cents = Math.round(numberOr(manualForm.amount_yuan, 0) * 100);
+  if (cents <= 0) {
+    message.warning('金额需要大于 0');
+    return;
+  }
+  manualSubmitting.value = true;
+  try {
+    await adminTransfersApi.manual({
+      merchant_id: manualForm.merchant_id.trim(),
+      amount_cents: cents,
+      destination: manualForm.destination.trim(),
+      remark: manualForm.remark.trim() || undefined,
+      idempotency_key: manualForm.idempotency_key.trim() || undefined,
+    });
+    message.success('已提交手动付款');
+    showManual.value = false;
+    await load();
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    manualSubmitting.value = false;
+  }
+}
+
+function openBatch() {
+  batchMerchantId.value = merchantId.value.trim();
+  batchRemark.value = '';
+  batchRows.value = [{ amount_yuan: null, destination: '' }];
+  showBatch.value = true;
+}
+
+function addBatchRow() {
+  batchRows.value = [...batchRows.value, { amount_yuan: null, destination: '' }];
+}
+
+function removeBatchRow(index: number) {
+  batchRows.value = batchRows.value.filter((_, i) => i !== index);
+  if (batchRows.value.length === 0) addBatchRow();
+}
+
+async function submitBatch() {
+  if (batchMerchantId.value.trim() === '') {
+    message.warning('请输入商户 ID');
+    return;
+  }
+  const items = batchRows.value
+    .map((row) => ({
+      amount_cents: Math.round(numberOr(row.amount_yuan, 0) * 100),
+      destination: row.destination.trim(),
+    }))
+    .filter((item) => item.amount_cents > 0 && item.destination !== '');
+  if (items.length === 0) {
+    message.warning('至少填写一行有效的金额与收款账户');
+    return;
+  }
+  if (items.length !== batchRows.value.length) {
+    message.warning('有行金额或收款账户为空，已忽略这些行');
+  }
+  batchSubmitting.value = true;
+  try {
+    const result = await adminTransfersApi.batch({
+      merchant_id: batchMerchantId.value.trim(),
+      items,
+      remark: batchRemark.value.trim() || undefined,
+    });
+    const batchNo = asRow(result).batch_no;
+    const created = numberOr(asRow(result).created, items.length);
+    message.success(`批量付款已提交：${created} 笔${typeof batchNo === 'string' ? `，批次号 ${batchNo}` : ''}`);
+    showBatch.value = false;
+    await load();
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    batchSubmitting.value = false;
   }
 }
 
@@ -199,6 +332,8 @@ onMounted(load);
     <PageHeader title="代付管理" subtitle="商户代付申请审核，需扣减可用余额或冻结资金">
       <template #actions>
         <n-button secondary :loading="loading" @click="load">刷新</n-button>
+        <n-button secondary type="primary" @click="openBatch">批量付款</n-button>
+        <n-button type="primary" @click="openManual">手动付款</n-button>
       </template>
     </PageHeader>
 
@@ -270,5 +405,102 @@ onMounted(load);
         </n-space>
       </template>
     </n-modal>
+
+    <n-modal v-model:show="showManual" preset="card" title="手动付款" style="width: 620px; max-width: 94vw">
+      <n-alert type="warning" :bordered="false" style="margin-bottom: 14px">
+        手动付款会直接生成一笔代付单，后端按账本规则扣减可用余额；金额与收款账户请核对后再提交。
+      </n-alert>
+      <n-form ref="manualFormRef" :model="manualForm" :rules="manualRules" label-placement="left" label-width="120">
+        <n-form-item label="商户 ID" path="merchant_id">
+          <n-input v-model:value="manualForm.merchant_id" placeholder="这笔付款记在哪个商户名下" />
+        </n-form-item>
+        <n-form-item label="金额（元）" path="amount_yuan">
+          <n-input-number
+            v-model:value="manualForm.amount_yuan"
+            :min="0.01"
+            :step="1"
+            :precision="2"
+            style="width: 200px"
+          />
+        </n-form-item>
+        <n-form-item label="收款账户" path="destination">
+          <n-input v-model:value="manualForm.destination" placeholder="银行卡号 / 支付宝账号 / USDT 地址" />
+        </n-form-item>
+        <n-form-item label="备注">
+          <n-input v-model:value="manualForm.remark" placeholder="可选，例如：人工补单" />
+        </n-form-item>
+        <n-form-item label="幂等键">
+          <n-input v-model:value="manualForm.idempotency_key" placeholder="可选；重试时填同一个值可防重复出账" />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showManual = false">取消</n-button>
+          <n-button type="primary" :loading="manualSubmitting" @click="submitManual">提交付款</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <n-modal v-model:show="showBatch" preset="card" title="批量付款" style="width: 780px; max-width: 96vw">
+      <n-alert type="warning" :bordered="false" style="margin-bottom: 14px">
+        所有行记在同一个商户名下，合计金额会先从该商户可用余额扣减；空行或金额为 0 的行提交时会被忽略。
+      </n-alert>
+      <n-form label-placement="left" label-width="120">
+        <n-form-item label="商户 ID">
+          <n-input v-model:value="batchMerchantId" placeholder="这笔批次记在哪个商户名下" />
+        </n-form-item>
+        <n-form-item label="备注">
+          <n-input v-model:value="batchRemark" placeholder="可选，例如：批量代付-11 月" />
+        </n-form-item>
+        <n-form-item label="付款明细">
+          <div class="batch-box">
+            <div v-for="(row, index) in batchRows" :key="index" class="batch-row">
+              <n-input-number
+                v-model:value="row.amount_yuan"
+                :min="0"
+                :step="1"
+                :precision="2"
+                placeholder="金额（元）"
+                style="width: 170px"
+              />
+              <n-input v-model:value="row.destination" placeholder="收款账户" style="flex: 1; min-width: 200px" />
+              <n-button size="small" quaternary type="error" @click="removeBatchRow(index)">删除</n-button>
+            </div>
+            <n-button size="small" dashed @click="addBatchRow">添加一行</n-button>
+          </div>
+        </n-form-item>
+      </n-form>
+      <div class="batch-total">
+        合计：<strong>{{ formatMoney(batchTotalCents) }}</strong>
+        <span class="muted small">（{{ batchRows.length }} 行）</span>
+      </div>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showBatch = false">取消</n-button>
+          <n-button type="primary" :loading="batchSubmitting" @click="submitBatch">提交批次</n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
+
+<style scoped>
+.batch-box {
+  width: 100%;
+}
+.batch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.batch-total {
+  margin-top: 4px;
+  font-size: 14px;
+  color: #1f2937;
+}
+.small {
+  font-size: 12px;
+}
+</style>

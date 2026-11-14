@@ -199,7 +199,7 @@ func complaintFixture(t *testing.T, name string) (*Service, *gorm.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&Complaint{}, &Message{}, &identitymodel.Merchant{}); err != nil {
+	if err := db.AutoMigrate(&Complaint{}, &Message{}, &AutoRule{}, &identitymodel.Merchant{}); err != nil {
 		t.Fatal(err)
 	}
 	for _, merchant := range []identitymodel.Merchant{

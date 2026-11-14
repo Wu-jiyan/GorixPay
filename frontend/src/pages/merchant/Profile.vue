@@ -4,6 +4,7 @@ import { useMessage, type FormInst, type FormRules } from 'naive-ui';
 import { merchantApi } from '@/api';
 import { accountSecurityApi } from '@/api/accountSecurity';
 import { merchantOauthApi, type OAuthBinding } from '@/api/merchantOauth';
+import { merchantNotificationApi, type NotificationPrefs } from '@/api/merchantNotifications';
 import type { Merchant } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import PageHeader from '@/components/PageHeader.vue';
@@ -195,9 +196,61 @@ async function handleUnbind(provider: string) {
   }
 }
 
+// 通知偏好
+const prefsLoading = ref(true);
+const prefsSaving = ref(false);
+const prefs = reactive<NotificationPrefs>({
+  notify_payment: true,
+  notify_settlement: true,
+  notify_complaint: true,
+  notify_channel: 'mail',
+});
+
+function handleChannelChange(value: string) {
+  if (value === 'sms' && !profile.value?.phone) {
+    message.warning('未绑定手机号，只发邮件');
+    prefs.notify_channel = 'mail';
+    return;
+  }
+  prefs.notify_channel = value;
+}
+
+async function loadPrefs() {
+  prefsLoading.value = true;
+  try {
+    const data = await merchantNotificationApi.getPrefs();
+    prefs.notify_payment = data.notify_payment ?? true;
+    prefs.notify_settlement = data.notify_settlement ?? true;
+    prefs.notify_complaint = data.notify_complaint ?? true;
+    prefs.notify_channel = data.notify_channel === 'sms' ? 'sms' : 'mail';
+  } catch (err) {
+    message.error(errorMessage(err));
+  } finally {
+    prefsLoading.value = false;
+  }
+}
+
+async function savePrefs() {
+  if (prefsSaving.value) return;
+  if (prefs.notify_channel === 'sms' && !profile.value?.phone) {
+    message.warning('未绑定手机号，只发邮件');
+    prefs.notify_channel = 'mail';
+  }
+  prefsSaving.value = true;
+  try {
+    await merchantNotificationApi.savePrefs({ ...prefs });
+    message.success('通知偏好已保存');
+  } catch (err) {
+    message.error(errorMessage(err));
+  } finally {
+    prefsSaving.value = false;
+  }
+}
+
 onMounted(() => {
   void loadProfile();
   void loadBindings();
+  void loadPrefs();
 });
 </script>
 
@@ -255,6 +308,35 @@ onMounted(() => {
         <n-alert type="info" :bordered="false" class="profile-alert">
           邮箱与手机号用于登录与安全校验，如需变更请联系平台运营处理。
         </n-alert>
+      </n-card>
+
+      <n-card :bordered="false" title="通知偏好" class="profile-card prefs-card">
+        <p class="profile-desc">选择接收哪些业务通知，以及通知发送渠道。短信需要先绑定手机号。</p>
+        <n-spin :show="prefsLoading">
+          <div class="prefs-switches">
+            <div class="prefs-item">
+              <span>支付成功通知</span>
+              <n-switch v-model:value="prefs.notify_payment" />
+            </div>
+            <div class="prefs-item">
+              <span>结算通知</span>
+              <n-switch v-model:value="prefs.notify_settlement" />
+            </div>
+            <div class="prefs-item">
+              <span>投诉通知</span>
+              <n-switch v-model:value="prefs.notify_complaint" />
+            </div>
+          </div>
+          <div class="prefs-channel">
+            <span class="prefs-label">通知渠道</span>
+            <n-radio-group :value="prefs.notify_channel" @update:value="handleChannelChange">
+              <n-radio-button value="mail">邮件</n-radio-button>
+              <n-radio-button value="sms">短信</n-radio-button>
+            </n-radio-group>
+            <span v-if="!profile?.phone" class="prefs-hint">未绑定手机号，只发邮件</span>
+          </div>
+          <n-button type="primary" :loading="prefsSaving" @click="savePrefs">保存通知偏好</n-button>
+        </n-spin>
       </n-card>
 
       <n-card :bordered="false" title="修改密码" class="profile-card password-card">
@@ -349,6 +431,39 @@ onMounted(() => {
 }
 .password-card {
   grid-column: 1 / -1;
+}
+.prefs-card {
+  grid-column: 1 / -1;
+}
+.prefs-switches {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.prefs-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 420px;
+  font-size: 13px;
+  color: #334155;
+}
+.prefs-channel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.prefs-label {
+  font-size: 13px;
+  color: #334155;
+}
+.prefs-hint {
+  font-size: 12px;
+  color: #94a3b8;
 }
 .oauth-card {
   grid-column: 1 / -1;

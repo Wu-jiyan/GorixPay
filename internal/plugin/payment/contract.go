@@ -155,6 +155,13 @@ type CallbackResult struct {
 	Ack string
 }
 
+// CronHook is the optional capability upstream ticks through cron.php's plugin
+// branch: every registered plugin that implements it is called periodically by
+// the caller's scheduler (GorixPay does not start a ticker itself).
+type CronHook interface {
+	Cron(ctx context.Context) error
+}
+
 // CallbackVerifier is implemented by plugins that can authenticate and decode
 // asynchronous notifications. The handler hands over the untouched request so
 // each plugin keeps using its own header or form conventions; the raw body is

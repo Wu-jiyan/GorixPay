@@ -71,6 +71,21 @@ func New(db *gorm.DB, ledger *ledgerservice.Service, now func() time.Time) *Serv
 // Create registers a pending payout and freezes the merchant balance. It is
 // idempotent on (merchant_id, out_transfer_no).
 func (service *Service) Create(ctx context.Context, request Request) (Order, bool, error) {
+	return service.create(ctx, request, createOptions{kind: KindNormal})
+}
+
+// createOptions carries the admin-only extras that merchant payouts never set.
+type createOptions struct {
+	kind    Kind
+	remark  string
+	batchNo string
+}
+
+func (service *Service) create(ctx context.Context, request Request, options createOptions) (Order, bool, error) {
+	kind := NormalizeKind(options.kind)
+	if kind != KindNormal && kind != KindManual {
+		return Order{}, false, ErrInvalidRequest
+	}
 	request.MerchantID = strings.TrimSpace(request.MerchantID)
 	request.OutTransferNo = strings.TrimSpace(request.OutTransferNo)
 	request.Currency = strings.ToUpper(strings.TrimSpace(request.Currency))
@@ -117,7 +132,9 @@ func (service *Service) Create(ctx context.Context, request Request) (Order, boo
 		BankName:      request.BankName,
 		BranchName:    request.BranchName,
 		Status:        StatusPending,
-		Kind:          KindNormal,
+		Kind:          kind,
+		Remark:        optionalText(options.remark),
+		BatchNo:       optionalText(options.batchNo),
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
