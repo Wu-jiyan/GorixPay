@@ -101,6 +101,30 @@ export function numberOr(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+/** 后端可能把字符串数组存成 JSON 串或逗号分隔串，统一成 string[] */
+export function stringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === 'string' ? item.trim() : String(item)))
+      .filter((item) => item !== '');
+  }
+  if (typeof value !== 'string') return [];
+  const text = value.trim();
+  if (text === '') return [];
+  if (text.startsWith('[')) {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (Array.isArray(parsed)) return stringList(parsed);
+    } catch {
+      // 解析失败按逗号分隔处理
+    }
+  }
+  return text
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item !== '');
+}
+
 export interface LedgerAccountRow {
   id: string;
   owner_type: string;

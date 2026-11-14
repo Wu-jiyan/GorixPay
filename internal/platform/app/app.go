@@ -27,6 +27,7 @@ import (
 	ledgerservice "gorixpay/internal/ledger/service"
 	"gorixpay/internal/merchant/credential"
 	merchanthttp "gorixpay/internal/merchant/httpapi"
+	"gorixpay/internal/merchantgroup"
 	epaynotification "gorixpay/internal/notification/epay"
 	"gorixpay/internal/outbox"
 	paymentcallback "gorixpay/internal/payment/callback"
@@ -52,7 +53,10 @@ import (
 	"gorixpay/internal/plugin/payment/unionpay"
 	"gorixpay/internal/plugin/payment/usdt"
 	"gorixpay/internal/plugin/payment/wechatpayv3"
+	"gorixpay/internal/profitsharing"
+	"gorixpay/internal/reporting"
 	"gorixpay/internal/risk"
+	"gorixpay/internal/settlement"
 	"gorixpay/internal/transfer"
 	"gorixpay/migrations"
 
@@ -123,11 +127,13 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		inviteService := invite.New(db, ledgerWriter, cfg.HTTP.PublicURL, time.Now)
 		riskService := risk.New(db, time.Now)
 		fundingService := funding.New(db, ledgerWriter, cfg.HTTP.PublicURL)
+		merchantGroups := merchantgroup.New(db, time.Now)
+		profitSharing := profitsharing.New(db, ledgerWriter, time.Now).WithFeeResolver(merchantGroups)
 		orders := paymentservice.New(db, time.Now).WithGuards(
 			certService.Guard(), domainService.Guard(), riskService.Guard(), fundingService.Guard(),
 		)
 		callbacks := paymentcallback.NewWithLedger(db, time.Now, ledgerWriter).
-			WithHooks(fundingService, inviteService.Hook())
+			WithHooks(fundingService, inviteService.Hook(), profitSharing.Hook())
 
 		plugins := pluginpayment.NewRegistry()
 		if err := plugins.Register(epayplugin.New(nil)); err != nil {
@@ -154,6 +160,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		orchestrator := paymentorchestrator.NewConfigured(db, channels, time.Now, channelConfigs, cfg.HTTP.PublicURL)
 		finance := financeservice.New(db, ledgerWriter, time.Now)
 		transferService := transfer.New(db, ledgerWriter, time.Now)
+		settleService := settlement.New(db, finance, transferService, merchantGroups.RateBp, time.Now)
 		outboxQuery := outbox.NewQuery(db)
 
 		merchant := merchanthttp.Register(router.Group("/api/v1/merchant"), sessions, credentials)
@@ -184,6 +191,10 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		funding.RegisterAdmin(adminGroup, fundingService)
 		adminhttp.RegisterPlugins(adminGroup, db, channelConfigs, plugins)
 		paymentcallback.RegisterPlugins(router, db, channelConfigs, callbacks, plugins)
+		merchantgroup.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions))
+		settlement.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions), finance, transferService, merchantGroups.RateBp)
+		reporting.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions), merchantGroups.RateBp)
+		profitsharing.Mount(router.Group("/api/v1"), identityhttp.Authenticate(sessions), profitSharing)
 
 		signer, signerErr := epayv2.LoadSigner(ctx, db, cipher)
 		if signerErr != nil {
@@ -229,6 +240,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 				logger.Error("run outbox worker", "error", err)
 			}
 		}()
+		settleService.Start(workerContext, time.Minute)
 	}
 	return application, nil
 }

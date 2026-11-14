@@ -14,6 +14,15 @@ const (
 	StatusRejected Status = "rejected"
 )
 
+// Kind separates ordinary merchant withdrawals from red packet payouts. Both
+// share the review lifecycle, only the listing and reporting split them.
+type Kind string
+
+const (
+	KindNormal Kind = "normal"
+	KindRed    Kind = "red"
+)
+
 var (
 	ErrInvalidRequest      = errors.New("invalid transfer request")
 	ErrNotFound            = errors.New("transfer order not found")
@@ -35,6 +44,9 @@ type Order struct {
 	BankName            string     `gorm:"type:varchar(128)" json:"bank_name"`
 	BranchName          string     `gorm:"type:varchar(191)" json:"branch_name"`
 	Status              Status     `gorm:"type:varchar(20);not null;index" json:"status"`
+	Kind                Kind       `gorm:"type:varchar(20);not null;default:'normal';index" json:"kind"`
+	BatchNo             *string    `gorm:"type:varchar(64);index" json:"batch_no"`
+	Remark              *string    `gorm:"type:varchar(191)" json:"remark"`
 	LedgerTransactionID *string    `gorm:"type:varchar(36)" json:"ledger_transaction_id"`
 	RejectionReason     *string    `gorm:"type:varchar(255)" json:"rejection_reason"`
 	ProcessedBy         *string    `gorm:"type:varchar(36)" json:"processed_by"`
@@ -47,4 +59,17 @@ func (Order) TableName() string { return "transfer_orders" }
 
 func ValidStatus(status Status) bool {
 	return status == StatusPending || status == StatusApproved || status == StatusRejected
+}
+
+// ValidKind reports whether a kind is understood. The empty value means normal.
+func ValidKind(kind Kind) bool {
+	return kind == "" || kind == KindNormal || kind == KindRed
+}
+
+// NormalizeKind maps the empty value onto the ordinary withdrawal kind.
+func NormalizeKind(kind Kind) Kind {
+	if kind == "" {
+		return KindNormal
+	}
+	return kind
 }

@@ -2,8 +2,10 @@ package transfer
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"math/big"
 	"regexp"
 	"strings"
 	"time"
@@ -37,6 +39,7 @@ type Request struct {
 type Filter struct {
 	MerchantID string
 	Status     Status
+	Kind       Kind
 }
 
 // Page is a simple offset pagination request.
@@ -114,6 +117,7 @@ func (service *Service) Create(ctx context.Context, request Request) (Order, boo
 		BankName:      request.BankName,
 		BranchName:    request.BranchName,
 		Status:        StatusPending,
+		Kind:          KindNormal,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -274,6 +278,12 @@ func (service *Service) List(ctx context.Context, filter Filter, page Page) ([]O
 		}
 		query = query.Where("status = ?", filter.Status)
 	}
+	if filter.Kind != "" {
+		if !ValidKind(filter.Kind) {
+			return nil, 0, ErrInvalidRequest
+		}
+		query = query.Where("kind = ?", filter.Kind)
+	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -365,4 +375,280 @@ func compare(order Order, request Request) error {
 
 func businessNo(prefix string, now time.Time) string {
 	return fmt.Sprintf("%s%s%s", prefix, now.Format("20060102150405"), strings.ReplaceAll(uuid.NewString(), "-", "")[:8])
+}
+
+// MaxRedCount caps one red packet batch.
+const MaxRedCount = 100
+
+// RedRequest creates a red packet batch: Count payouts whose amounts sum to
+// TotalAmount, every packet at least one fen. OutTransferNo is optional and only
+// used to make a retried creation return the original batch.
+type RedRequest struct {
+	MerchantID    string
+	OutTransferNo string
+	TotalAmount   int64
+	Count         int
+	Currency      string
+	Remark        string
+}
+
+// RedBatch is one red packet creation aggregated from its child payouts.
+type RedBatch struct {
+	BatchNo      string    `json:"batch_no"`
+	TransferNo   string    `json:"transfer_no"`
+	MerchantID   string    `json:"merchant_id"`
+	Amount       int64     `json:"amount"`
+	Count        int       `json:"count"`
+	ClaimedCount int       `json:"claimed_count"`
+	Status       Status    `json:"status"`
+	Remark       string    `json:"remark"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// CreateRed splits a total into Count frozen payouts of kind red. The whole
+// batch is written in one transaction, so a batch either exists with every
+// packet frozen or does not exist at all.
+func (service *Service) CreateRed(ctx context.Context, request RedRequest) (RedBatch, bool, error) {
+	request.MerchantID = strings.TrimSpace(request.MerchantID)
+	request.OutTransferNo = strings.TrimSpace(request.OutTransferNo)
+	request.Currency = strings.ToUpper(strings.TrimSpace(request.Currency))
+	request.Remark = strings.TrimSpace(request.Remark)
+	if request.Currency == "" {
+		request.Currency = "CNY"
+	}
+	if request.MerchantID == "" || request.TotalAmount <= 0 || request.TotalAmount > MaxAmountCents ||
+		request.Count < 1 || request.Count > MaxRedCount || int64(request.Count) > request.TotalAmount ||
+		len(request.Currency) != 3 || len(request.Remark) > 191 ||
+		(request.OutTransferNo != "" && (len(request.OutTransferNo) > 50 || !businessNoPattern.MatchString(request.OutTransferNo))) {
+		return RedBatch{}, false, ErrInvalidRequest
+	}
+	if service.ledger == nil {
+		return RedBatch{}, false, ErrInvalidRequest
+	}
+	if request.OutTransferNo != "" {
+		existing, err := service.redBatch(ctx, request.MerchantID, request.OutTransferNo)
+		if err == nil {
+			if existing.Amount != request.TotalAmount || existing.Count != request.Count {
+				return RedBatch{}, false, ErrIdempotencyConflict
+			}
+			return existing, false, nil
+		}
+		if !errors.Is(err, ErrNotFound) {
+			return RedBatch{}, false, err
+		}
+	}
+	amounts, err := splitRedAmount(request.TotalAmount, request.Count)
+	if err != nil {
+		return RedBatch{}, false, err
+	}
+	account, err := service.ledger.CreateAccount(ctx, ledgerservice.AccountRequest{
+		OwnerType: "merchant", OwnerID: request.MerchantID, Purpose: "balance",
+		Category: ledgermodel.CategoryLiability, Currency: request.Currency,
+	})
+	if err != nil {
+		return RedBatch{}, false, err
+	}
+	now := service.now().UTC()
+	batchNo := request.OutTransferNo
+	if batchNo == "" {
+		batchNo = businessNo("RB", now)
+	}
+	orders := make([]Order, 0, len(amounts))
+	err = service.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		txLedger := ledgerservice.New(tx, service.now)
+		for index, amount := range amounts {
+			batch := batchNo
+			outNo := fmt.Sprintf("%s-%02d", batchNo, index+1)
+			order := Order{
+				ID: uuid.NewString(), TransferNo: businessNo("TR", now), MerchantID: request.MerchantID,
+				OutTransferNo: outNo, Amount: amount, Currency: request.Currency,
+				AccountName: redAccountName(request.Remark), AccountNo: outNo,
+				Status: StatusPending, Kind: KindRed, BatchNo: &batch, CreatedAt: now, UpdatedAt: now,
+			}
+			if request.Remark != "" {
+				remark := request.Remark
+				order.Remark = &remark
+			}
+			if err := tx.Create(&order).Error; err != nil {
+				return err
+			}
+			if _, _, err := txLedger.Freeze(ctx, ledgerservice.FreezeRequest{
+				BusinessKey: "transfer:" + order.ID, AccountID: account.ID, Amount: amount,
+				ReferenceType: "transfer", ReferenceID: order.ID,
+				Description: "merchant red packet freeze " + order.TransferNo,
+			}); err != nil {
+				if errors.Is(err, ledgerservice.ErrInsufficientBalance) {
+					return ErrInsufficientBalance
+				}
+				return err
+			}
+			orders = append(orders, order)
+		}
+		return nil
+	})
+	if err != nil {
+		return RedBatch{}, false, err
+	}
+	return RedBatch{
+		BatchNo: batchNo, TransferNo: orders[0].TransferNo, MerchantID: request.MerchantID,
+		Amount: request.TotalAmount, Count: len(orders), ClaimedCount: 0,
+		Status: StatusPending, Remark: request.Remark, CreatedAt: now,
+	}, true, nil
+}
+
+// RedBatches lists red packet batches, newest first. Amounts and counts come
+// from the child payouts; ClaimedCount stays zero because no channel disburses
+// red packets yet.
+func (service *Service) RedBatches(ctx context.Context, filter Filter, page Page) ([]RedBatch, int64, error) {
+	if page.Number < 1 {
+		page.Number = 1
+	}
+	if page.Size < 1 || page.Size > 100 {
+		page.Size = 20
+	}
+	scoped := func() *gorm.DB {
+		query := service.db.WithContext(ctx).Table("transfer_orders").Where("kind = ? AND batch_no IS NOT NULL", KindRed)
+		if merchantID := strings.TrimSpace(filter.MerchantID); merchantID != "" {
+			query = query.Where("merchant_id = ?", merchantID)
+		}
+		return query
+	}
+	var total int64
+	if err := scoped().Distinct("batch_no").Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	// Batch numbers embed their creation timestamp, so ordering by the number
+	// keeps the listing chronological without aggregating a timestamp column.
+	var batchNos []string
+	if err := scoped().Group("batch_no").Order("MIN(created_at) DESC").Order("batch_no DESC").
+		Offset((page.Number-1)*page.Size).Limit(page.Size).
+		Pluck("batch_no", &batchNos).Error; err != nil {
+		return nil, 0, err
+	}
+	if len(batchNos) == 0 {
+		return []RedBatch{}, total, nil
+	}
+	var children []Order
+	if err := service.db.WithContext(ctx).
+		Where("batch_no IN ?", batchNos).Order("out_transfer_no ASC").Find(&children).Error; err != nil {
+		return nil, 0, err
+	}
+	grouped := make(map[string][]Order, len(batchNos))
+	for _, child := range children {
+		if child.BatchNo == nil {
+			continue
+		}
+		grouped[*child.BatchNo] = append(grouped[*child.BatchNo], child)
+	}
+	batches := make([]RedBatch, 0, len(batchNos))
+	for _, batchNo := range batchNos {
+		rows := grouped[batchNo]
+		if len(rows) == 0 {
+			continue
+		}
+		batches = append(batches, buildRedBatch(batchNo, rows))
+	}
+	return batches, total, nil
+}
+
+// redBatch loads one batch by its identifier.
+func (service *Service) redBatch(ctx context.Context, merchantID, batchNo string) (RedBatch, error) {
+	var orders []Order
+	if err := service.db.WithContext(ctx).
+		Where("merchant_id = ? AND batch_no = ?", merchantID, batchNo).
+		Order("out_transfer_no ASC").Find(&orders).Error; err != nil {
+		return RedBatch{}, err
+	}
+	if len(orders) == 0 {
+		return RedBatch{}, ErrNotFound
+	}
+	batch := RedBatch{
+		BatchNo: batchNo, TransferNo: orders[0].TransferNo, MerchantID: merchantID,
+		Count: len(orders), ClaimedCount: 0, Status: StatusPending, CreatedAt: orders[0].CreatedAt,
+	}
+	pending, approved := 0, 0
+	for _, order := range orders {
+		batch.Amount += order.Amount
+		switch order.Status {
+		case StatusPending:
+			pending++
+		case StatusApproved:
+			approved++
+		}
+		if order.Remark != nil && batch.Remark == "" {
+			batch.Remark = *order.Remark
+		}
+	}
+	switch {
+	case pending > 0:
+		batch.Status = StatusPending
+	case approved > 0:
+		batch.Status = StatusApproved
+	default:
+		batch.Status = StatusRejected
+	}
+	return batch, nil
+}
+
+// buildRedBatch aggregates the child payouts of one batch.
+func buildRedBatch(batchNo string, orders []Order) RedBatch {
+	batch := RedBatch{
+		BatchNo: batchNo, TransferNo: orders[0].TransferNo, MerchantID: orders[0].MerchantID,
+		Count: len(orders), ClaimedCount: 0, CreatedAt: orders[0].CreatedAt,
+	}
+	pending, approved := 0, 0
+	for _, order := range orders {
+		batch.Amount += order.Amount
+		switch order.Status {
+		case StatusPending:
+			pending++
+		case StatusApproved:
+			approved++
+		}
+		if order.Remark != nil && batch.Remark == "" {
+			batch.Remark = *order.Remark
+		}
+	}
+	switch {
+	case pending > 0:
+		batch.Status = StatusPending
+	case approved > 0:
+		batch.Status = StatusApproved
+	default:
+		batch.Status = StatusRejected
+	}
+	return batch
+}
+
+// splitRedAmount distributes total into count amounts of at least one fen that
+// add up exactly to total. Each draw is uniform over the range that still leaves
+// one fen for every remaining packet.
+func splitRedAmount(total int64, count int) ([]int64, error) {
+	if count < 1 || count > MaxRedCount || total < int64(count) || total > MaxAmountCents {
+		return nil, ErrInvalidRequest
+	}
+	amounts := make([]int64, 0, count)
+	remaining := total
+	for index := 0; index < count-1; index++ {
+		ceiling := remaining - int64(count-1-index)
+		if ceiling < 1 {
+			return nil, ErrInvalidRequest
+		}
+		draw, err := rand.Int(rand.Reader, big.NewInt(ceiling))
+		if err != nil {
+			return nil, err
+		}
+		amount := draw.Int64() + 1
+		amounts = append(amounts, amount)
+		remaining -= amount
+	}
+	return append(amounts, remaining), nil
+}
+
+// redAccountName labels a red packet payout in the review queue.
+func redAccountName(remark string) string {
+	if remark == "" {
+		return "红包"
+	}
+	return "红包 " + remark
 }

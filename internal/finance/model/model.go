@@ -44,6 +44,10 @@ type Settlement struct {
 	Currency            string     `gorm:"type:char(3);not null" json:"currency"`
 	Destination         string     `gorm:"type:varchar(255);not null" json:"destination"`
 	Status              Status     `gorm:"type:varchar(20);not null;index" json:"status"`
+	Source              string     `gorm:"type:varchar(20);not null;default:manual" json:"source"`
+	FeeCents            int64      `gorm:"not null;default:0" json:"fee_cents"`
+	TransferStatus      string     `gorm:"type:varchar(20);not null;default:none" json:"transfer_status"`
+	TransferAt          *time.Time `json:"transfer_at"`
 	LedgerTransactionID *string    `gorm:"type:varchar(36)" json:"ledger_transaction_id"`
 	RejectionReason     *string    `gorm:"type:varchar(255)" json:"rejection_reason"`
 	ProcessedBy         *string    `gorm:"type:varchar(36)" json:"processed_by"`

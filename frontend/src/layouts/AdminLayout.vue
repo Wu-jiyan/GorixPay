@@ -30,7 +30,9 @@ watch(siteLogo, () => {
 
 const menuOptions = [
   { label: '数据概览', key: '/admin' },
+  { label: '报表', key: '/admin/reports' },
   { label: '商户管理', key: '/admin/merchants' },
+  { label: '用户组与费率', key: '/admin/groups' },
   { label: '实名审核', key: '/admin/certifications' },
   { label: '域名审核', key: '/admin/domains' },
   { label: '订单管理', key: '/admin/orders' },
@@ -38,6 +40,8 @@ const menuOptions = [
   { label: '插件管理', key: '/admin/plugins' },
   { label: '退款管理', key: '/admin/refunds' },
   { label: '结算管理', key: '/admin/settlements' },
+  { label: '结算规则', key: '/admin/settle-rules' },
+  { label: '分账', key: '/admin/profit-sharing' },
   { label: '代付管理', key: '/admin/transfers' },
   { label: '返佣记录', key: '/admin/invites' },
   { label: '风控与黑名单', key: '/admin/risk' },

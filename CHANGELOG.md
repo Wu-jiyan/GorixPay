@@ -4,6 +4,37 @@
 
 `v2.0.0` 于 2026-11-13 打上第一个 tag，下面是这个版本的全部内容。之前的两个 commit 是内部开发阶段，没有对外发过。
 
+## [未发布]
+
+### 结算自动化
+
+- 新增 `settle_rules`（迁移 `000018`）：最低结算金额、费率、周期、自动打款开关、按商户或全局。
+- `RunAutoSettle` 按规则生成结算单，同日同商户只出一张（幂等键落 `out_settlement_no`），可提现金额扣掉冻结与待审核结算，避免重复出单。
+- 批量审核 `POST /api/v1/admin/settlements/batch-process`；审核通过且规则开了自动打款时调 `internal/transfer` 建代付单，商户没有结算资料记 `failed` 并写原因。
+- 后台每分钟巡检一次（`settlement.Service.Start`），多副本靠 `last_run_at` 条件更新抢占。
+
+### 分账与红包
+
+- 新增 `profit_sharing_receivers`、`profit_sharing_orders`（迁移 `000019`）、`transfer_orders.kind/batch_no/remark`。
+- 手续费先扣再按接收方 `rate_bp` 分账，金额向下取整到分；内部接收方在同一支付事务里过账本，幂等键 `split:{orderID}:{receiverID}`；渠道接收方记 `pending`，不假装调通渠道。
+- 接收方合计费率超过 100% 直接拒绝；有流水的接收方不允许硬删。
+- 红包：一次创建 N 个 `kind=red` 代付单，金额随机且合计等于总额，批次号幂等。
+
+### 用户组与费率
+
+- 新增 `merchant_groups` 与 `merchants.group_id/settle_mode`（迁移 `000017`）：组内费率（万分比）、可用支付方式、结算模式。
+- 结算与分账都通过注入的 `RateBp` 套用商户费率，未分组按 0 处理。
+
+### 报表与导出
+
+- 买家统计、商户统计（手续费按组费率算）、每日统计、商户资金明细。
+- 8 种 CSV 导出：admin 的订单、退款、结算、代付、商户、账本、买家，merchant 的订单、资金明细。UTF-8 BOM、附件头、10 万行截断提示。
+
+### 工程
+
+- 前端新增 7 个页面：运营端的用户组、结算规则、分账、报表；商户端的资金明细、分账管理、红包。
+- 修复 `internal/settlement` 测试里用墙钟纳秒做幂等键导致的偶发失败。
+
 ## [2.1.0] - 2026-11-14
 
 ### 站点身份可配置

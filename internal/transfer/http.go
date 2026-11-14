@@ -25,6 +25,8 @@ func RegisterMerchant(group *gin.RouterGroup, service *Service) {
 	handler := &Handler{service: service}
 	group.GET("/transfers", handler.merchantList)
 	group.POST("/transfers", handler.merchantCreate)
+	group.GET("/transfers/red", handler.merchantRedBatches)
+	group.POST("/transfers/red", handler.merchantCreateRed)
 	group.GET("/transfers/:id", handler.merchantGet)
 }
 
@@ -36,6 +38,8 @@ func RegisterAdmin(group *gin.RouterGroup, service *Service) {
 	}
 	handler := &Handler{service: service}
 	group.GET("/transfers", handler.adminList)
+	group.GET("/transfers/red", handler.adminRedBatches)
+	group.POST("/transfers/red", handler.adminCreateRed)
 	group.GET("/transfers/:id", handler.adminGet)
 	group.POST("/transfers/:id/process", handler.adminProcess)
 }
@@ -48,6 +52,15 @@ type createRequest struct {
 	AccountNo     string `json:"account_no"`
 	BankName      string `json:"bank_name"`
 	BranchName    string `json:"branch_name"`
+}
+
+type redRequest struct {
+	MerchantID    string `json:"merchant_id"`
+	Amount        int64  `json:"amount"`
+	Count         int    `json:"count"`
+	Remark        string `json:"remark"`
+	OutTransferNo string `json:"out_transfer_no"`
+	Currency      string `json:"currency"`
 }
 
 type processRequest struct {
@@ -67,7 +80,11 @@ func (handler *Handler) merchantList(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	orders, total, err := handler.service.List(ctx.Request.Context(), Filter{MerchantID: merchantID, Status: status}, page)
+	kind, ok := kindFromQuery(ctx)
+	if !ok {
+		return
+	}
+	orders, total, err := handler.service.List(ctx.Request.Context(), Filter{MerchantID: merchantID, Status: status, Kind: kind}, page)
 	if err != nil {
 		writeTransferError(ctx, err)
 		return
@@ -122,9 +139,14 @@ func (handler *Handler) adminList(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	kind, ok := kindFromQuery(ctx)
+	if !ok {
+		return
+	}
 	orders, total, err := handler.service.List(ctx.Request.Context(), Filter{
 		MerchantID: strings.TrimSpace(ctx.Query("merchant_id")),
 		Status:     status,
+		Kind:       kind,
 	}, page)
 	if err != nil {
 		writeTransferError(ctx, err)
@@ -177,6 +199,63 @@ func (handler *Handler) adminProcess(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, transferResponse(order))
 }
 
+func (handler *Handler) merchantCreateRed(ctx *gin.Context) {
+	handler.createRed(ctx, identityhttp.MustSession(ctx).PrincipalID)
+}
+
+func (handler *Handler) adminCreateRed(ctx *gin.Context) {
+	handler.createRed(ctx, "")
+}
+
+func (handler *Handler) createRed(ctx *gin.Context, merchantID string) {
+	var request redRequest
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		invalidTransferRequest(ctx)
+		return
+	}
+	if merchantID == "" {
+		merchantID = strings.TrimSpace(request.MerchantID)
+	}
+	batch, created, err := handler.service.CreateRed(ctx.Request.Context(), RedRequest{
+		MerchantID:    merchantID,
+		OutTransferNo: request.OutTransferNo,
+		TotalAmount:   request.Amount,
+		Count:         request.Count,
+		Currency:      request.Currency,
+		Remark:        request.Remark,
+	})
+	if err != nil {
+		writeTransferError(ctx, err)
+		return
+	}
+	code := http.StatusOK
+	if created {
+		code = http.StatusCreated
+	}
+	ctx.JSON(code, batch)
+}
+
+func (handler *Handler) merchantRedBatches(ctx *gin.Context) {
+	handler.listRedBatches(ctx, identityhttp.MustSession(ctx).PrincipalID)
+}
+
+func (handler *Handler) adminRedBatches(ctx *gin.Context) {
+	handler.listRedBatches(ctx, strings.TrimSpace(ctx.Query("merchant_id")))
+}
+
+func (handler *Handler) listRedBatches(ctx *gin.Context, merchantID string) {
+	page, ok := pageFromQuery(ctx)
+	if !ok {
+		return
+	}
+	batches, total, err := handler.service.RedBatches(ctx.Request.Context(), Filter{MerchantID: merchantID}, page)
+	if err != nil {
+		writeTransferError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"items": batches, "total": total, "page": page.Number, "page_size": page.Size})
+}
+
 func pageFromQuery(ctx *gin.Context) (Page, bool) {
 	number := 1
 	size := 20
@@ -197,6 +276,19 @@ func pageFromQuery(ctx *gin.Context) (Page, bool) {
 		size = parsed
 	}
 	return Page{Number: number, Size: size}, true
+}
+
+func kindFromQuery(ctx *gin.Context) (Kind, bool) {
+	raw := strings.TrimSpace(ctx.Query("kind"))
+	if raw == "" {
+		return "", true
+	}
+	kind := Kind(raw)
+	if !ValidKind(kind) || kind == "" {
+		invalidTransferRequest(ctx)
+		return "", false
+	}
+	return kind, true
 }
 
 func statusFromQuery(ctx *gin.Context) (Status, bool) {
@@ -225,6 +317,9 @@ func transferResponse(order Order) gin.H {
 		"bank_name":             order.BankName,
 		"branch_name":           order.BranchName,
 		"status":                order.Status,
+		"kind":                  order.Kind,
+		"batch_no":              order.BatchNo,
+		"remark":                order.Remark,
 		"ledger_transaction_id": order.LedgerTransactionID,
 		"rejection_reason":      order.RejectionReason,
 		"processed_by":          order.ProcessedBy,
