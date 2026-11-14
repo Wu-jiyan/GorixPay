@@ -182,6 +182,15 @@ func (service *Service) validatePaymentType(ctx context.Context, paymentType str
 	if !service.db.Migrator().HasTable("pay_types") {
 		return nil
 	}
+	// An empty catalogue means the operator has not curated payment methods yet,
+	// so fall back to the channel configuration instead of rejecting everything.
+	var total int64
+	if err := service.db.WithContext(ctx).Table("pay_types").Count(&total).Error; err != nil {
+		return err
+	}
+	if total == 0 {
+		return nil
+	}
 	var status string
 	if err := service.db.WithContext(ctx).Table("pay_types").
 		Select("status").Where("code = ?", paymentType).Scan(&status).Error; err != nil {

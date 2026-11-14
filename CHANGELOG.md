@@ -99,6 +99,17 @@
 - 验证码 SVG 用 `<text>` 输出字符，答案能被脚本直接读出来；改成位图矩形绘制，并补了「SVG 里不得出现 text 节点」的断言。
 - 回调钩子改为一次性挂全部：`WithHooks` 是替换语义，第二次调用会把资金、返佣、分账三个钩子丢掉。
 
+### 收口：运营面最后一批
+
+- 后台手动付款与批量付款：`POST /api/v1/admin/transfers`、`/transfers/batch`，批量失败整批补偿回滚，幂等键经 sha256 派生（列宽与字符集限制）。
+- 客诉自动规则（迁移 `000028`）：按渠道自动回复、超时自动关闭、`*` 兜底、disabled 阻断兜底、重复跑幂等；`GET/POST/PUT/DELETE /admin/complaint-auto-rules`。
+- 注册邀请码（迁移 `000027`）：`invite_codes` 增删改查，注册带码原子消费次数、注册失败回退，并发不超发。
+- 商户通知偏好（同迁移）：支付/结算/投诉三个开关加邮件短信渠道，`Notify` 在通道未配置时只记警告，不阻塞主流程。
+- 商户投诉与分账两份 CSV 导出，复用 BOM 与截断头。
+- 聚合收款码：`GET /merchant/pay-code` 返回**真 QR**（`rsc.io/qr` 编码，模块渲染成 SVG 矩形）与支付页 `/pay/code/{type}`；商户自助测试支付上限 1 元。
+- 插件定时钩子：`CronHook` 接口、`Registry.CronHooks()`、`RunCronHooks()`（跑完全部收集错误，panic 转 error），后台每分钟调用。
+- 协议补口：`/pay/{func}/{trade_no}/` 覆盖 scan、qrcode、jsapi、mini、h5、red、bank、wap 八种上游页面名，统一落到收银台；`getshop.php` 补 `act=poll` 与 `act=captcha_verify`。
+
 ## [2.1.0] - 2026-11-14
 
 ### 站点身份可配置
