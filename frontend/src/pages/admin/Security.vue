@@ -12,6 +12,7 @@ import {
   SearchOutline,
 } from '@vicons/ionicons5';
 import AdminPage from '@/components/AdminPage.vue';
+import ChangePasswordModal from '@/components/ChangePasswordModal.vue';
 import { adminApi } from '@/api';
 import { securityApi } from '@/api/security';
 import type { LoginAttempt, TotpSetup, TotpStatus } from '@/api/security';
@@ -38,46 +39,8 @@ const attemptsLoading = ref(false);
 const identifier = ref('');
 const success = ref<string | null>(null);
 
-// 管理员自助改密码。旧密码由后端校验，这里只做长度与一致性预检，少一次往返。
-const passwordForm = ref({ old_password: '', new_password: '', confirm: '' });
-const passwordBusy = ref(false);
-
-function runeLength(value: string) {
-  return Array.from(value).length;
-}
-
-async function submitPassword() {
-  const form = passwordForm.value;
-  if (form.old_password === '') {
-    message.warning('请输入当前密码');
-    return;
-  }
-  if (runeLength(form.new_password) < 8 || runeLength(form.new_password) > 72) {
-    message.warning('新密码长度需为 8 到 72 个字符');
-    return;
-  }
-  if (form.new_password !== form.confirm) {
-    message.warning('两次输入的新密码不一致');
-    return;
-  }
-  if (form.new_password === form.old_password) {
-    message.warning('新密码不能与当前密码相同');
-    return;
-  }
-  passwordBusy.value = true;
-  try {
-    await securityApi.changePassword({
-      old_password: form.old_password,
-      new_password: form.new_password,
-    });
-    message.success('密码已修改，其它设备上的登录已失效');
-    passwordForm.value = { old_password: '', new_password: '', confirm: '' };
-  } catch (error) {
-    message.error(errorMessage(error));
-  } finally {
-    passwordBusy.value = false;
-  }
-}
+// 改密码的表单只有一份：ChangePasswordModal，顶栏菜单和本页都开它。
+const passwordVisible = ref(false);
 
 const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } =
   useServerPaging(loadAttempts);
@@ -276,42 +239,15 @@ onMounted(reloadAll);
             <n-tag size="small" round :bordered="false">建议定期更换</n-tag>
           </template>
 
-          <n-form label-placement="top">
-            <n-form-item label="当前密码">
-              <n-input
-                v-model:value="passwordForm.old_password"
-                type="password"
-                show-password-on="click"
-                placeholder="输入现在使用的密码"
-                autocomplete="current-password"
-              />
-            </n-form-item>
-            <n-form-item label="新密码">
-              <n-input
-                v-model:value="passwordForm.new_password"
-                type="password"
-                show-password-on="click"
-                placeholder="8 到 72 个字符"
-                autocomplete="new-password"
-              />
-            </n-form-item>
-            <n-form-item label="确认新密码">
-              <n-input
-                v-model:value="passwordForm.confirm"
-                type="password"
-                show-password-on="click"
-                placeholder="再输入一次新密码"
-                autocomplete="new-password"
-                @keyup.enter="submitPassword"
-              />
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-space align="center" :size="12">
-                <n-button type="primary" :loading="passwordBusy" @click="submitPassword">保存新密码</n-button>
-                <n-text depth="3" style="font-size: 12.5px">保存后其它设备的登录会立即失效。</n-text>
-              </n-space>
-            </n-form-item>
-          </n-form>
+          <n-space vertical :size="12">
+            <n-text depth="3">
+              改完密码后，除当前设备外的登录会话会立即失效；忘记当前密码只能由运维在服务器上重置。
+            </n-text>
+            <n-space align="center" :size="12">
+              <n-button type="primary" @click="passwordVisible = true">修改登录密码</n-button>
+              <n-text depth="3" style="font-size: 12.5px">也可以点右上角头像 → 修改登录密码</n-text>
+            </n-space>
+          </n-space>
         </n-card>
       </n-gi>
 
@@ -501,5 +437,7 @@ onMounted(reloadAll);
         </template>
       </n-data-table>
     </n-card>
+
+    <change-password-modal v-model:show="passwordVisible" />
   </admin-page>
 </template>

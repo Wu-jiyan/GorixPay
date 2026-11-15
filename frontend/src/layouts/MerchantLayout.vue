@@ -17,7 +17,7 @@ import {
   NSpace,
   useMessage,
 } from 'naive-ui';
-import type { MenuOption } from 'naive-ui';
+import type { DropdownOption, MenuOption } from 'naive-ui';
 import {
   BookOutline,
   CardOutline,
@@ -42,12 +42,14 @@ import {
 } from '@vicons/ionicons5';
 import { useAuthStore } from '@/stores/auth';
 import BrandMark from '@/components/BrandMark.vue';
+import ChangePasswordModal from '@/components/ChangePasswordModal.vue';
 
 const router = useRouter();
 const route = useRoute();
 const message = useMessage();
 const auth = useAuthStore();
 const collapsed = ref(false);
+const passwordVisible = ref(false);
 
 const renderIcon = (icon: Component) => () => h(NIcon, null, { default: () => h(icon) });
 
@@ -119,12 +121,24 @@ const activeKey = computed(() => (route.path === '/merchant/' ? '/merchant' : ro
 const current = computed(() => routeIndex.value.get(activeKey.value));
 const headerTitle = computed(() => current.value?.label ?? (route.meta.title as string | undefined) ?? '商户中心');
 
-const userOptions = [
+// 右上角账号菜单：改密码、账户资料、回官网、退出。
+const userOptions: DropdownOption[] = [
+  { label: '修改登录密码', key: 'password', icon: renderIcon(KeyOutline) },
+  { label: '账户资料', key: 'profile', icon: renderIcon(PersonCircleOutline) },
   { label: '返回官网', key: 'home' },
+  { type: 'divider', key: 'divider' },
   { label: '退出登录', key: 'logout' },
 ];
 
 async function handleUserSelect(key: string) {
+  if (key === 'password') {
+    passwordVisible.value = true;
+    return;
+  }
+  if (key === 'profile') {
+    router.push('/merchant/profile');
+    return;
+  }
   if (key === 'logout') {
     await auth.logout();
     message.success('已退出登录');
@@ -197,6 +211,8 @@ async function handleUserSelect(key: string) {
         <router-view />
       </n-layout-content>
     </n-layout>
+
+    <change-password-modal v-model:show="passwordVisible" scope="merchant" />
   </n-layout>
 </template>
 
