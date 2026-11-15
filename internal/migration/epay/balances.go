@@ -43,7 +43,7 @@ func (m *Migrator) migrateBalances(ctx context.Context, source *sourceDB, target
 		return report, err
 	}
 
-	rows, err := source.db.QueryContext(ctx, "SELECT uid, money, addtime FROM pre_user")
+	rows, err := source.queryContext(ctx, "SELECT uid, money, addtime FROM pre_user")
 	if err != nil {
 		return report, fmt.Errorf("读取 pre_user.money 失败: %w", err)
 	}

@@ -29,8 +29,13 @@ type Options struct {
 	DryRun bool
 	// BatchSize is the number of rows inserted per transaction.
 	BatchSize int
+	// Sections limits the run to the named mappings. Empty means everything.
+	// A partial run does exactly what it says: callers that need a dependency
+	// (orders reference merchants) must name it too.
+	Sections []string
 	// MasterKeyFile is validated when set so the CLI accepts the same flag set
-	// as gorixpay itself. This migration writes no encrypted column.
+	// as gorixpay itself, and it is also the key used to encrypt migrated
+	// channel credentials (same key version the application writes).
 	MasterKeyFile string
 	// ReportPrefix is the file prefix for the .json and .md reports.
 	ReportPrefix string
@@ -44,6 +49,54 @@ const (
 	defaultBatchSize = 500
 	maxBatchSize     = 10000
 )
+
+// knownSections lists the mapping names accepted by Options.Sections, in the
+// order Run executes them. Names double as the --only values of the CLI.
+var knownSections = []string{
+	"merchants",
+	"orders",
+	"refunds",
+	"settlements",
+	"transfers",
+	"domains",
+	"blacklist",
+	"settings",
+	"paytypes",
+	"channels",
+}
+
+// normalizeSections lowercases, trims and validates the requested sections.
+func normalizeSections(values []string) ([]string, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	known := map[string]bool{}
+	for _, name := range knownSections {
+		known[name] = true
+	}
+	seen := map[string]bool{}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		for _, piece := range strings.Split(value, ",") {
+			name := strings.ToLower(strings.TrimSpace(piece))
+			if name == "" {
+				continue
+			}
+			if !known[name] {
+				return nil, fmt.Errorf("未知的迁移段 %q（可选：%s）", name, strings.Join(knownSections, "、"))
+			}
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			result = append(result, name)
+		}
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
 
 // maxReportSamples bounds how many offending values a report lists.
 const maxReportSamples = 5

@@ -63,7 +63,7 @@ func (m *Migrator) migrateMerchants(ctx context.Context, source *sourceDB, targe
 		[]string{"uid", "pwd", "status", "addtime"},
 		[]string{"username", "account", "email", "phone"},
 	)
-	rows, err := source.db.QueryContext(ctx, statement)
+	rows, err := source.queryContext(ctx, statement)
 	if err != nil {
 		return index, TableReport{}, fmt.Errorf("读取 pre_user 失败: %w", err)
 	}

@@ -13,6 +13,9 @@ import (
 // Migrator runs the Epay → GorixPay data migration.
 type Migrator struct {
 	options Options
+	// cipher is built lazily from --master-key-file; only the channel mapping
+	// writes encrypted values, so a merchants-only run never needs the key.
+	cipher *secret.Cipher
 }
 
 // New validates the options and returns a migrator. Nothing touches a database
@@ -21,7 +24,26 @@ func New(options Options) (*Migrator, error) {
 	if err := options.Validate(); err != nil {
 		return nil, err
 	}
+	sections, err := normalizeSections(options.Sections)
+	if err != nil {
+		return nil, err
+	}
+	options.Sections = sections
 	return &Migrator{options: options}, nil
+}
+
+// wants reports whether a mapping section was requested. An empty Sections list
+// means "every section".
+func (m *Migrator) wants(section string) bool {
+	if len(m.options.Sections) == 0 {
+		return true
+	}
+	for _, name := range m.options.Sections {
+		if name == section {
+			return true
+		}
+	}
+	return false
 }
 
 // Run performs preflight and, unless blocked or dry-running, the migration. A
@@ -88,59 +110,95 @@ func (m *Migrator) Run(ctx context.Context) (Report, error) {
 	}
 	defer target.Close()
 
-	merchants, merchantReport, err := m.migrateMerchants(ctx, source, target)
-	if err != nil {
-		return report, err
+	var merchants merchantIndex
+	if m.wants("merchants") {
+		migrated, merchantReport, err := m.migrateMerchants(ctx, source, target)
+		if err != nil {
+			return report, err
+		}
+		merchants = migrated
+		report.Tables = append(report.Tables, merchantReport)
 	}
-	report.Tables = append(report.Tables, merchantReport)
 
-	orders, orderReport, err := m.migrateOrders(ctx, source, target, merchants)
-	if err != nil {
-		return report, err
+	if m.wants("orders") {
+		orders, orderReport, err := m.migrateOrders(ctx, source, target, merchants)
+		if err != nil {
+			return report, err
+		}
+		report.Tables = append(report.Tables, orderReport)
+		if m.wants("refunds") {
+			refundReport, err := m.migrateRefunds(ctx, source, target, merchants, orders)
+			if err != nil {
+				return report, err
+			}
+			report.Tables = append(report.Tables, refundReport)
+		}
 	}
-	report.Tables = append(report.Tables, orderReport)
 
-	refundReport, err := m.migrateRefunds(ctx, source, target, merchants, orders)
-	if err != nil {
-		return report, err
+	if m.wants("settlements") {
+		settlementReport, err := m.migrateSettlements(ctx, source, target, merchants)
+		if err != nil {
+			return report, err
+		}
+		report.Tables = append(report.Tables, settlementReport)
 	}
-	report.Tables = append(report.Tables, refundReport)
 
-	settlementReport, err := m.migrateSettlements(ctx, source, target, merchants)
-	if err != nil {
-		return report, err
+	if m.wants("transfers") {
+		transferReport, err := m.migrateTransfers(ctx, source, target, merchants)
+		if err != nil {
+			return report, err
+		}
+		report.Tables = append(report.Tables, transferReport)
 	}
-	report.Tables = append(report.Tables, settlementReport)
 
-	transferReport, err := m.migrateTransfers(ctx, source, target, merchants)
-	if err != nil {
-		return report, err
+	if m.wants("domains") {
+		domainReport, err := m.migrateDomains(ctx, source, target, merchants)
+		if err != nil {
+			return report, err
+		}
+		report.Tables = append(report.Tables, domainReport)
 	}
-	report.Tables = append(report.Tables, transferReport)
 
-	domainReport, err := m.migrateDomains(ctx, source, target, merchants)
-	if err != nil {
-		return report, err
+	if m.wants("blacklist") {
+		blacklistReport, err := m.migrateBlacklist(ctx, source, target)
+		if err != nil {
+			return report, err
+		}
+		report.Tables = append(report.Tables, blacklistReport)
 	}
-	report.Tables = append(report.Tables, domainReport)
 
-	blacklistReport, err := m.migrateBlacklist(ctx, source, target)
-	if err != nil {
-		return report, err
+	if m.wants("settings") {
+		settingsReport, err := m.migrateSettings(ctx, source, target)
+		if err != nil {
+			return report, err
+		}
+		report.Tables = append(report.Tables, settingsReport)
 	}
-	report.Tables = append(report.Tables, blacklistReport)
 
-	settingsReport, err := m.migrateSettings(ctx, source, target)
-	if err != nil {
-		return report, err
+	if m.wants("paytypes") {
+		payTypeReport, err := m.migratePayTypes(ctx, source, target)
+		if err != nil {
+			return report, err
+		}
+		report.Tables = append(report.Tables, payTypeReport)
 	}
-	report.Tables = append(report.Tables, settingsReport)
 
-	balances, err := m.migrateBalances(ctx, source, target, merchants)
-	if err != nil {
-		return report, err
+	if m.wants("channels") {
+		// Channels reference pay types, so they are written after pay_types exists.
+		channelReport, err := m.migrateChannels(ctx, source, target)
+		if err != nil {
+			return report, err
+		}
+		report.Tables = append(report.Tables, channelReport)
 	}
-	report.Balances = balances
+
+	if m.wants("merchants") {
+		balances, err := m.migrateBalances(ctx, source, target, merchants)
+		if err != nil {
+			return report, err
+		}
+		report.Balances = balances
+	}
 
 	for _, table := range report.Tables {
 		if table.Failed > 0 {

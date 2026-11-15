@@ -26,6 +26,42 @@ var requiredSourceTables = []string{
 var optionalSourceTables = []string{
 	"pre_transfer",
 	"pre_type",
+	"pre_channel",
+}
+
+// sectionTables maps a mapping section onto the source tables it actually reads.
+// A run limited with --only must not be blocked by a table it never touches.
+var sectionTables = map[string][]string{
+	"merchants":   {"pre_user"},
+	"orders":      {"pre_order", "pre_user"},
+	"refunds":     {"pre_refundorder", "pre_order"},
+	"settlements": {"pre_settle", "pre_user"},
+	"transfers":   {"pre_transfer", "pre_user"},
+	"domains":     {"pre_domain", "pre_user"},
+	"blacklist":   {"pre_blacklist"},
+	"settings":    {"pre_config"},
+	"paytypes":    {"pre_type"},
+	"channels":    {"pre_type", "pre_channel"},
+}
+
+// requiredTables is the blocking table set of this run: everything for a full
+// migration, only the dependencies of the requested sections otherwise.
+func (m *Migrator) requiredTables() []string {
+	if len(m.options.Sections) == 0 {
+		return requiredSourceTables
+	}
+	seen := map[string]bool{}
+	tables := []string{}
+	for _, section := range m.options.Sections {
+		for _, table := range sectionTables[section] {
+			if seen[table] {
+				continue
+			}
+			seen[table] = true
+			tables = append(tables, table)
+		}
+	}
+	return tables
 }
 
 // requiredConfigKeys is the minimum pre_config content: the schema version tells
@@ -50,7 +86,7 @@ func (m *Migrator) preflight(ctx context.Context, source *sourceDB) (PreflightRe
 	}
 	blocking := []BlockingItem{}
 	warnings := []string{}
-	for _, table := range requiredSourceTables {
+	for _, table := range m.requiredTables() {
 		present := source.hasTable(table)
 		report.RequiredTables[table] = present
 		if !present {
@@ -70,7 +106,7 @@ func (m *Migrator) preflight(ctx context.Context, source *sourceDB) (PreflightRe
 		}
 	}
 
-	if source.hasTable("pre_config") {
+	if m.wants("settings") && source.hasTable("pre_config") {
 		values, err := m.readConfig(ctx, source)
 		if err != nil {
 			blocking = append(blocking, BlockingItem{Code: "config_read_failed", Table: "pre_config", Detail: err.Error()})
@@ -97,7 +133,7 @@ func (m *Migrator) preflight(ctx context.Context, source *sourceDB) (PreflightRe
 		}
 	}
 
-	if source.hasTable("pre_order") {
+	if m.wants("orders") && source.hasTable("pre_order") {
 		duplicates, samples, err := m.duplicateTradeNumbers(ctx, source)
 		if err != nil {
 			blocking = append(blocking, BlockingItem{Code: "preflight_query_failed", Table: "pre_order", Detail: err.Error()})
@@ -135,7 +171,7 @@ func (m *Migrator) preflight(ctx context.Context, source *sourceDB) (PreflightRe
 		}
 	}
 
-	if source.hasTable("pre_user") {
+	if m.wants("merchants") && source.hasTable("pre_user") {
 		if duplicates, samples, err := m.duplicateMerchantIdentity(ctx, source); err != nil {
 			blocking = append(blocking, BlockingItem{Code: "preflight_query_failed", Table: "pre_user", Detail: err.Error()})
 		} else if duplicates > 0 {
@@ -149,8 +185,11 @@ func (m *Migrator) preflight(ctx context.Context, source *sourceDB) (PreflightRe
 		}
 	}
 
-	moneyBlocking := m.checkMoney(ctx, source)
-	blocking = append(blocking, moneyBlocking...)
+	// Amount parsing only matters for the sections that write money columns.
+	if m.wants("merchants") || m.wants("refunds") || m.wants("settlements") || m.wants("transfers") {
+		moneyBlocking := m.checkMoney(ctx, source)
+		blocking = append(blocking, moneyBlocking...)
+	}
 
 	report.BlockingCount = len(blocking)
 	report.WarningCount = len(warnings)
@@ -159,7 +198,7 @@ func (m *Migrator) preflight(ctx context.Context, source *sourceDB) (PreflightRe
 }
 
 func (m *Migrator) readConfig(ctx context.Context, source *sourceDB) (map[string]string, error) {
-	rows, err := source.db.QueryContext(ctx, "SELECT k, v FROM pre_config")
+	rows, err := source.queryContext(ctx, "SELECT k, v FROM pre_config")
 	if err != nil {
 		return nil, fmt.Errorf("读取 pre_config 失败: %w", err)
 	}
@@ -177,7 +216,7 @@ func (m *Migrator) readConfig(ctx context.Context, source *sourceDB) (map[string
 
 // duplicateTradeNumbers counts pre_order rows whose trade_no repeats.
 func (m *Migrator) duplicateTradeNumbers(ctx context.Context, source *sourceDB) (int64, []string, error) {
-	rows, err := source.db.QueryContext(ctx, "SELECT trade_no FROM pre_order")
+	rows, err := source.queryContext(ctx, "SELECT trade_no FROM pre_order")
 	if err != nil {
 		return 0, nil, fmt.Errorf("读取 pre_order.trade_no 失败: %w", err)
 	}
@@ -205,7 +244,7 @@ func (m *Migrator) duplicateTradeNumbers(ctx context.Context, source *sourceDB) 
 // duplicateOutTradeNumbers counts pre_order rows whose (uid, out_trade_no) pair
 // repeats, which the target's UNIQUE (merchant_id, out_trade_no) would reject.
 func (m *Migrator) duplicateOutTradeNumbers(ctx context.Context, source *sourceDB) (int64, []string, error) {
-	rows, err := source.db.QueryContext(ctx, "SELECT uid, out_trade_no FROM pre_order")
+	rows, err := source.queryContext(ctx, "SELECT uid, out_trade_no FROM pre_order")
 	if err != nil {
 		return 0, nil, fmt.Errorf("读取 pre_order.out_trade_no 失败: %w", err)
 	}
@@ -235,7 +274,7 @@ func (m *Migrator) duplicateOutTradeNumbers(ctx context.Context, source *sourceD
 // duplicateMerchantIdentity counts duplicate non-empty email/phone values.
 func (m *Migrator) duplicateMerchantIdentity(ctx context.Context, source *sourceDB) (int64, []string, error) {
 	statement := source.selectStatement(ctx, "pre_user", []string{"uid"}, []string{"email", "phone"})
-	rows, err := source.db.QueryContext(ctx, statement)
+	rows, err := source.queryContext(ctx, statement)
 	if err != nil {
 		return 0, nil, fmt.Errorf("读取 pre_user 身份列失败: %w", err)
 	}
@@ -273,7 +312,7 @@ func (m *Migrator) duplicateMerchantIdentity(ctx context.Context, source *source
 // oversizedOrderFields counts orders whose out_trade_no or name cannot fit the
 // target column, which would otherwise fail row by row at insert time.
 func (m *Migrator) oversizedOrderFields(ctx context.Context, source *sourceDB) (int64, []string, error) {
-	rows, err := source.db.QueryContext(ctx, "SELECT trade_no, out_trade_no, name FROM pre_order")
+	rows, err := source.queryContext(ctx, "SELECT trade_no, out_trade_no, name FROM pre_order")
 	if err != nil {
 		return 0, nil, fmt.Errorf("读取 pre_order 字段长度失败: %w", err)
 	}
@@ -352,7 +391,7 @@ func (m *Migrator) checkMoney(ctx context.Context, source *sourceDB) []BlockingI
 	}
 	for _, target := range m.moneyTargets(ctx, source) {
 		query := fmt.Sprintf("SELECT %s, %s FROM %s", target.key, target.column, target.table)
-		rows, err := source.db.QueryContext(ctx, query)
+		rows, err := source.queryContext(ctx, query)
 		if err != nil {
 			record(target.table, target.column, "query_failed", err.Error())
 			continue

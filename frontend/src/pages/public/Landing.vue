@@ -87,6 +87,16 @@ const METHOD_META: Record<string, { name: string; tags: string[] }> = {
   qqpay: { name: 'QQ 钱包', tags: ['扫码', '跳转'] },
   bank: { name: '网银', tags: ['网关直连'] },
   usdt: { name: 'USDT', tags: ['链上收款'] },
+  'usdt.trc20': { name: 'USDT・TRC20', tags: ['链上收款'] },
+  'usdt.solana': { name: 'USDT・Solana', tags: ['链上收款'] },
+  'usdc.solana': { name: 'USDC・Solana', tags: ['链上收款'] },
+  'waffo.pancake': { name: 'Waffo Pancake', tags: ['聚合通道'] },
+  applepay: { name: 'Apple Pay', tags: ['设备支付'] },
+  googlepay: { name: 'Google Pay', tags: ['设备支付'] },
+  paypal: { name: 'PayPal', tags: ['国际'] },
+  jdpay: { name: '京东支付', tags: ['扫码', '跳转'] },
+  douyinpay: { name: '抖音支付', tags: ['扫码'] },
+  card: { name: '信用卡', tags: ['卡支付'] },
   cashier: { name: '收银台', tags: ['聚合页'] },
 };
 const methods = computed<MethodCard[]>(() => {

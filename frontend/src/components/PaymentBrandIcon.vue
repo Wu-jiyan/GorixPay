@@ -24,9 +24,15 @@ const BRAND_OF: Record<string, BrandIconKey> = {
   qq: 'qq',
   usdt: 'tether',
   tether: 'tether',
+  'usdt.trc20': 'tether',
+  'usdt.solana': 'tether',
   btc: 'bitcoin',
   visa: 'visa',
   mastercard: 'mastercard',
+  applepay: 'applepay',
+  googlepay: 'googlepay',
+  paypal: 'paypal',
+  stripe: 'stripe',
 };
 
 const FALLBACK: Record<string, { icon: typeof CardOutline; hex: string }> = {

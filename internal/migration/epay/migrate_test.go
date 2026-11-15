@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	channelconfig "gorixpay/internal/channel/config"
 	"gorixpay/internal/identity/password"
+	"gorixpay/internal/platform/secret"
 )
 
 // Fixture totals, kept in one place so a change to the fixture is a single edit.
@@ -21,6 +23,8 @@ const (
 	fixtureSettleAmountCents   = 1000
 	fixtureTransferAmountCents = 500
 	fixtureConfigKeys          = 7
+	fixturePayTypes            = 2
+	fixtureChannels            = 3
 )
 
 func fixtureOptions(sourceDSN, targetDSN string, dryRun bool) Options {
@@ -159,6 +163,14 @@ func TestApplyMigratesEverything(t *testing.T) {
 	if settings.Source != fixtureConfigKeys || settings.Inserted != 1 || settings.Skipped != fixtureConfigKeys-1 {
 		t.Fatalf("system_settings = %+v", settings)
 	}
+	payTypes := tableByTarget(t, report, "pay_types")
+	if payTypes.Source != fixturePayTypes || payTypes.Inserted != fixturePayTypes || payTypes.Failed != 0 {
+		t.Fatalf("pay_types = %+v", payTypes)
+	}
+	channels := tableByTarget(t, report, "payment_channels")
+	if channels.Source != fixtureChannels || channels.Inserted != fixtureChannels || channels.Failed != 0 {
+		t.Fatalf("payment_channels = %+v", channels)
+	}
 	if report.Balances.Posted != 2 || report.Balances.SourceTotalCents != fixtureBalanceCents ||
 		report.Balances.TargetTotalCents != fixtureBalanceCents || report.Balances.DiffCents != 0 {
 		t.Fatalf("balances = %+v", report.Balances)
@@ -193,6 +205,31 @@ func TestApplyMigratesEverything(t *testing.T) {
 	}
 	if matched, _, _ := password.VerifyLegacyMerchant("wrong-password", legacyHash, "1001"); matched {
 		t.Fatal("legacy verification accepted a wrong password")
+	}
+
+	// pay types: machine code, display name and status from pre_type.
+	if got := queryInt(t, db, `SELECT COUNT(*) FROM pay_types`); got != fixturePayTypes {
+		t.Fatalf("pay_types rows = %d", got)
+	}
+	if got := queryString(t, db, `SELECT name FROM pay_types WHERE code = 'alipay'`); got != "支付宝" {
+		t.Fatalf("pay_types.name(alipay) = %q", got)
+	}
+	if got := queryString(t, db, `SELECT status FROM pay_types WHERE code = 'wxpay'`); got != "active" {
+		t.Fatalf("pay_types.status(wxpay) = %q", got)
+	}
+
+	// channels: plugin mapping, payment type link, always imported disabled.
+	if got := queryString(t, db, `SELECT plugin_code FROM payment_channels WHERE name = 'BepUSDT-微信'`); got != "usdt" {
+		t.Fatalf("channel plugin(bepusdt) = %q", got)
+	}
+	if got := queryString(t, db, `SELECT payment_type FROM payment_channels WHERE name = 'BepUSDT-微信'`); got != "wxpay" {
+		t.Fatalf("channel payment_type(bepusdt) = %q", got)
+	}
+	if got := queryString(t, db, `SELECT status FROM payment_channels WHERE name = 'Epay-支付宝'`); got != "disabled" {
+		t.Fatalf("channel status = %q, want disabled", got)
+	}
+	if got := queryString(t, db, `SELECT plugin_code FROM payment_channels WHERE name = 'Waffo-微信'`); got != "waffopancake" {
+		t.Fatalf("a plugin this project does not ship must keep its legacy code, got %q", got)
 	}
 
 	// payment orders.
@@ -565,6 +602,106 @@ func TestReportsAreWritten(t *testing.T) {
 	}
 }
 
+// TestSectionsLimitTheRun keeps --only honest: a paytypes/channels run must leave
+// merchants, orders and the ledger untouched.
+func TestSectionsLimitTheRun(t *testing.T) {
+	sourceDSN := newSourceFixture(t)
+	targetDSN := newTargetDSN(t)
+	options := fixtureOptions(sourceDSN, targetDSN, false)
+	options.Sections = []string{"paytypes", "channels"}
+
+	report := mustRun(t, options)
+	if report.ExitCode != exitSuccess {
+		t.Fatalf("exit code = %d, blocking=%+v", report.ExitCode, report.Blocking)
+	}
+	if len(report.Tables) != 2 {
+		t.Fatalf("只应迁移两段，得到 %d 段: %+v", len(report.Tables), report.Tables)
+	}
+	if report.Balances.Posted != 0 {
+		t.Fatalf("限定段落时不应处理余额: %+v", report.Balances)
+	}
+
+	db := mustOpenDB(t, targetDSN)
+	defer db.Close()
+	if got := countRows(t, db, "merchants", ""); got != 0 {
+		t.Fatalf("merchants 不应被写入，得到 %d 行", got)
+	}
+	if got := countRows(t, db, "payment_orders", ""); got != 0 {
+		t.Fatalf("payment_orders 不应被写入，得到 %d 行", got)
+	}
+	if got := countRows(t, db, "pay_types", ""); got != fixturePayTypes {
+		t.Fatalf("pay_types 行数 = %d", got)
+	}
+	if got := countRows(t, db, "payment_channels", ""); got != fixtureChannels {
+		t.Fatalf("payment_channels 行数 = %d", got)
+	}
+}
+
+func TestUnknownSectionIsRejected(t *testing.T) {
+	options := fixtureOptions("file:source.db", "file:target.db", true)
+	options.Sections = []string{"paytypes", "nope"}
+	if _, err := New(options); err == nil {
+		t.Fatal("未知迁移段应被拒绝")
+	}
+}
+
+// TestPayPrefixedSourceIsDetected pins the fork handling: the deployed 彩虹易支付
+// uses pay_* tables, so the prefix must be detected and every query rewritten
+// instead of failing on "table pre_user does not exist".
+func TestPayPrefixedSourceIsDetected(t *testing.T) {
+	sourceDSN := newSourceFixture(t)
+	renameAllTables(t, sourceDSN, "pre_", "pay_")
+	targetDSN := newTargetDSN(t)
+
+	options := fixtureOptions(sourceDSN, targetDSN, false)
+	options.Sections = []string{"paytypes", "channels"}
+	report := mustRun(t, options)
+	if report.ExitCode != exitSuccess {
+		t.Fatalf("exit code = %d, blocking=%+v", report.ExitCode, report.Blocking)
+	}
+	if len(report.Source.MissingTables) != 0 {
+		t.Fatalf("pay_ 前缀下表不应被判定为缺失: %v", report.Source.MissingTables)
+	}
+
+	db := mustOpenDB(t, targetDSN)
+	defer db.Close()
+	if got := countRows(t, db, "pay_types", ""); got != fixturePayTypes {
+		t.Fatalf("pay_types 行数 = %d", got)
+	}
+	if got := countRows(t, db, "payment_channels", ""); got != fixtureChannels {
+		t.Fatalf("payment_channels 行数 = %d", got)
+	}
+}
+
+// renameAllTables rewrites one table prefix to another in a SQLite database.
+func renameAllTables(t *testing.T, dsn, from, to string) {
+	t.Helper()
+	db := mustOpenDB(t, dsn)
+	defer db.Close()
+	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE ?`, from+"%")
+	if err != nil {
+		t.Fatalf("列出表失败: %v", err)
+	}
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatalf("读取表名失败: %v", err)
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("遍历表名失败: %v", err)
+	}
+	rows.Close()
+	for _, name := range names {
+		renamed := to + strings.TrimPrefix(name, from)
+		if _, err := db.Exec(`ALTER TABLE "` + name + `" RENAME TO "` + renamed + `"`); err != nil {
+			t.Fatalf("重命名 %s 失败: %v", name, err)
+		}
+	}
+}
+
 func TestWriteReportsStripsKnownExtension(t *testing.T) {
 	prefix := filepath.Join(t.TempDir(), "report")
 	paths, err := WriteReports(prefix+".md", Report{Tool: "test", GeneratedAt: time.Now().UTC()})
@@ -578,5 +715,67 @@ func TestWriteReportsStripsKnownExtension(t *testing.T) {
 		if strings.Count(filepath.Base(path), ".") != 1 {
 			t.Fatalf("扩展名被重复追加: %s", path)
 		}
+	}
+}
+
+// TestChannelCredentialsAreReadableByTheApplication pins the contract between the
+// migration and the running service: ciphertext written here must decrypt with
+// the application's own cipher and AAD (the channel id), including the renamed
+// BepUSDT keys.
+func TestChannelCredentialsAreReadableByTheApplication(t *testing.T) {
+	sourceDSN := newSourceFixture(t)
+	targetDSN := newTargetDSN(t)
+	key := bytes.Repeat([]byte{'k'}, 32)
+	keyPath := filepath.Join(t.TempDir(), "master.key")
+	if err := os.WriteFile(keyPath, key, 0o600); err != nil {
+		t.Fatalf("写 master key 失败: %v", err)
+	}
+
+	options := fixtureOptions(sourceDSN, targetDSN, false)
+	options.MasterKeyFile = keyPath
+	report := mustRun(t, options)
+	if report.ExitCode != exitSuccess {
+		t.Fatalf("exit code = %d, blocking=%+v", report.ExitCode, report.Blocking)
+	}
+
+	db := mustOpenDB(t, targetDSN)
+	defer db.Close()
+
+	cipher, err := secret.NewCipher(key, secret.KeyVersion)
+	if err != nil {
+		t.Fatalf("构造 cipher 失败: %v", err)
+	}
+	service := channelconfig.NewService(cipher)
+
+	// BepUSDT: appurl/appkey must reach the plugin as api_url/key. The plugin reads
+	// Config.Values(), which is the contract that matters here.
+	bepID := queryString(t, db, `SELECT id FROM payment_channels WHERE name = 'BepUSDT-微信'`)
+	bepConfig, err := service.Decrypt(bepID, queryString(t, db, `SELECT config_encrypted FROM payment_channels WHERE id = ?`, bepID))
+	if err != nil {
+		t.Fatalf("BepUSDT 渠道凭据无法用应用侧密钥解开: %v", err)
+	}
+	bepValues := bepConfig.Values()
+	if bepValues["api_url"] != "https://beusdt.example.com/" || bepValues["key"] != "bep-key" {
+		t.Fatalf("BepUSDT 凭据改名失败: %+v", bepValues)
+	}
+	if bepValues["fiat"] != "CNY" {
+		t.Fatalf("BepUSDT 其余键应原样保留，得到 %+v", bepValues)
+	}
+
+	// Epay-style channel keeps api_url/pid/key in their native positions.
+	epayID := queryString(t, db, `SELECT id FROM payment_channels WHERE name = 'Epay-支付宝'`)
+	epayConfig, err := service.Decrypt(epayID, queryString(t, db, `SELECT config_encrypted FROM payment_channels WHERE id = ?`, epayID))
+	if err != nil {
+		t.Fatalf("Epay 渠道凭据无法用应用侧密钥解开: %v", err)
+	}
+	if epayConfig.APIURL != "https://gateway.example.com/" || epayConfig.PID != "1001" || epayConfig.Key != "legacy-key" {
+		t.Fatalf("Epay 凭据丢失: %+v", epayConfig)
+	}
+
+	// A second run must not duplicate the rows it already wrote.
+	again := mustRun(t, options)
+	channels := tableByTarget(t, again, "payment_channels")
+	if channels.Inserted != 0 || channels.Skipped != fixtureChannels {
+		t.Fatalf("第二次运行应全部跳过，得到 %+v", channels)
 	}
 }

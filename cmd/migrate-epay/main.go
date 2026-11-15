@@ -26,6 +26,21 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
+// splitSections turns the --only value into a slice; empty input means "all".
+func splitSections(value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	parts := make([]string, 0, 4)
+	for _, piece := range strings.Split(trimmed, ",") {
+		if item := strings.TrimSpace(piece); item != "" {
+			parts = append(parts, item)
+		}
+	}
+	return parts
+}
+
 func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("migrate-epay", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -37,6 +52,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	dryRun := flags.Bool("dry-run", false, "只做预检与只读对比，不写目标库")
 	reportPrefix := flags.String("report", "", "报告文件前缀，输出 <prefix>.json 与 <prefix>.md")
 	batchSize := flags.Int("batch-size", 500, "每批写入行数（1-10000）")
+	only := flags.String("only", "", "只迁移指定段落，逗号分隔：merchants,orders,refunds,settlements,transfers,domains,blacklist,settings,paytypes,channels")
 	flags.Usage = func() {
 		fmt.Fprintln(flags.Output(), "用法：migrate-epay --source-driver mysql|sqlite --source-dsn \"...\" [选项]")
 		fmt.Fprintln(flags.Output(), "")
@@ -63,6 +79,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		Target:        epay.TargetConfig{Driver: *targetDriver, DSN: *targetDSN},
 		DryRun:        *dryRun,
 		BatchSize:     *batchSize,
+		Sections:      splitSections(*only),
 		MasterKeyFile: *masterKeyFile,
 		ReportPrefix:  *reportPrefix,
 		Logf: func(format string, arguments ...any) {

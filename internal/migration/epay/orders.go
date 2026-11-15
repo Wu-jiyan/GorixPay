@@ -86,7 +86,7 @@ func (m *Migrator) migrateOrders(ctx context.Context, source *sourceDB, target *
 		[]string{"trade_no", "out_trade_no", "uid", "type", "name", "money", "addtime", "status"},
 		[]string{"api_trade_no", "notify_url", "return_url", "param", "endtime", "ip"},
 	)
-	rows, err := source.db.QueryContext(ctx, statement)
+	rows, err := source.queryContext(ctx, statement)
 	if err != nil {
 		return index, TableReport{}, fmt.Errorf("读取 pre_order 失败: %w", err)
 	}
@@ -254,7 +254,7 @@ func (m *Migrator) loadPaymentTypes(ctx context.Context, source *sourceDB) (map[
 		types[id] = name
 	}
 	if source.hasTable("pre_type") {
-		rows, err := source.db.QueryContext(ctx, "SELECT id, name FROM pre_type")
+		rows, err := source.queryContext(ctx, "SELECT id, name FROM pre_type")
 		if err != nil {
 			return nil, fmt.Errorf("读取 pre_type 失败: %w", err)
 		}

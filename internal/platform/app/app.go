@@ -164,7 +164,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			application.closeResources()
 			return nil, err
 		}
-		cipher, err = secret.NewCipher(key, "v1")
+		cipher, err = secret.NewCipher(key, secret.KeyVersion)
 		if err != nil {
 			application.closeResources()
 			return nil, err

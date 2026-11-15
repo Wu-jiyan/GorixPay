@@ -15,6 +15,11 @@ type Cipher struct {
 	version string
 }
 
+// KeyVersion is the single key version the application writes. Ciphertext
+// carries it as a "v1." prefix, so every writer must agree: the app and the
+// Epay migration tool both use this constant instead of their own literal.
+const KeyVersion = "v1"
+
 func NewCipher(key []byte, version string) (*Cipher, error) {
 	if len(key) != 32 {
 		return nil, errors.New("master key must be 32 bytes")

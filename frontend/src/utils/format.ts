@@ -67,6 +67,16 @@ export function paymentTypeText(type?: string): string {
     bank: '网银',
     cashier: '收银台',
     usdt: 'USDT',
+    'usdt.trc20': 'USDT・TRC20',
+    'usdt.solana': 'USDT・Solana',
+    'usdc.solana': 'USDC・Solana',
+    'waffo.pancake': 'Waffo Pancake',
+    applepay: 'Apple Pay',
+    googlepay: 'Google Pay',
+    paypal: 'PayPal',
+    jdpay: '京东支付',
+    douyinpay: '抖音支付',
+    card: '信用卡',
     sandbox: '沙箱支付',
   };
   return map[type ?? ''] ?? type ?? '-';

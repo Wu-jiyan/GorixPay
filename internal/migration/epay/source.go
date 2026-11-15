@@ -25,6 +25,11 @@ type sourceDB struct {
 	db     *sql.DB
 	driver string
 	tables map[string]bool
+	// prefix is the legacy table prefix actually used by this database: upstream
+	// 彩虹易支付 ships pre_ but several forks (including the one this was written
+	// against) use pay_. Every logical name in this package is written with the
+	// upstream prefix and translated by physical().
+	prefix string
 }
 
 var identifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -54,12 +59,71 @@ func openSource(ctx context.Context, config SourceConfig) (*sourceDB, error) {
 		db.Close()
 		return nil, fmt.Errorf("connect to source database: %w", err)
 	}
-	source := &sourceDB{db: db, driver: driver, tables: map[string]bool{}}
+	source := &sourceDB{db: db, driver: driver, tables: map[string]bool{}, prefix: defaultTablePrefix}
 	if err := source.loadTables(ctx); err != nil {
 		db.Close()
 		return nil, err
 	}
+	source.prefix = detectTablePrefix(source.tables)
 	return source, nil
+}
+
+// defaultTablePrefix is the upstream 彩虹易支付 prefix, used when nothing better
+// can be detected.
+const defaultTablePrefix = "pre_"
+
+// knownTablePrefixes are probed in order: the upstream one first, because a
+// database left over from the original release should keep its name.
+var knownTablePrefixes = []string{"pre_", "pay_"}
+
+// detectTablePrefix picks the prefix whose <prefix>user table exists. Falling
+// back to any *_user table covers forks with an owner-specific prefix.
+func detectTablePrefix(tables map[string]bool) string {
+	for _, candidate := range knownTablePrefixes {
+		if tables[candidate+"user"] {
+			return candidate
+		}
+	}
+	for name := range tables {
+		if strings.HasSuffix(name, "_user") {
+			return strings.TrimSuffix(name, "user")
+		}
+	}
+	return defaultTablePrefix
+}
+
+// physical translates a logical upstream table name (pre_channel) into the name
+// this database actually uses (pay_channel).
+func (source *sourceDB) physical(table string) string {
+	if source == nil {
+		return table
+	}
+	name := strings.ToLower(strings.TrimSpace(table))
+	name = strings.TrimPrefix(name, defaultTablePrefix)
+	return source.prefix + name
+}
+
+// legacyTablePattern matches a logical upstream table name inside a SQL string.
+var legacyTablePattern = regexp.MustCompile(`\bpre_([a-z0-9_]+)`)
+
+// rewrite maps the upstream table names written in the queries of this package
+// onto the prefix this database uses, so a fork with pay_* tables works without
+// every call site building SQL by hand.
+func (source *sourceDB) rewrite(query string) string {
+	if source == nil || source.prefix == defaultTablePrefix || source.prefix == "" {
+		return query
+	}
+	return legacyTablePattern.ReplaceAllString(query, source.prefix+"$1")
+}
+
+// queryContext runs a read query with the table prefix rewritten.
+func (source *sourceDB) queryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return source.db.QueryContext(ctx, source.rewrite(query), args...)
+}
+
+// queryRowContext runs a single-row read query with the table prefix rewritten.
+func (source *sourceDB) queryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return source.db.QueryRowContext(ctx, source.rewrite(query), args...)
 }
 
 func (source *sourceDB) Close() error {
@@ -84,7 +148,7 @@ func (source *sourceDB) loadTables(ctx context.Context) error {
 	default:
 		return fmt.Errorf("unsupported source driver %q", source.driver)
 	}
-	rows, err := source.db.QueryContext(ctx, query, args...)
+	rows, err := source.queryContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("list source tables: %w", err)
 	}
@@ -103,7 +167,10 @@ func (source *sourceDB) loadTables(ctx context.Context) error {
 }
 
 func (source *sourceDB) hasTable(name string) bool {
-	return source != nil && source.tables[strings.ToLower(name)]
+	if source == nil {
+		return false
+	}
+	return source.tables[strings.ToLower(source.physical(name))]
 }
 
 // tableNames returns the discovered source tables in a stable order.
@@ -118,13 +185,14 @@ func (source *sourceDB) tableNames() []string {
 
 // columns returns the column names of one legacy table (lower case).
 func (source *sourceDB) columns(ctx context.Context, table string) (map[string]bool, error) {
+	table = source.physical(table)
 	if !identifierPattern.MatchString(table) {
 		return nil, fmt.Errorf("invalid table name %q", table)
 	}
 	result := map[string]bool{}
 	switch source.driver {
 	case "sqlite":
-		rows, err := source.db.QueryContext(ctx, "PRAGMA table_info("+table+")")
+		rows, err := source.queryContext(ctx, "PRAGMA table_info("+table+")")
 		if err != nil {
 			return nil, fmt.Errorf("read columns of %s: %w", table, err)
 		}
@@ -148,7 +216,7 @@ func (source *sourceDB) columns(ctx context.Context, table string) (map[string]b
 		}
 		return result, rows.Err()
 	case "mysql":
-		rows, err := source.db.QueryContext(ctx, `SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ?`, table)
+		rows, err := source.queryContext(ctx, `SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ?`, table)
 		if err != nil {
 			return nil, fmt.Errorf("read columns of %s: %w", table, err)
 		}
@@ -190,13 +258,13 @@ func (source *sourceDB) selectStatement(ctx context.Context, table string, requi
 		}
 		parts = append(parts, "NULL AS "+column)
 	}
-	return "SELECT " + strings.Join(parts, ", ") + " FROM " + table
+	return "SELECT " + strings.Join(parts, ", ") + " FROM " + source.physical(table)
 }
 
 // countInt runs a single-value integer query.
 func (source *sourceDB) countInt(ctx context.Context, query string, args ...any) (int64, error) {
 	var value sql.NullInt64
-	if err := source.db.QueryRowContext(ctx, query, args...).Scan(&value); err != nil {
+	if err := source.queryRowContext(ctx, query, args...).Scan(&value); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, nil
 		}
@@ -207,6 +275,7 @@ func (source *sourceDB) countInt(ctx context.Context, query string, args ...any)
 
 // count returns the row count of one legacy table.
 func (source *sourceDB) count(ctx context.Context, table string) (int64, error) {
+	table = source.physical(table)
 	if !identifierPattern.MatchString(table) {
 		return 0, fmt.Errorf("invalid table name %q", table)
 	}

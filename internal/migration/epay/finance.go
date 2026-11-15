@@ -70,7 +70,7 @@ func (m *Migrator) migrateRefunds(ctx context.Context, source *sourceDB, target 
 		[]string{"refund_no", "out_refund_no", "trade_no", "uid", "money", "status", "addtime"},
 		[]string{"endtime"},
 	)
-	rows, err := source.db.QueryContext(ctx, statement)
+	rows, err := source.queryContext(ctx, statement)
 	if err != nil {
 		return TableReport{}, fmt.Errorf("读取 pre_refundorder 失败: %w", err)
 	}
@@ -209,7 +209,7 @@ func (m *Migrator) migrateSettlements(ctx context.Context, source *sourceDB, tar
 		[]string{"id", "uid", "money", "status"},
 		[]string{"batch", "type", "account", "username", "realmoney", "addtime", "endtime", "result"},
 	)
-	rows, err := source.db.QueryContext(ctx, statement)
+	rows, err := source.queryContext(ctx, statement)
 	if err != nil {
 		return TableReport{}, fmt.Errorf("读取 pre_settle 失败: %w", err)
 	}
@@ -334,7 +334,7 @@ func (m *Migrator) migrateTransfers(ctx context.Context, source *sourceDB, targe
 		[]string{"biz_no", "out_biz_no", "uid", "type", "account", "username", "money", "status"},
 		[]string{"addtime", "paytime", "result"},
 	)
-	rows, err := source.db.QueryContext(ctx, statement)
+	rows, err := source.queryContext(ctx, statement)
 	if err != nil {
 		return TableReport{}, fmt.Errorf("读取 pre_transfer 失败: %w", err)
 	}

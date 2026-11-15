@@ -115,7 +115,7 @@ func (m *Migrator) migrateDomains(ctx context.Context, source *sourceDB, target 
 		[]string{"id", "uid", "domain", "status", "addtime"},
 		[]string{"endtime"},
 	)
-	rows, err := source.db.QueryContext(ctx, statement)
+	rows, err := source.queryContext(ctx, statement)
 	if err != nil {
 		return TableReport{}, fmt.Errorf("读取 pre_domain 失败: %w", err)
 	}
@@ -232,7 +232,7 @@ func (m *Migrator) migrateBlacklist(ctx context.Context, source *sourceDB, targe
 		[]string{"id", "type", "content", "addtime"},
 		[]string{"endtime", "remark"},
 	)
-	rows, err := source.db.QueryContext(ctx, statement)
+	rows, err := source.queryContext(ctx, statement)
 	if err != nil {
 		return TableReport{}, fmt.Errorf("读取 pre_blacklist 失败: %w", err)
 	}

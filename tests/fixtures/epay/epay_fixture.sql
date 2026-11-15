@@ -41,6 +41,32 @@ CREATE TABLE pre_type (
 INSERT INTO pre_type (id, name, device, showname, status) VALUES (1, 'alipay', 0, '支付宝', 1);
 INSERT INTO pre_type (id, name, device, showname, status) VALUES (2, 'wxpay', 0, '微信支付', 1);
 
+-- 支付渠道：一条 Epay 风格（api_url/pid/key）、一条 BepUSDT（appurl/appkey 需改名）、
+-- 一条本项目没有的插件（原样保留、停用导入）。
+DROP TABLE IF EXISTS pre_channel;
+CREATE TABLE pre_channel (
+  id INTEGER PRIMARY KEY,
+  mode INTEGER NOT NULL DEFAULT 0,
+  type INTEGER NOT NULL,
+  plugin VARCHAR(30) NOT NULL,
+  name VARCHAR(30) NOT NULL,
+  rate TEXT NOT NULL DEFAULT '100.00',
+  status INTEGER NOT NULL DEFAULT 1,
+  apptype VARCHAR(50),
+  daytop INTEGER DEFAULT 0,
+  daystatus INTEGER DEFAULT 0,
+  paymin VARCHAR(10),
+  paymax VARCHAR(10),
+  costrate TEXT,
+  config TEXT,
+  daymaxorder INTEGER DEFAULT 0,
+  timestart INTEGER,
+  timestop INTEGER
+);
+INSERT INTO pre_channel (id, type, plugin, name, rate, status, config) VALUES (1, 1, 'epay', 'Epay-支付宝', '99.00', 1, '{"api_url":"https://gateway.example.com/","pid":"1001","key":"legacy-key"}');
+INSERT INTO pre_channel (id, type, plugin, name, rate, status, config) VALUES (2, 2, 'bepusdt', 'BepUSDT-微信', '97.00', 1, '{"appurl":"https://beusdt.example.com/","appkey":"bep-key","fiat":"CNY"}');
+INSERT INTO pre_channel (id, type, plugin, name, rate, status, config) VALUES (3, 2, 'waffopancake', 'Waffo-微信', '99.90', 1, '{"appenv":"prod","appid":"MER_1"}');
+
 DROP TABLE IF EXISTS pre_user;
 CREATE TABLE pre_user (
   uid INTEGER PRIMARY KEY,
