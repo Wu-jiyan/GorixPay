@@ -140,15 +140,18 @@ plugins:
     capabilities: [payment]
     callback_verifier: true
     upstream:
-      create_path: /v3/trade/payment/jspay
+      create_path: /v3/trade/payment/jspay (native) | /v2/trade/hosting/payment/preorder (托管)
       signature: SHA256withRSA over PHP json_encode(ksort(data), UNESCAPED_SLASHES|UNESCAPED_UNICODE)
       notification: form resp_data + sign (RSA over the raw resp_data string), ack RECV_ORD_ID_<trade_no>
       response_signature: data re-canonicalized and verified with the Huifu public key
-    action_types: [qrcode, jsapi]
+    action_types: [qrcode, jsapi, jump]
     config_fields:
       - {key: sys_id, type: text, required: true, secret: false}
       - {key: product_id, type: text, required: true, secret: false}
       - {key: private_key, type: textarea, required: true, secret: true}
       - {key: huifu_public_key, type: textarea, required: true, secret: true}
       - {key: huifu_id, type: text, required: false, secret: false}
+      - {key: project_id, type: text, required: false, secret: false}
+      - {key: project_title, type: text, required: false, secret: false}
+      - {key: mode, type: text, required: false, secret: false}
     amount_unit: fen (converted to the yuan string trans_amt)
