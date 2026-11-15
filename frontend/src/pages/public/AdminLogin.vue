@@ -6,7 +6,7 @@ import { useMessage, type FormInst, type FormRules } from 'naive-ui';
 import { authApi } from '@/api';
 import { errorMessage } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
-import { siteLogo, siteName } from '@/stores/site';
+import BrandMark from '@/components/BrandMark.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -65,12 +65,7 @@ async function handleSubmit() {
   <div class="admin-auth-page">
     <div class="admin-auth-panel">
       <div class="admin-brand">
-        <img v-if="siteLogo" :src="siteLogo" class="brand-logo" alt="" />
-        <span v-else class="brand-mark">G</span>
-        <div>
-          <div class="brand-name">{{ siteName }}</div>
-          <div class="brand-sub">运营后台</div>
-        </div>
+        <brand-mark :size="34" subtitle="运营后台" />
       </div>
       <div class="auth-head">
         <h1 class="auth-title">运营账号登录</h1>
@@ -116,17 +111,16 @@ async function handleSubmit() {
   align-items: center;
   justify-content: center;
   padding: 40px 16px;
-  background: radial-gradient(800px 380px at 20% 0%, #1e293b 0%, transparent 65%),
-    linear-gradient(160deg, #0b1220 0%, #111b2e 55%, #0b1220 100%);
+  background: var(--gp-bg);
 }
 .admin-auth-panel {
   width: 100%;
   max-width: 420px;
   padding: 30px 28px 26px;
-  border-radius: 16px;
-  background: #121c2f;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.55);
+  border-radius: var(--gp-radius-lg);
+  background: var(--gp-bg-soft);
+  border: 1px solid var(--gp-line);
+  box-shadow: var(--gp-shadow);
 }
 .admin-brand {
   display: flex;
@@ -134,73 +128,33 @@ async function handleSubmit() {
   gap: 12px;
   margin-bottom: 24px;
 }
-.brand-mark {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-weight: 700;
-  background: linear-gradient(135deg, #1e3a8a, #0ea5e9);
-}
-.brand-logo {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  object-fit: cover;
-  display: block;
-  flex: none;
-}
-.brand-name {
-  color: #f8fafc;
-  font-weight: 700;
-  font-size: 16px;
-}
-.brand-sub {
-  color: #7c8da8;
-  font-size: 11.5px;
-}
 .auth-head {
   margin-bottom: 20px;
 }
 .auth-title {
   font-size: 20px;
   margin: 0 0 6px;
-  color: #f1f5f9;
+  color: var(--gp-text-1);
 }
 .auth-subtitle {
   margin: 0;
   font-size: 12.5px;
-  color: #94a3b8;
+  color: var(--gp-text-3);
   line-height: 1.7;
-}
-:deep(.n-form-item-label) {
-  color: #cbd5e1 !important;
-}
-:deep(.n-input) {
-  background: #0d1626;
-}
-:deep(.n-input .n-input__input-el),
-:deep(.n-input .n-input__placeholder) {
-  color: #e2e8f0;
-}
-:deep(.n-input .n-input__placeholder) {
-  color: #64748b;
 }
 .auth-bottom {
   margin-top: 20px;
   font-size: 12.5px;
-  color: #7c8da8;
+  color: var(--gp-text-3);
   display: flex;
   gap: 8px;
   justify-content: center;
 }
 .auth-bottom a:hover {
-  color: #93c5fd;
+  color: #2563eb;
 }
 .sep {
-  color: #334155;
+  color: var(--gp-text-3);
 }
 @media (max-width: 768px) {
   .admin-auth-page {

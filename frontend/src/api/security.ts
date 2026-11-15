@@ -48,4 +48,8 @@ export const securityApi = {
     );
     return data;
   },
+  /** 改自己的登录密码：成功后除当前设备外，其它会话立即失效。 */
+  async changePassword(payload: { old_password: string; new_password: string }) {
+    await http.post('/admin/password/change', payload);
+  },
 };

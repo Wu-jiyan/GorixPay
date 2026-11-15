@@ -4,7 +4,7 @@ import { useMessage } from 'naive-ui';
 import { merchantApi } from '@/api';
 import type { Credential, V2Credential } from '@/api/types';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
+import AdminPage from '@/components/AdminPage.vue';
 import { copyText, formatDateTime } from '@/utils/format';
 
 const message = useMessage();
@@ -112,12 +112,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="密钥管理" subtitle="V1 MD5 密钥与 V2 RSA 密钥，轮换后请立即更新到服务端">
+  <admin-page title="密钥管理" subtitle="V1 MD5 密钥与 V2 RSA 密钥，轮换后请立即更新到服务端">
       <template #actions>
         <n-button size="small" @click="refreshAll">刷新</n-button>
       </template>
-    </PageHeader>
 
     <div class="credential-grid">
       <n-card :bordered="false" class="credential-card" title="MD5 密钥（V1 协议）">
@@ -272,7 +270,7 @@ onMounted(() => {
         </div>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
 
 <style scoped>

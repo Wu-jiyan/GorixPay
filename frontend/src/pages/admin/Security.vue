@@ -38,6 +38,47 @@ const attemptsLoading = ref(false);
 const identifier = ref('');
 const success = ref<string | null>(null);
 
+// 管理员自助改密码。旧密码由后端校验，这里只做长度与一致性预检，少一次往返。
+const passwordForm = ref({ old_password: '', new_password: '', confirm: '' });
+const passwordBusy = ref(false);
+
+function runeLength(value: string) {
+  return Array.from(value).length;
+}
+
+async function submitPassword() {
+  const form = passwordForm.value;
+  if (form.old_password === '') {
+    message.warning('请输入当前密码');
+    return;
+  }
+  if (runeLength(form.new_password) < 8 || runeLength(form.new_password) > 72) {
+    message.warning('新密码长度需为 8 到 72 个字符');
+    return;
+  }
+  if (form.new_password !== form.confirm) {
+    message.warning('两次输入的新密码不一致');
+    return;
+  }
+  if (form.new_password === form.old_password) {
+    message.warning('新密码不能与当前密码相同');
+    return;
+  }
+  passwordBusy.value = true;
+  try {
+    await securityApi.changePassword({
+      old_password: form.old_password,
+      new_password: form.new_password,
+    });
+    message.success('密码已修改，其它设备上的登录已失效');
+    passwordForm.value = { old_password: '', new_password: '', confirm: '' };
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    passwordBusy.value = false;
+  }
+}
+
 const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } =
   useServerPaging(loadAttempts);
 
@@ -228,6 +269,79 @@ onMounted(reloadAll);
       </n-button>
     </template>
 
+    <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16" style="margin-bottom: 16px">
+      <n-gi>
+        <n-card size="small" :bordered="false" title="修改登录密码" style="height: 100%">
+          <template #header-extra>
+            <n-tag size="small" round :bordered="false">建议定期更换</n-tag>
+          </template>
+
+          <n-form label-placement="top">
+            <n-form-item label="当前密码">
+              <n-input
+                v-model:value="passwordForm.old_password"
+                type="password"
+                show-password-on="click"
+                placeholder="输入现在使用的密码"
+                autocomplete="current-password"
+              />
+            </n-form-item>
+            <n-form-item label="新密码">
+              <n-input
+                v-model:value="passwordForm.new_password"
+                type="password"
+                show-password-on="click"
+                placeholder="8 到 72 个字符"
+                autocomplete="new-password"
+              />
+            </n-form-item>
+            <n-form-item label="确认新密码">
+              <n-input
+                v-model:value="passwordForm.confirm"
+                type="password"
+                show-password-on="click"
+                placeholder="再输入一次新密码"
+                autocomplete="new-password"
+                @keyup.enter="submitPassword"
+              />
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-space align="center" :size="12">
+                <n-button type="primary" :loading="passwordBusy" @click="submitPassword">保存新密码</n-button>
+                <n-text depth="3" style="font-size: 12.5px">保存后其它设备的登录会立即失效。</n-text>
+              </n-space>
+            </n-form-item>
+          </n-form>
+        </n-card>
+      </n-gi>
+
+      <n-gi>
+        <n-card size="small" :bordered="false" title="登录图形验证码" style="height: 100%">
+          <n-spin :show="captchaLoading">
+            <n-space vertical :size="12">
+              <n-space align="center" :size="12">
+                <n-switch
+                  :value="captchaRequired"
+                  :loading="captchaSaving"
+                  @update:value="(value: boolean) => saveCaptcha(value)"
+                >
+                  <template #checked>开启</template>
+                  <template #unchecked>关闭</template>
+                </n-switch>
+                <n-text>管理员与商户登录都要填验证码</n-text>
+              </n-space>
+              <n-text depth="3" style="font-size: 12.5px">
+                验证码能拦住批量撞库，代价是每次登录多填四位字符。后台被反复试密码时先开这个。
+              </n-text>
+              <n-alert v-if="!captchaFound" type="warning" :bordered="false">
+                后端设置里还没有「security.captcha_required」这一项，保存会失败。
+              </n-alert>
+            </n-space>
+          </n-spin>
+        </n-card>
+      </n-gi>
+    </n-grid>
+
     <n-card size="small" :bordered="false" title="双重验证（TOTP）" style="margin-bottom: 16px">
       <template #header-extra>
         <n-tag :type="totp?.enabled ? 'success' : 'default'" size="small" round :bordered="false">
@@ -334,27 +448,6 @@ onMounted(reloadAll);
             </n-form-item>
           </n-form>
         </template>
-      </n-spin>
-    </n-card>
-
-    <n-card size="small" :bordered="false" title="登录图形验证码" style="margin-bottom: 16px">
-      <n-spin :show="captchaLoading">
-        <n-space vertical :size="8">
-          <n-space align="center" :size="12">
-            <n-switch
-              :value="captchaRequired"
-              :loading="captchaSaving"
-              @update:value="(value: boolean) => saveCaptcha(value)"
-            >
-              <template #checked>开启</template>
-              <template #unchecked>关闭</template>
-            </n-switch>
-            <n-text>开启后管理员与商户登录都需要填写图形验证码，降低撞库成功率。</n-text>
-          </n-space>
-          <n-alert v-if="!captchaFound" type="warning" :bordered="false">
-            后端设置里还没有「security.captcha_required」这一项，保存会失败；把开关拨过去可以验证接口是否就绪。
-          </n-alert>
-        </n-space>
       </n-spin>
     </n-card>
 

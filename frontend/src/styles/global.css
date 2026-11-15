@@ -7,9 +7,60 @@ body,
 }
 
 body {
-  background: #f5f7fb;
-  color: #1f2937;
+  background: var(--gp-bg);
+  color: var(--gp-text-1);
   -webkit-font-smoothing: antialiased;
+}
+
+/* 全站设计变量：后台、商户中心、官网、收银台共用一套，改这里等于改全站。
+   深浅色都定一遍，页面里不再写死十六进制颜色。 */
+:root {
+  --gp-text-1: #1f2937;
+  --gp-text-2: #475569;
+  --gp-text-3: #64748b;
+  --gp-line: #e2e8f0;
+  --gp-line-soft: #eef2f7;
+  --gp-bg: #f5f7fb;
+  --gp-bg-soft: #f8fafc;
+  /* 卡片 / 页头 / 页脚这类"表面"色，浅色是白的，深色要压一层灰 */
+  --gp-surface: #ffffff;
+  --gp-container: 1200px;
+  --gp-gutter: 24px;
+  /* 强调色：浅色一档深蓝，深色必须提亮，否则压在 #101014 上读不清 */
+  --gp-accent: #2563eb;
+  --gp-accent-soft: rgba(37, 99, 235, 0.1);
+  --gp-radius-sm: 8px;
+  --gp-radius: 10px;
+  --gp-radius-lg: 14px;
+  --gp-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+html[data-skin='dark'] {
+  --gp-text-1: #e5e7eb;
+  --gp-text-2: #c2c8d0;
+  --gp-text-3: #9aa3af;
+  --gp-line: #2b2f38;
+  --gp-line-soft: #23262d;
+  --gp-bg: #101014;
+  --gp-bg-soft: #17181d;
+  --gp-surface: #1b1c22;
+  --gp-accent: #6ea8fe;
+  --gp-accent-soft: rgba(110, 168, 254, 0.16);
+  --gp-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* 官网 / 文档 / 登录页的横向容器，宽度只在这里定义一次 */
+.gp-container {
+  width: 100%;
+  max-width: var(--gp-container);
+  margin: 0 auto;
+  padding: 0 var(--gp-gutter);
+}
+
+@media (max-width: 768px) {
+  :root {
+    --gp-gutter: 16px;
+  }
 }
 
 * {

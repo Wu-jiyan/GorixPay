@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"gorixpay/internal/identity/password"
 	"gorixpay/internal/platform/secret"
@@ -32,14 +31,6 @@ const (
 	maxCodeAttempts = 5
 	codeLength      = 6
 	resetTokenBytes = 32
-)
-
-// Password policy. It is stricter than merchant registration (4) on purpose: the
-// reset flow is the one path an attacker with a mailbox can walk, so it must not
-// be able to downgrade an account to a four character password.
-const (
-	minPasswordRune = 8
-	maxPasswordRune = 72
 )
 
 // Bounds for an encrypted channel configuration.
@@ -697,8 +688,10 @@ func hashToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// Password policy is owned by the password package; this flow keeps its own
+// error so the reset endpoint can answer 400 invalid_password.
 func validatePassword(value string) (string, error) {
-	if utf8.RuneCountInString(value) < minPasswordRune || utf8.RuneCountInString(value) > maxPasswordRune {
+	if err := password.ValidatePolicy(value); err != nil {
 		return "", ErrInvalidPassword
 	}
 	return value, nil

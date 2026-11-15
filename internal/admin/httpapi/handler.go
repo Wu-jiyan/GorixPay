@@ -13,6 +13,7 @@ import (
 	financeservice "gorixpay/internal/finance/service"
 	identityhttp "gorixpay/internal/identity/httpapi"
 	identitymodel "gorixpay/internal/identity/model"
+	identitypassword "gorixpay/internal/identity/password"
 	ledgermodel "gorixpay/internal/ledger/model"
 	ledgerquery "gorixpay/internal/ledger/query"
 	ledgerservice "gorixpay/internal/ledger/service"
@@ -142,6 +143,8 @@ func Register(group *gin.RouterGroup, db *gorm.DB, sessions gin.HandlerFunc, con
 	admin.GET("/dashboard", handler.dashboard)
 	admin.GET("/settings", handler.settings)
 	admin.PUT("/settings/:key", handler.updateSetting)
+	// 管理员改自己的登录密码：只有自助这一条路，没有"超管重置别人密码"的接口。
+	admin.POST("/password/change", handler.changePassword)
 	admin.GET("/audit-events", handler.auditEvents)
 	admin.GET("/merchants", handler.merchants)
 	admin.PATCH("/merchants/:id/status", handler.merchantStatus)
@@ -181,6 +184,80 @@ func (handler *Handler) dashboard(ctx *gin.Context) {
 	handler.db.WithContext(ctx.Request.Context()).Model(&paymentmodel.Order{}).Where("status = ?", paymentmodel.StatusPaid).Count(&paidOrders)
 	handler.db.WithContext(ctx.Request.Context()).Model(&paymentmodel.Order{}).Where("status = ?", paymentmodel.StatusPaid).Select("COALESCE(SUM(amount), 0)").Scan(&paidAmount)
 	ctx.JSON(http.StatusOK, gin.H{"merchant_count": merchants, "order_count": orders, "paid_order_count": paidOrders, "paid_amount": paidAmount})
+}
+
+// passwordChangeRequest is the body of POST /admin/password/change. Both fields
+// are required: the current password proves the caller is the account owner, and
+// the console never has a "reset without proof" path.
+type passwordChangeRequest struct {
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required"`
+}
+
+// changePassword rotates the signed-in administrator's own password.
+//
+// Every other session of the same account is revoked in the same transaction, so
+// a cookie stolen before the change dies together with the old password. The
+// session that performed the change keeps working — otherwise the operator would
+// be signed out by their own successful action.
+func (handler *Handler) changePassword(ctx *gin.Context) {
+	var request passwordChangeRequest
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		invalidRequest(ctx)
+		return
+	}
+	if err := identitypassword.ValidatePolicy(request.NewPassword); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"code": "invalid_password", "message": "新密码长度需为 8 到 72 个字符"})
+		return
+	}
+	if request.NewPassword == request.OldPassword {
+		ctx.JSON(http.StatusConflict, gin.H{"code": "same_password", "message": "新密码不能与当前密码相同"})
+		return
+	}
+	identity := identityhttp.MustSession(ctx)
+	var administrator identitymodel.Administrator
+	if err := handler.db.WithContext(ctx.Request.Context()).First(&administrator, "id = ?", identity.PrincipalID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			notFound(ctx)
+			return
+		}
+		internalError(ctx)
+		return
+	}
+	matched, _, err := identitypassword.Verify(request.OldPassword, administrator.PasswordHash)
+	if err != nil || !matched {
+		ctx.JSON(http.StatusBadRequest, gin.H{"code": "invalid_old_password", "message": "当前密码不正确"})
+		return
+	}
+	hash, err := identitypassword.Hash(request.NewPassword)
+	if err != nil {
+		internalError(ctx)
+		return
+	}
+	now := time.Now().UTC()
+	err = handler.db.WithContext(ctx.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&identitymodel.Administrator{}).Where("id = ?", administrator.ID).
+			Updates(map[string]any{"password_hash": hash, "updated_at": now})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		return tx.Model(&identitymodel.Session{}).
+			Where("principal_type = ? AND principal_id = ? AND id <> ? AND revoked_at IS NULL",
+				identitymodel.PrincipalAdministrator, administrator.ID, identity.ID).
+			Update("revoked_at", now).Error
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			notFound(ctx)
+			return
+		}
+		internalError(ctx)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
 }
 
 func (handler *Handler) merchants(ctx *gin.Context) {

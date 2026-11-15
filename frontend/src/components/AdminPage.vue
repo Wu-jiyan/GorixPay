@@ -24,7 +24,9 @@ withDefaults(
 </template>
 
 <style scoped>
+/* 撑满内容区：以前这里限了 max-width:1440px，宽屏上右侧会空出一条没法用的白边。 */
 .admin-page {
-  max-width: 1440px;
+  width: 100%;
+  min-width: 0;
 }
 </style>

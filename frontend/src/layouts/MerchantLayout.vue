@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref, watch } from 'vue';
+import { computed, h, ref } from 'vue';
 import type { Component } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
@@ -15,7 +15,6 @@ import {
   NLayoutSider,
   NMenu,
   NSpace,
-  NText,
   useMessage,
 } from 'naive-ui';
 import type { MenuOption } from 'naive-ui';
@@ -42,18 +41,13 @@ import {
   WalletOutline,
 } from '@vicons/ionicons5';
 import { useAuthStore } from '@/stores/auth';
-import { siteLogo, siteName } from '@/stores/site';
+import BrandMark from '@/components/BrandMark.vue';
 
 const router = useRouter();
 const route = useRoute();
 const message = useMessage();
 const auth = useAuthStore();
 const collapsed = ref(false);
-// 站点 Logo 是后台填的 URL，加载失败时退回站点名首字
-const logoBroken = ref(false);
-watch(siteLogo, () => {
-  logoBroken.value = false;
-});
 
 const renderIcon = (icon: Component) => () => h(NIcon, null, { default: () => h(icon) });
 
@@ -156,18 +150,7 @@ async function handleUserSelect(key: string) {
       @expand="collapsed = false"
     >
       <div class="brand" :class="{ 'brand-collapsed': collapsed }">
-        <img
-          v-if="siteLogo && !logoBroken"
-          :src="siteLogo"
-          :alt="siteName"
-          class="brand-logo"
-          @error="logoBroken = true"
-        />
-        <div v-else class="brand-logo brand-logo-text">{{ (siteName || 'G').slice(0, 1) }}</div>
-        <div v-if="!collapsed" class="brand-text">
-          <n-text strong>{{ siteName }}</n-text>
-          <n-text depth="3" class="brand-sub">商户中心</n-text>
-        </div>
+        <brand-mark :size="32" :name="!collapsed" subtitle="商户中心" />
       </div>
       <n-menu
         :value="activeKey"
@@ -233,31 +216,6 @@ async function handleUserSelect(key: string) {
   justify-content: center;
   padding: 16px 0 12px;
 }
-.brand-logo {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  object-fit: contain;
-  background: #fff;
-  flex: none;
-}
-.brand-logo-text {
-  display: grid;
-  place-items: center;
-  background: #18a058;
-  color: #fff;
-  font-weight: 600;
-  font-size: 16px;
-}
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.35;
-  min-width: 0;
-}
-.brand-sub {
-  font-size: 12px;
-}
 .topbar {
   height: 57px;
   padding: 0 20px;
@@ -266,6 +224,6 @@ async function handleUserSelect(key: string) {
   justify-content: space-between;
 }
 .content {
-  background: var(--n-color-embedded, #f5f7fa);
+  background: var(--gp-bg);
 }
 </style>

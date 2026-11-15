@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 import { useMessage } from 'naive-ui';
 import { accountSecurityApi } from '@/api/accountSecurity';
 import { errorMessage } from '@/api/client';
-import { siteLogo, siteName } from '@/stores/site';
+import BrandMark from '@/components/BrandMark.vue';
 
 const router = useRouter();
 const message = useMessage();
@@ -79,11 +79,7 @@ function backToStepOne() {
 <template>
   <div class="auth-page">
     <div class="auth-brand">
-      <router-link to="/" class="brand-link">
-        <img v-if="siteLogo" :src="siteLogo" class="brand-logo" alt="" />
-        <span v-else class="brand-mark">G</span>
-        <span class="brand-name">{{ siteName }}</span>
-      </router-link>
+      <brand-mark :size="34" />
     </div>
 
     <n-card class="auth-card" :bordered="false">
@@ -164,42 +160,16 @@ function backToStepOne() {
   align-items: center;
   justify-content: center;
   padding: 40px 16px;
-  background: radial-gradient(900px 420px at 12% 0%, #dbeafe 0%, transparent 62%),
-    linear-gradient(160deg, #f8fbff 0%, #eef4ff 60%, #f5f7fb 100%);
+  background: var(--gp-bg);
 }
 .auth-brand {
   margin-bottom: 20px;
 }
-.brand-link {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 700;
-  font-size: 18px;
-  color: #0f172a;
-}
-.brand-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  background: linear-gradient(135deg, #2563eb, #06b6d4);
-}
-.brand-logo {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  object-fit: cover;
-  display: block;
-  flex: none;
-}
 .auth-card {
   width: 100%;
   max-width: 440px;
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.1);
-  border-radius: 16px;
+  box-shadow: var(--gp-shadow);
+  border-radius: var(--gp-radius-lg);
 }
 .auth-head {
   margin-bottom: 20px;
@@ -208,12 +178,12 @@ function backToStepOne() {
 .auth-title {
   font-size: 22px;
   margin: 0 0 6px;
-  color: #0f172a;
+  color: var(--gp-text-1);
 }
 .auth-subtitle {
   margin: 0;
   font-size: 13px;
-  color: #64748b;
+  color: var(--gp-text-3);
   line-height: 1.7;
 }
 .steps {
@@ -225,19 +195,19 @@ function backToStepOne() {
 .sent-account {
   margin-top: 6px;
   font-size: 12.5px;
-  color: #334155;
+  color: var(--gp-text-2);
 }
 .resend {
   margin-top: 14px;
   text-align: center;
   font-size: 12.5px;
-  color: #64748b;
+  color: var(--gp-text-3);
 }
 .auth-footer {
   margin-top: 18px;
   text-align: center;
   font-size: 13px;
-  color: #64748b;
+  color: var(--gp-text-3);
 }
 .auth-link {
   color: #2563eb;
@@ -246,7 +216,7 @@ function backToStepOne() {
 .auth-bottom {
   margin-top: 22px;
   font-size: 12.5px;
-  color: #64748b;
+  color: var(--gp-text-3);
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
@@ -256,7 +226,7 @@ function backToStepOne() {
   color: #2563eb;
 }
 .sep {
-  color: #cbd5e1;
+  color: var(--gp-text-3);
 }
 @media (max-width: 768px) {
   .auth-page {

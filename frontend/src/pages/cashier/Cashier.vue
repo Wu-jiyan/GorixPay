@@ -7,6 +7,7 @@ import { useMessage } from 'naive-ui';
 import { cashierApi } from '@/api';
 import type { CashierOrder, OrderStatus, StartPaymentResult } from '@/api/types';
 import { errorMessage } from '@/api/client';
+import PaymentBrandIcon from '@/components/PaymentBrandIcon.vue';
 import { siteLogo, siteName } from '@/stores/site';
 import { copyText, formatDateTime, formatMoney, paymentTypeText } from '@/utils/format';
 
@@ -64,6 +65,13 @@ const viewState = computed<'loading' | 'error' | 'paid' | 'closed' | 'failed' | 
 });
 
 const payType = computed(() => payResult.value?.pay_type ?? '');
+// 订单的 payment_type 既可能是品牌（alipay / wxpay / qqpay …），也可能是支付形态（jump / qrcode）。
+// 只给能对上品牌的画图标；形态类不硬塞，免得买家把跳转/扫码当成某个钱包。
+const BRAND_PAY_TYPES = new Set(['alipay', 'wxpay', 'qqpay', 'usdt', 'bank', 'cashier', 'sandbox']);
+const payTypeBrand = computed(() => {
+  const type = order.value?.payment_type ?? '';
+  return BRAND_PAY_TYPES.has(type) ? type : '';
+});
 const payInfoText = computed(() => {
   const info = payResult.value?.pay_info;
   if (typeof info === 'string') return info;
@@ -369,7 +377,12 @@ onBeforeUnmount(() => {
           </div>
           <div class="meta-row">
             <span class="meta-label">支付类型</span>
-            <span class="meta-value">{{ paymentTypeText(order?.payment_type) }}</span>
+            <span class="meta-value">
+              <span class="meta-brand">
+                <payment-brand-icon v-if="payTypeBrand" :type="payTypeBrand" :size="16" />
+                <span>{{ paymentTypeText(order?.payment_type) }}</span>
+              </span>
+            </span>
           </div>
           <div class="meta-row">
             <span class="meta-label">订单状态</span>
@@ -571,6 +584,11 @@ onBeforeUnmount(() => {
 .meta-value.mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12.5px;
+}
+.meta-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .pay-alert {
   margin-top: 16px;

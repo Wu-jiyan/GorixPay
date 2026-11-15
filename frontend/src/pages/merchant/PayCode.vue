@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, h, onMounted, reactive, ref } from 'vue';
 import { useMessage, type SelectOption } from 'naive-ui';
 import { CopyOutline, OpenOutline, QrCodeOutline, RefreshOutline } from '@vicons/ionicons5';
 import {
@@ -10,6 +10,7 @@ import {
 } from '@/api/merchantPayCode';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
+import PaymentBrandIcon from '@/components/PaymentBrandIcon.vue';
 import { copyText, formatDateTime, yuanToCents } from '@/utils/format';
 
 const message = useMessage();
@@ -29,6 +30,15 @@ const payTypes = ref<PublicPayType[]>([]);
 const payTypeOptions = computed<SelectOption[]>(() =>
   payTypes.value.map((item) => ({ label: item.name || item.code, value: item.code })),
 );
+
+/** 支付方式下拉项：左侧品牌图标，type 直接取支付方式 code（alipay / wxpay / qqpay …） */
+function payTypeLabel(option: SelectOption) {
+  const value = String(option.value ?? '');
+  return h('span', { style: 'display:inline-flex;align-items:center;gap:8px' }, [
+    h(PaymentBrandIcon, { type: value, size: 22 }),
+    h('span', null, typeof option.label === 'string' ? option.label : value),
+  ]);
+}
 
 // 收款码
 const codeForm = reactive({ payment_type: 'alipay', amountYuan: null as number | null });
@@ -152,6 +162,7 @@ onMounted(() => {
                     v-model:value="codeForm.payment_type"
                     :options="payTypeOptions"
                     :loading="payTypeLoading"
+                    :render-label="payTypeLabel"
                   />
                 </n-form-item>
                 <n-form-item label="金额（元，选填）">
@@ -250,6 +261,7 @@ onMounted(() => {
                     v-model:value="testForm.payment_type"
                     :options="payTypeOptions"
                     :loading="payTypeLoading"
+                    :render-label="payTypeLabel"
                   />
                 </n-form-item>
                 <n-form-item label="金额（元，上限 1.00）">

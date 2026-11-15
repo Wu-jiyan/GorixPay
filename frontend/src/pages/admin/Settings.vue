@@ -267,83 +267,73 @@ onMounted(reload);
           </template>
 
           <n-spin :show="loading">
-            <n-form
-              label-placement="left"
-              label-width="200"
-              :show-feedback="true"
-              require-mark-placement="right-hanging"
-              style="max-width: 860px"
-            >
-              <n-form-item v-for="field in tab.fields" :key="field.key" :label="field.label" :feedback="field.hint">
-                <!-- 布尔 -->
-                <n-switch v-if="field.type === 'bool'" v-model:value="values[field.key] as boolean" />
+            <n-form label-placement="top" :show-feedback="true" require-mark-placement="right-hanging">
+              <n-grid cols="1 m:2" responsive="screen" :x-gap="32" :y-gap="6">
+                <n-gi v-for="field in tab.fields" :key="field.key">
+                  <n-form-item :label="field.label" :feedback="field.hint">
+                    <!-- 布尔 -->
+                    <n-switch v-if="field.type === 'bool'" v-model:value="values[field.key] as boolean" />
 
-                <!-- 枚举 -->
-                <n-select
-                  v-else-if="field.type === 'select'"
-                  v-model:value="values[field.key] as string"
-                  :options="field.options ?? []"
-                  style="max-width: 260px"
-                />
+                    <!-- 枚举 -->
+                    <n-select
+                      v-else-if="field.type === 'select'"
+                      v-model:value="values[field.key] as string"
+                      :options="field.options ?? []"
+                    />
 
-                <!-- 金额（元） -->
-                <n-input-number
-                  v-else-if="field.type === 'cents'"
-                  :value="centsToYuan(values[field.key])"
-                  :min="0"
-                  :step="1"
-                  :precision="2"
-                  style="max-width: 260px"
-                  @update:value="(value: number | null) => (values[field.key] = yuanToCents(value))"
-                >
-                  <template #suffix>元</template>
-                </n-input-number>
+                    <!-- 金额（元） -->
+                    <n-input-number
+                      v-else-if="field.type === 'cents'"
+                      :value="centsToYuan(values[field.key])"
+                      :min="0"
+                      :step="1"
+                      :precision="2"
+                      @update:value="(value: number | null) => (values[field.key] = yuanToCents(value))"
+                    >
+                      <template #suffix>元</template>
+                    </n-input-number>
 
-                <!-- 整数 -->
-                <n-input-number
-                  v-else-if="field.type === 'number'"
-                  v-model:value="values[field.key] as number"
-                  :min="field.min"
-                  :max="field.max"
-                  :show-button="false"
-                  style="max-width: 220px"
-                />
+                    <!-- 整数 -->
+                    <n-input-number
+                      v-else-if="field.type === 'number'"
+                      v-model:value="values[field.key] as number"
+                      :min="field.min"
+                      :max="field.max"
+                      :show-button="false"
+                      style="max-width: 220px"
+                    />
 
-                <!-- 凭据 -->
-                <n-space v-else-if="field.type === 'secret'" align="center">
-                  <n-input
-                    v-model:value="secretInput[field.key]"
-                    type="password"
-                    show-password-on="click"
-                    clearable
-                    style="width: 320px"
-                    :placeholder="secretConfigured[field.key] ? '已配置，留空表示不修改' : '尚未配置，粘贴新值'"
-                  />
-                  <n-tag :type="secretConfigured[field.key] ? 'success' : 'warning'" size="small" :bordered="false">
-                    {{ secretConfigured[field.key] ? '已配置' : '未配置' }}
-                  </n-tag>
-                  <n-text v-if="secretMeta[field.key]" depth="3" style="font-size: 12px">
-                    更新于 {{ formatDateTime(secretMeta[field.key]) }}
-                  </n-text>
-                </n-space>
+                    <!-- 凭据 -->
+                    <n-space v-else-if="field.type === 'secret'" align="center" :size="10" style="width: 100%">
+                      <n-input
+                        v-model:value="secretInput[field.key]"
+                        type="password"
+                        show-password-on="click"
+                        clearable
+                        style="flex: 1; min-width: 0"
+                        :placeholder="secretConfigured[field.key] ? '已配置，留空表示不修改' : '尚未配置，粘贴新值'"
+                      />
+                      <n-tag :type="secretConfigured[field.key] ? 'success' : 'warning'" size="small" :bordered="false">
+                        {{ secretConfigured[field.key] ? '已配置' : '未配置' }}
+                      </n-tag>
+                      <n-text v-if="secretMeta[field.key]" depth="3" style="font-size: 12px">
+                        更新于 {{ formatDateTime(secretMeta[field.key]) }}
+                      </n-text>
+                    </n-space>
 
-                <!-- 多行文本 -->
-                <n-input
-                  v-else-if="field.type === 'textarea'"
-                  v-model:value="values[field.key] as string"
-                  type="textarea"
-                  :autosize="{ minRows: 2, maxRows: 4 }"
-                  style="max-width: 560px"
-                />
+                    <!-- 多行文本 -->
+                    <n-input
+                      v-else-if="field.type === 'textarea'"
+                      v-model:value="values[field.key] as string"
+                      type="textarea"
+                      :autosize="{ minRows: 2, maxRows: 4 }"
+                    />
 
-                <!-- 单行文本 -->
-                <n-input
-                  v-else
-                  v-model:value="values[field.key] as string"
-                  clearable
-                  style="max-width: 420px"
-                />
-              </n-form-item>
+                    <!-- 单行文本 -->
+                    <n-input v-else v-model:value="values[field.key] as string" clearable />
+                  </n-form-item>
+                </n-gi>
+              </n-grid>
             </n-form>
           </n-spin>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import PublicNav from '@/components/PublicNav.vue';
+import PublicShell from '@/components/PublicShell.vue';
 
 interface ParamRow {
   name: string;
@@ -529,8 +529,7 @@ func main() {
 </script>
 
 <template>
-  <div class="docs">
-    <PublicNav />
+  <public-shell :container="false">
     <div class="docs-shell">
       <header class="docs-head">
         <span class="docs-badge">易支付协议 · V1 + V2</span>
@@ -827,28 +826,15 @@ func main() {
           </section>
         </n-tab-pane>
       </n-tabs>
-
-      <footer class="docs-foot">
-        <span>文档版本：V2 · 2026-11</span>
-        <span class="docs-foot-links">
-          <router-link to="/register">免费注册</router-link>
-          <span class="sep">·</span>
-          <router-link to="/login">商户登录</router-link>
-        </span>
-      </footer>
     </div>
-  </div>
+  </public-shell>
 </template>
 
 <style scoped>
-.docs {
-  background: #fff;
-  min-height: 100vh;
-}
 .docs-shell {
-  max-width: 1080px;
+  max-width: var(--gp-container);
   margin: 0 auto;
-  padding: 40px 20px 60px;
+  padding: 28px var(--gp-gutter) 56px;
 }
 .docs-head {
   margin-bottom: 26px;
@@ -857,8 +843,8 @@ func main() {
   display: inline-block;
   padding: 4px 12px;
   border-radius: 999px;
-  background: rgba(37, 99, 235, 0.1);
-  color: #1d4ed8;
+  background: var(--gp-accent-soft);
+  color: var(--gp-accent);
   font-size: 12px;
   font-weight: 600;
   margin-bottom: 14px;
@@ -866,11 +852,11 @@ func main() {
 .docs-title {
   font-size: 32px;
   margin: 0 0 10px;
-  color: #0f172a;
+  color: var(--gp-text-1);
 }
 .docs-subtitle {
   margin: 0;
-  color: #475569;
+  color: var(--gp-text-2);
   font-size: 14px;
   line-height: 1.85;
   max-width: 860px;
@@ -883,24 +869,24 @@ func main() {
 }
 .doc-h2 {
   font-size: 18px;
-  color: #0f172a;
+  color: var(--gp-text-1);
   margin: 26px 0 10px;
   padding-left: 10px;
   border-left: 3px solid #2563eb;
 }
 .doc-h3 {
   font-size: 15px;
-  color: #1e293b;
+  color: var(--gp-text-1);
   margin: 18px 0 8px;
 }
 .doc-p {
-  color: #475569;
+  color: var(--gp-text-2);
   font-size: 13.5px;
   line-height: 1.9;
   margin: 0 0 12px;
 }
 .doc-list {
-  color: #475569;
+  color: var(--gp-text-2);
   font-size: 13.5px;
   line-height: 1.95;
   padding-left: 22px;
@@ -911,36 +897,36 @@ func main() {
 }
 .doc-list code,
 .doc-p code {
-  background: #f1f5f9;
+  background: var(--gp-line-soft);
   padding: 1px 6px;
-  border-radius: 5px;
+  border-radius: var(--gp-radius-sm);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12.5px;
-  color: #1d4ed8;
+  color: var(--gp-accent);
 }
 .doc-table {
   width: 100%;
   border-collapse: collapse;
   margin: 6px 0 18px;
   font-size: 13px;
-  background: #fff;
-  border: 1px solid #e8eefc;
-  border-radius: 10px;
+  background: var(--gp-bg-soft);
+  border: 1px solid var(--gp-line);
+  border-radius: var(--gp-radius);
   overflow: hidden;
 }
 .doc-table th {
   text-align: left;
-  background: #f8fafc;
-  color: #334155;
+  background: var(--gp-line-soft);
+  color: var(--gp-text-1);
   font-weight: 600;
   padding: 10px 12px;
-  border-bottom: 1px solid #e8eefc;
+  border-bottom: 1px solid var(--gp-line);
   white-space: nowrap;
 }
 .doc-table td {
   padding: 10px 12px;
-  border-bottom: 1px solid #f1f5f9;
-  color: #475569;
+  border-bottom: 1px solid var(--gp-line-soft);
+  color: var(--gp-text-2);
   line-height: 1.7;
   vertical-align: top;
 }
@@ -949,18 +935,19 @@ func main() {
 }
 .doc-table .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  color: #1e293b;
+  color: var(--gp-text-1);
   white-space: nowrap;
 }
 .doc-table .mono.small {
   white-space: normal;
   font-size: 12px;
-  color: #64748b;
+  color: var(--gp-text-3);
 }
 .doc-code {
-  background: #0f172a;
-  color: #dbeafe;
-  border-radius: 10px;
+  background: var(--gp-bg-soft);
+  color: var(--gp-text-1);
+  border: 1px solid var(--gp-line);
+  border-radius: var(--gp-radius);
   padding: 14px 16px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12.2px;
@@ -971,7 +958,7 @@ func main() {
 }
 .doc-code-label {
   font-size: 12px;
-  color: #64748b;
+  color: var(--gp-text-3);
   margin-bottom: 6px;
 }
 .doc-code-pair {
@@ -982,30 +969,9 @@ func main() {
 .doc-alert {
   margin: 6px 0 18px;
 }
-.docs-foot {
-  margin-top: 34px;
-  padding-top: 18px;
-  border-top: 1px solid #eef2f7;
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  font-size: 12.5px;
-  color: #94a3b8;
-}
-.docs-foot-links {
-  display: flex;
-  gap: 8px;
-}
-.docs-foot-links a:hover {
-  color: #2563eb;
-}
-.sep {
-  color: #cbd5e1;
-}
 @media (max-width: 768px) {
   .docs-shell {
-    padding: 26px 14px 40px;
+    padding: 20px var(--gp-gutter) 40px;
   }
   .docs-title {
     font-size: 24px;

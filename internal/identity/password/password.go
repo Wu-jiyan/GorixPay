@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -23,6 +24,26 @@ const (
 )
 
 var ErrEmptyPassword = errors.New("password is required")
+
+// ErrWeakPassword reports a password outside the platform length bounds.
+var ErrWeakPassword = errors.New("password does not meet the length policy")
+
+// Length bounds for every password the platform itself sets: administrator
+// passwords, password resets and self-service changes. Merchant registration has
+// its own legacy bound, so it does not use this rule.
+const (
+	PolicyMinRunes = 8
+	PolicyMaxRunes = 72
+)
+
+// ValidatePolicy applies the length rule. The value is not trimmed: a password
+// may legitimately contain spaces, and callers hash exactly what was typed.
+func ValidatePolicy(value string) error {
+	if utf8.RuneCountInString(value) < PolicyMinRunes || utf8.RuneCountInString(value) > PolicyMaxRunes {
+		return ErrWeakPassword
+	}
+	return nil
+}
 
 func Hash(password string) (string, error) {
 	if password == "" {

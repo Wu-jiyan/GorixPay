@@ -5,8 +5,8 @@ import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-
 import { profitSharingApi } from '@/api/profitSharing';
 import type { ProfitReceiver, ProfitSharingOrder } from '@/api/profitSharing';
 import { errorMessage } from '@/api/client';
+import AdminPage from '@/components/AdminPage.vue';
 import MoneyText from '@/components/MoneyText.vue';
-import PageHeader from '@/components/PageHeader.vue';
 import StatusTag from '@/components/StatusTag.vue';
 import { formatDateTime } from '@/utils/format';
 import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
@@ -369,13 +369,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="分账" subtitle="分账接收方维护与每笔订单的分账执行流水">
+  <admin-page title="分账" subtitle="分账接收方维护与每笔订单的分账执行流水">
       <template #actions>
         <n-button secondary :loading="receiversLoading || ordersLoading" @click="handleTab(tab)">刷新</n-button>
         <n-button v-if="tab === 'receivers'" type="primary" @click="openCreate">新建接收方</n-button>
       </template>
-    </PageHeader>
 
     <n-card :bordered="false">
       <n-tabs :value="tab" type="line" animated @update:value="handleTab">
@@ -461,7 +459,7 @@ onMounted(() => {
         </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
 
 <style scoped>

@@ -7,6 +7,7 @@ import { adminApi } from '@/api';
 import type { Channel, PluginConfigField, PluginMeta } from '@/api';
 import { errorMessage, http } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
+import PaymentBrandIcon from '@/components/PaymentBrandIcon.vue';
 import { activeStatus, paymentTypeText } from '@/utils/format';
 import { asRow, itemsOf, prettyJson } from './shared';
 
@@ -143,6 +144,19 @@ const statusOptions: SelectOption[] = [
   { label: '启用', value: 'active' },
   { label: '禁用', value: 'disabled' },
 ];
+
+/** 支付方式 = 品牌图标的 type，表格列和下拉选项共用一套渲染，图标垂直居中不撑高行高 */
+function paymentTypeWithIcon(type: string | undefined, text: string, size = 18) {
+  return h('span', { style: 'display:inline-flex;align-items:center;gap:6px' }, [
+    h(PaymentBrandIcon, { type: type || '', size }),
+    h('span', null, text),
+  ]);
+}
+
+function paymentTypeLabel(option: SelectOption) {
+  const value = String(option.value ?? '');
+  return paymentTypeWithIcon(value, typeof option.label === 'string' ? option.label : value, 20);
+}
 
 const rules = computed<FormRules>(() => {
   const base: FormRules = {
@@ -391,7 +405,7 @@ const columns = computed<DataTableColumns<Channel>>(() => {
       title: '支付方式',
       key: 'payment_type',
       width: 120,
-      render: (row) => paymentTypeText(row.payment_type),
+      render: (row) => paymentTypeWithIcon(row.payment_type, paymentTypeText(row.payment_type)),
     },
     { title: '优先级', key: 'priority', width: 100, align: 'right', render: (row) => row.priority ?? '-' },
     { title: '权重', key: 'weight', width: 100, align: 'right', render: (row) => row.weight ?? '-' },
@@ -503,7 +517,11 @@ onMounted(() => {
             <n-select :value="form.plugin_code" :options="pluginOptions" @update:value="onPluginChange" />
           </n-form-item-gi>
           <n-form-item-gi label="支付方式" path="payment_type">
-            <n-select v-model:value="form.payment_type" :options="paymentTypeOptions" />
+            <n-select
+              v-model:value="form.payment_type"
+              :options="paymentTypeOptions"
+              :render-label="paymentTypeLabel"
+            />
           </n-form-item-gi>
           <n-form-item-gi label="状态" path="status">
             <n-select v-model:value="form.status" :options="statusOptions" />

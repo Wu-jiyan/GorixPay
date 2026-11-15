@@ -5,7 +5,7 @@ import { useMessage } from 'naive-ui';
 import { merchantQrApi } from '@/api/merchantQrLogin';
 import { errorMessage } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
-import { siteLogo, siteName } from '@/stores/site';
+import BrandMark from '@/components/BrandMark.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -47,11 +47,7 @@ async function handleConfirm() {
 <template>
   <div class="qr-page">
     <div class="qr-brand">
-      <router-link to="/" class="brand-link">
-        <img v-if="siteLogo" :src="siteLogo" class="brand-logo" alt="" />
-        <span v-else class="brand-mark">G</span>
-        <span class="brand-name">{{ siteName }}</span>
-      </router-link>
+      <brand-mark :size="34" />
     </div>
 
     <n-card class="qr-card" :bordered="false">
@@ -111,42 +107,16 @@ async function handleConfirm() {
   align-items: center;
   justify-content: center;
   padding: 40px 16px;
-  background: radial-gradient(900px 420px at 12% 0%, #dbeafe 0%, transparent 62%),
-    linear-gradient(160deg, #f8fbff 0%, #eef4ff 60%, #f5f7fb 100%);
+  background: var(--gp-bg);
 }
 .qr-brand {
   margin-bottom: 20px;
 }
-.brand-link {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 700;
-  font-size: 18px;
-  color: #0f172a;
-}
-.brand-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  background: linear-gradient(135deg, #2563eb, #06b6d4);
-}
-.brand-logo {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  object-fit: cover;
-  display: block;
-  flex: none;
-}
 .qr-card {
   width: 100%;
   max-width: 460px;
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.1);
-  border-radius: 16px;
+  box-shadow: var(--gp-shadow);
+  border-radius: var(--gp-radius-lg);
 }
 .qr-head {
   margin-bottom: 18px;
@@ -155,12 +125,12 @@ async function handleConfirm() {
 .qr-title {
   font-size: 22px;
   margin: 0 0 6px;
-  color: #0f172a;
+  color: var(--gp-text-1);
 }
 .qr-subtitle {
   margin: 0;
   font-size: 13px;
-  color: #64748b;
+  color: var(--gp-text-3);
   line-height: 1.7;
 }
 .account-row,
@@ -170,20 +140,20 @@ async function handleConfirm() {
   gap: 12px;
   padding: 8px 0;
   font-size: 13px;
-  border-bottom: 1px dashed #e2e8f0;
+  border-bottom: 1px dashed var(--gp-line);
 }
 .account-label {
-  color: #94a3b8;
+  color: var(--gp-text-3);
   flex: none;
 }
 .account-name {
-  color: #0f172a;
+  color: var(--gp-text-1);
   font-weight: 600;
 }
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
-  color: #334155;
+  color: var(--gp-text-2);
   word-break: break-all;
   text-align: right;
 }

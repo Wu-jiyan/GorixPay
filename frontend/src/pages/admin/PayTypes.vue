@@ -14,6 +14,7 @@ import {
 import type { DataTableColumns, FormInst, FormRules } from 'naive-ui';
 import { AddOutline, RefreshOutline } from '@vicons/ionicons5';
 import AdminPage from '@/components/AdminPage.vue';
+import PaymentBrandIcon from '@/components/PaymentBrandIcon.vue';
 import { payTypesApi } from '@/api/payTypes';
 import type { PayType } from '@/api/payTypes';
 import { errorMessage } from '@/api/client';
@@ -159,6 +160,14 @@ function iconCell(row: PayType) {
   return h(NText, { code: true }, { default: () => icon });
 }
 
+/** 名称列：按支付方式编码取品牌图标（alipay / wxpay / qqpay …），图标垂直居中，不撑高行高 */
+function nameCell(row: PayType) {
+  return h('span', { style: 'display:inline-flex;align-items:center;gap:6px' }, [
+    h(PaymentBrandIcon, { type: row.code || '', size: 18 }),
+    h('span', null, row.name || '-'),
+  ]);
+}
+
 const columns = computed<DataTableColumns<PayType>>(() => [
   {
     title: '编码',
@@ -167,7 +176,7 @@ const columns = computed<DataTableColumns<PayType>>(() => [
     ellipsis: true,
     render: (row) => h(NText, { code: true }, { default: () => row.code || '-' }),
   },
-  { title: '名称', key: 'name', minWidth: 140, ellipsis: true, render: (row) => row.name || '-' },
+  { title: '名称', key: 'name', minWidth: 140, ellipsis: true, render: (row) => nameCell(row) },
   { title: '图标', key: 'icon', width: 110, render: (row) => iconCell(row) },
   {
     title: '排序',

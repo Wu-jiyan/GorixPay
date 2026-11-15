@@ -1,27 +1,35 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router';
-import { siteLogo, siteName } from '@/stores/site';
+import { computed } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { NButton, NMenu, NSpace } from 'naive-ui';
+import type { MenuOption } from 'naive-ui';
+import BrandMark from './BrandMark.vue';
 
+// 官网统一页头：首页、开发文档、登录页共用同一份，避免各页各写一套导航。
+const route = useRoute();
 const router = useRouter();
+
+const links: MenuOption[] = [
+  { label: '首页', key: '/' },
+  { label: '开发文档', key: '/doc' },
+];
+
+const active = computed(() => (route.path.startsWith('/doc') ? '/doc' : route.path === '/' ? '/' : ''));
+
+function go(path: string) {
+  router.push(path);
+}
 </script>
 
 <template>
   <header class="public-nav">
-    <div class="nav-inner">
-      <router-link to="/" class="brand">
-        <img v-if="siteLogo" :src="siteLogo" class="brand-logo" alt="" />
-        <span v-else class="brand-mark">G</span>
-        <span class="brand-name">{{ siteName }}</span>
-      </router-link>
-      <nav class="nav-links">
-        <router-link to="/" class="nav-link">首页</router-link>
-        <router-link to="/doc" class="nav-link">开发文档</router-link>
-        <a class="nav-link" href="/admin/login">运营入口</a>
-      </nav>
-      <div class="nav-actions">
-        <n-button quaternary @click="router.push('/login')">商户登录</n-button>
-        <n-button type="primary" @click="router.push('/register')">免费注册</n-button>
-      </div>
+    <div class="gp-container nav-inner">
+      <brand-mark subtitle="聚合支付" />
+      <n-menu class="nav-menu" mode="horizontal" responsive :value="active" :options="links" @update:value="go" />
+      <n-space class="nav-actions" align="center" :size="8">
+        <n-button quaternary @click="go('/login')">商户登录</n-button>
+        <n-button type="primary" @click="go('/register')">免费注册</n-button>
+      </n-space>
     </div>
   </header>
 </template>
@@ -31,67 +39,30 @@ const router = useRouter();
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--gp-surface);
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid #eef2f7;
+  border-bottom: 1px solid var(--gp-line);
 }
 .nav-inner {
-  max-width: 1160px;
-  margin: 0 auto;
-  height: 64px;
-  padding: 0 20px;
+  height: 60px;
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: 24px;
 }
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 700;
-  font-size: 18px;
-}
-.brand-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  background: linear-gradient(135deg, #2563eb, #06b6d4);
-}
-.brand-logo {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  object-fit: cover;
-  display: block;
-  flex: none;
-}
-.nav-links {
-  display: flex;
-  gap: 20px;
+.nav-menu {
   flex: 1;
-}
-.nav-link {
-  color: #475569;
-  font-size: 14px;
-}
-.nav-link.router-link-active {
-  color: #2563eb;
-  font-weight: 600;
+  min-width: 0;
 }
 .nav-actions {
-  display: flex;
-  gap: 8px;
+  flex: none;
 }
 @media (max-width: 720px) {
-  .nav-links {
-    display: none;
-  }
   .nav-inner {
-    justify-content: space-between;
-    gap: 8px;
+    gap: 10px;
+  }
+  .nav-actions :deep(.n-button) {
+    padding-left: 10px;
+    padding-right: 10px;
   }
 }
 </style>

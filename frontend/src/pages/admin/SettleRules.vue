@@ -5,8 +5,8 @@ import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-
 import { settleRulesApi } from '@/api/settleRules';
 import type { SettleRule } from '@/api/settleRules';
 import { errorMessage } from '@/api/client';
+import AdminPage from '@/components/AdminPage.vue';
 import MoneyText from '@/components/MoneyText.vue';
-import PageHeader from '@/components/PageHeader.vue';
 import StatusTag from '@/components/StatusTag.vue';
 import { formatDateTime } from '@/utils/format';
 import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
@@ -313,13 +313,11 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="结算规则" subtitle="按周期自动生成结算单，可配置最低金额、费率与自动打款">
+  <admin-page title="结算规则" subtitle="按周期自动生成结算单，可配置最低金额、费率与自动打款">
       <template #actions>
         <n-button secondary :loading="loading" @click="load">刷新</n-button>
         <n-button type="primary" @click="openCreate">新建规则</n-button>
       </template>
-    </PageHeader>
 
     <n-card :bordered="false">
       <n-data-table
@@ -402,7 +400,7 @@ onMounted(load);
         </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
 
 <style scoped>
