@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui';
+import { NButton, NPopconfirm, NSpace, NTag, useMessage } from 'naive-ui';
 import type { DataTableColumns, FormInst, FormRules } from 'naive-ui';
 import dayjs from 'dayjs';
+import { AddOutline, CopyOutline, CreateOutline, KeyOutline, RefreshOutline, TrashOutline } from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { inviteCodesApi } from '@/api/inviteCodes';
 import type { InviteCode } from '@/api/inviteCodes';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import { copyText, formatDateTime } from '@/utils/format';
+import { activeStatus, copyText, formatDateTime } from '@/utils/format';
 import { asRow, itemsOf } from './shared';
 
 interface CodeForm {
@@ -135,17 +135,16 @@ const columns = computed<DataTableColumns<InviteCode>>(() => [
   {
     title: '邀请码',
     key: 'code',
-    width: 200,
+    width: 230,
     render: (row) =>
-      h(NSpace, { size: 6, align: 'center' }, {
+      h(NSpace, { size: 6, align: 'center', wrap: false }, {
         default: () => [
           h('span', { class: 'mono' }, row.code || '-'),
           row.code
-            ? h(
-                NButton,
-                { size: 'tiny', text: true, type: 'primary', onClick: () => copy(row.code) },
-                { default: () => '复制' },
-              )
+            ? h(NButton, { text: true, size: 'small', type: 'primary', onClick: () => copy(row.code) }, {
+                icon: () => h(CopyOutline),
+                default: () => '复制',
+              })
             : null,
         ],
       }),
@@ -153,14 +152,14 @@ const columns = computed<DataTableColumns<InviteCode>>(() => [
   {
     title: '归属商户',
     key: 'owner_merchant_id',
-    width: 260,
-    ellipsis: true,
+    width: 250,
+    ellipsis: { tooltip: true },
     render: (row) =>
       row.owner_merchant_id
         ? h('span', { class: 'mono' }, row.owner_merchant_id)
         : h('span', { class: 'muted' }, '平台通用'),
   },
-  { title: '使用情况', key: 'used_count', width: 120, render: (row) => usesText(row) },
+  { title: '使用情况', key: 'used_count', width: 110, render: (row) => usesText(row) },
   {
     title: '过期时间',
     key: 'expires_at',
@@ -171,41 +170,40 @@ const columns = computed<DataTableColumns<InviteCode>>(() => [
     title: '状态',
     key: 'status',
     width: 90,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'active' }),
+    render: (row) =>
+      h(NTag, { size: 'small', round: true, bordered: false, type: activeStatus(row.status).type }, {
+        default: () => activeStatus(row.status).text,
+      }),
   },
   {
     title: '操作',
     key: 'actions',
-    width: 150,
+    width: 160,
     fixed: 'right',
     render: (row) => {
       const removing = removingId.value === row.id;
-      return h(
-        NSpace,
-        { size: 4, wrap: false },
-        {
-          default: () => [
-            h(
-              NButton,
-              { size: 'tiny', quaternary: true, type: 'info', onClick: () => openEdit(row) },
-              { default: () => '编辑' },
-            ),
-            h(
-              NPopconfirm,
-              { onPositiveClick: () => remove(row) },
-              {
-                trigger: () =>
-                  h(
-                    NButton,
-                    { size: 'tiny', quaternary: true, type: 'error', loading: removing, disabled: removing },
-                    { default: () => '删除' },
-                  ),
-                default: () => '确认删除该邀请码？已注册的商户不受影响。',
-              },
-            ),
-          ],
-        },
-      );
+      return h(NSpace, { size: 12, align: 'center', wrap: false }, {
+        default: () => [
+          h(
+            NButton,
+            { text: true, size: 'small', type: 'primary', onClick: () => openEdit(row) },
+            { icon: () => h(CreateOutline), default: () => '编辑' },
+          ),
+          h(
+            NPopconfirm,
+            { onPositiveClick: () => remove(row) },
+            {
+              trigger: () =>
+                h(
+                  NButton,
+                  { text: true, size: 'small', type: 'error', loading: removing, disabled: removing },
+                  { icon: () => h(TrashOutline), default: () => '删除' },
+                ),
+              default: () => '确认删除该邀请码？已注册的商户不受影响。',
+            },
+          ),
+        ],
+      });
     },
   },
 ]);
@@ -214,27 +212,36 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="邀请码" subtitle="生成注册邀请码，可限定归属商户、可用次数与有效期">
-      <template #actions>
-        <n-button secondary :loading="loading" @click="load">刷新</n-button>
-        <n-button type="primary" @click="openCreate">生成邀请码</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="邀请码" subtitle="生成注册邀请码，可限定归属商户、可用次数与有效期">
+    <template #actions>
+      <n-space>
+        <n-button :loading="loading" @click="load">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
+        <n-button type="primary" @click="openCreate">
+          <template #icon>
+            <n-icon :component="AddOutline" />
+          </template>
+          生成邀请码
+        </n-button>
+      </n-space>
+    </template>
 
     <n-alert type="info" :bordered="false" style="margin-bottom: 16px">
       邀请码由服务端生成，创建后可复制发给商户；可用次数填 0 表示不限次，过期时间留空表示不过期。
     </n-alert>
 
-    <n-card :bordered="false">
+    <n-card size="small" :bordered="false">
       <n-data-table
         :columns="columns"
         :data="rows"
         :loading="loading"
         :pagination="{ pageSize: 10 }"
         :row-key="(row: InviteCode) => row.id"
-        :bordered="false"
-        :single-line="false"
+        :scroll-x="1010"
         size="small"
       >
         <template #empty>
@@ -252,18 +259,18 @@ onMounted(load);
       <n-alert v-if="isEditing" type="info" :bordered="false" style="margin-bottom: 14px">
         邀请码本身不可修改，这里只能调整归属商户、可用次数与过期时间。
       </n-alert>
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="120">
+      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="110">
         <n-form-item label="可用次数" path="max_uses">
-          <div class="row-inline">
+          <n-space align="center" :size="10">
             <n-input-number v-model:value="form.max_uses" :min="0" :step="1" style="width: 160px" />
-            <span class="muted small">0 表示不限次</span>
-          </div>
+            <n-text depth="3" style="font-size: 12px">0 表示不限次</n-text>
+          </n-space>
         </n-form-item>
         <n-form-item label="归属商户">
           <n-input v-model:value="form.owner_merchant_id" placeholder="留空表示平台通用，或填商户 ID" />
         </n-form-item>
         <n-form-item label="过期时间">
-          <n-date-picker v-model:value="form.expires_at" type="datetime" clearable style="width: 220px" />
+          <n-date-picker v-model:value="form.expires_at" type="datetime" clearable style="width: 240px" />
         </n-form-item>
       </n-form>
       <template #footer>
@@ -278,35 +285,22 @@ onMounted(load);
       <n-alert type="success" :bordered="false" style="margin-bottom: 14px">
         复制邀请码发给商户，对方在注册页填写即可绑定。
       </n-alert>
-      <div class="code-box mono">{{ createdCode }}</div>
+      <n-space :size="8" align="center" style="margin-bottom: 10px">
+        <n-icon :component="KeyOutline" />
+        <n-text depth="3" style="font-size: 12px">注册邀请码</n-text>
+      </n-space>
+      <n-code :code="createdCode" word-wrap />
       <template #footer>
         <n-space justify="end">
-          <n-button @click="copy(createdCode)">复制</n-button>
-          <n-button type="primary" @click="showCode = false">完成</n-button>
+          <n-button @click="showCode = false">关闭</n-button>
+          <n-button type="primary" @click="copy(createdCode)">
+            <template #icon>
+              <n-icon :component="CopyOutline" />
+            </template>
+            复制
+          </n-button>
         </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.small {
-  font-size: 12px;
-}
-.row-inline {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.code-box {
-  word-break: break-all;
-  background: #0f172a;
-  color: #e2e8f0;
-  border-radius: 10px;
-  padding: 14px 16px;
-  font-size: 18px;
-  letter-spacing: 2px;
-  text-align: center;
-}
-</style>

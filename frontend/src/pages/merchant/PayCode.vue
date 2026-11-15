@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useMessage, type SelectOption } from 'naive-ui';
+import { CopyOutline, OpenOutline, QrCodeOutline, RefreshOutline } from '@vicons/ionicons5';
 import {
   merchantPayCodeApi,
   type PayCodeResult,
@@ -8,15 +9,10 @@ import {
   type TestOrderResult,
 } from '@/api/merchantPayCode';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
+import AdminPage from '@/components/AdminPage.vue';
 import { copyText, formatDateTime, yuanToCents } from '@/utils/format';
 
 const message = useMessage();
-
-/** 后端返回的 SVG 走 data URL + <img> 渲染，避免 v-html 注入面 */
-function svgDataUrl(svg: string): string {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
 
 const activeTab = ref<'code' | 'test'>('code');
 
@@ -35,12 +31,12 @@ const payTypeOptions = computed<SelectOption[]>(() =>
 );
 
 // 收款码
-const codeForm = reactive({ payment_type: 'alipay', amountYuan: '' });
+const codeForm = reactive({ payment_type: 'alipay', amountYuan: null as number | null });
 const codeLoading = ref(false);
 const codeResult = ref<PayCodeResult | null>(null);
 
 // 测试支付
-const testForm = reactive({ payment_type: 'alipay', amountYuan: '0.01' });
+const testForm = reactive({ payment_type: 'alipay', amountYuan: 0.01 as number | null });
 const testLoading = ref(false);
 const testResult = ref<TestOrderResult | null>(null);
 
@@ -64,7 +60,7 @@ async function generateCode() {
     return;
   }
   let amountCents: number | undefined;
-  if (codeForm.amountYuan.trim()) {
+  if (codeForm.amountYuan !== null && codeForm.amountYuan !== undefined) {
     const cents = yuanToCents(codeForm.amountYuan);
     if (!Number.isFinite(cents) || cents <= 0) {
       message.error('请输入有效的收款金额');
@@ -92,7 +88,7 @@ async function createTestOrder() {
     message.error('请选择支付方式');
     return;
   }
-  const cents = yuanToCents(testForm.amountYuan);
+  const cents = yuanToCents(testForm.amountYuan ?? 0);
   if (!Number.isFinite(cents) || cents <= 0) {
     message.error('请输入有效的测试金额');
     return;
@@ -135,238 +131,210 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="收款码" subtitle="生成聚合收款码，或用小额订单自测支付链路">
-      <template #actions>
-        <n-button size="small" :loading="payTypeLoading" @click="loadPayTypes">刷新支付方式</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="收款码" subtitle="生成聚合收款码，或用小额订单自测支付链路">
+    <template #actions>
+      <n-button :loading="payTypeLoading" @click="loadPayTypes">
+        <template #icon>
+          <n-icon :component="RefreshOutline" />
+        </template>
+        刷新支付方式
+      </n-button>
+    </template>
 
-    <n-card :bordered="false" class="main-card">
+    <n-card size="small" :bordered="false">
       <n-tabs v-model:value="activeTab" type="line" animated>
         <n-tab-pane name="code" tab="收款码">
-          <div class="form-grid">
-            <div class="field">
-              <label class="field-label">支付方式</label>
-              <n-select v-model:value="codeForm.payment_type" :options="payTypeOptions" :loading="payTypeLoading" />
-            </div>
-            <div class="field">
-              <label class="field-label">金额（元，选填）</label>
-              <n-input v-model:value="codeForm.amountYuan" placeholder="留空生成不定额收款码">
-                <template #prefix>¥</template>
-              </n-input>
-            </div>
-            <div class="field field-submit">
-              <n-button type="primary" :loading="codeLoading" @click="generateCode">生成收款码</n-button>
-            </div>
-          </div>
-          <p class="tip">填写金额会生成固定金额的收款码；留空时由付款方输入金额。</p>
+          <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16">
+            <n-gi>
+              <n-form label-placement="left" label-width="160">
+                <n-form-item label="支付方式">
+                  <n-select
+                    v-model:value="codeForm.payment_type"
+                    :options="payTypeOptions"
+                    :loading="payTypeLoading"
+                  />
+                </n-form-item>
+                <n-form-item label="金额（元，选填）">
+                  <n-input-number
+                    v-model:value="codeForm.amountYuan"
+                    :precision="2"
+                    :min="0.01"
+                    placeholder="留空生成不定额收款码"
+                    clearable
+                    style="width: 100%"
+                  >
+                    <template #prefix>¥</template>
+                  </n-input-number>
+                </n-form-item>
+                <n-form-item>
+                  <n-button type="primary" :loading="codeLoading" @click="generateCode">
+                    <template #icon>
+                      <n-icon :component="QrCodeOutline" />
+                    </template>
+                    生成收款码
+                  </n-button>
+                </n-form-item>
+              </n-form>
+              <n-alert type="default" :bordered="false">
+                填写金额会生成固定金额的收款码；留空时由付款方输入金额。
+              </n-alert>
+            </n-gi>
 
-          <div v-if="codeResult" class="result-box">
-            <div class="code-image">
-              <img
-                v-if="codeResult.code_svg"
-                class="code-svg"
-                :src="svgDataUrl(codeResult.code_svg)"
-                alt="收款二维码"
-              />
-              <span v-else class="code-empty">渠道未返回二维码</span>
-            </div>
-            <div class="result-meta">
-              <div class="meta-row">
-                <span class="meta-label">收款链接</span>
-                <span class="meta-value mono">{{ codeResult.url || '-' }}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-label">过期时间</span>
-                <span class="meta-value">{{ formatDateTime(codeResult.expires_at) }}</span>
-              </div>
-              <div class="result-actions">
-                <n-button
-                  v-if="codeResult.url"
-                  type="primary"
-                  tag="a"
-                  :href="codeResult.url"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  打开收款页
-                </n-button>
-                <n-button secondary :disabled="!codeResult.url" @click="handleCopy(codeResult.url, '收款链接')">
-                  复制链接
-                </n-button>
-              </div>
-            </div>
-          </div>
+            <n-gi>
+              <n-card size="small" :bordered="false" title="收款二维码">
+                <n-spin :show="codeLoading">
+                  <n-space vertical align="center" :size="16">
+                    <img
+                      v-if="codeResult && codeResult.code_svg"
+                      :src="'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(codeResult.code_svg)"
+                      alt="收款二维码"
+                      style="display: block; width: 220px; height: 220px"
+                    />
+                    <n-empty v-else description="渠道未返回二维码" size="small" />
+
+                    <n-form v-if="codeResult" label-placement="left" label-width="110" style="width: 100%">
+                      <n-form-item label="收银台链接">
+                        <n-input :value="codeResult.url || ''" readonly placeholder="生成后展示收款链接">
+                          <template #suffix>
+                            <n-button
+                              text
+                              type="primary"
+                              :disabled="!codeResult.url"
+                              @click="handleCopy(codeResult.url, '收款链接')"
+                            >
+                              <template #icon>
+                                <n-icon :component="CopyOutline" />
+                              </template>
+                              复制
+                            </n-button>
+                          </template>
+                        </n-input>
+                      </n-form-item>
+                      <n-form-item label="过期时间">
+                        {{ formatDateTime(codeResult.expires_at) }}
+                      </n-form-item>
+                    </n-form>
+                    <n-empty v-else description="还没有生成收款码" size="small" />
+
+                    <n-space v-if="codeResult">
+                      <n-button
+                        v-if="codeResult.url"
+                        type="primary"
+                        tag="a"
+                        :href="codeResult.url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <template #icon>
+                          <n-icon :component="OpenOutline" />
+                        </template>
+                        打开收款页
+                      </n-button>
+                      <n-button secondary :disabled="!codeResult.url" @click="handleCopy(codeResult.url, '收款链接')">
+                        复制链接
+                      </n-button>
+                    </n-space>
+                  </n-space>
+                </n-spin>
+              </n-card>
+            </n-gi>
+          </n-grid>
         </n-tab-pane>
 
         <n-tab-pane name="test" tab="测试支付">
-          <div class="form-grid">
-            <div class="field">
-              <label class="field-label">支付方式</label>
-              <n-select v-model:value="testForm.payment_type" :options="payTypeOptions" :loading="payTypeLoading" />
-            </div>
-            <div class="field">
-              <label class="field-label">金额（元，上限 1.00）</label>
-              <n-input v-model:value="testForm.amountYuan" placeholder="例如 0.01">
-                <template #prefix>¥</template>
-              </n-input>
-            </div>
-            <div class="field field-submit">
-              <n-button type="primary" :loading="testLoading" @click="createTestOrder">发起测试支付</n-button>
-            </div>
-          </div>
-          <p class="tip">测试订单会走当前启用的渠道，金额上限 1.00 元；创建后请通过收银台完成支付。</p>
+          <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16">
+            <n-gi>
+              <n-form label-placement="left" label-width="160">
+                <n-form-item label="支付方式">
+                  <n-select
+                    v-model:value="testForm.payment_type"
+                    :options="payTypeOptions"
+                    :loading="payTypeLoading"
+                  />
+                </n-form-item>
+                <n-form-item label="金额（元，上限 1.00）">
+                  <n-input-number
+                    v-model:value="testForm.amountYuan"
+                    :precision="2"
+                    :min="0.01"
+                    :max="1"
+                    placeholder="例如 0.01"
+                    style="width: 100%"
+                  >
+                    <template #prefix>¥</template>
+                  </n-input-number>
+                </n-form-item>
+                <n-form-item>
+                  <n-button type="primary" :loading="testLoading" @click="createTestOrder">发起测试支付</n-button>
+                </n-form-item>
+              </n-form>
+              <n-alert type="default" :bordered="false">
+                测试订单会走当前启用的渠道，金额上限 1.00 元；创建后请通过收银台完成支付。
+              </n-alert>
+            </n-gi>
 
-          <div v-if="testResult" class="result-box">
-            <div class="result-meta result-meta-wide">
-              <div class="meta-row">
-                <span class="meta-label">订单号</span>
-                <span class="meta-value mono">{{ testResult.trade_no }}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-label">支付类型</span>
-                <span class="meta-value">{{ testResult.pay_type || '-' }}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-label">收银台</span>
-                <span class="meta-value mono">{{ testResult.cashier_url || '-' }}</span>
-              </div>
-              <div class="meta-row" v-if="payInfoText(testResult)">
-                <span class="meta-label">pay_info</span>
-                <span class="meta-value mono pre-wrap">{{ payInfoText(testResult) }}</span>
-              </div>
-              <div class="result-actions">
-                <n-button
-                  v-if="testResult.cashier_url"
-                  type="primary"
-                  tag="a"
-                  :href="testResult.cashier_url"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  打开收银台
-                </n-button>
-                <n-button
-                  secondary
-                  :disabled="!testResult.cashier_url"
-                  @click="handleCopy(testResult.cashier_url, '收银台链接')"
-                >
-                  复制链接
-                </n-button>
-                <n-button text :disabled="!testResult.cashier_url" @click="handleCopy(payInfoText(testResult), 'pay_info')">
-                  复制 pay_info
-                </n-button>
-              </div>
-            </div>
-          </div>
+            <n-gi>
+              <n-spin :show="testLoading">
+                <n-form v-if="testResult" label-placement="left" label-width="110">
+                  <n-form-item label="订单号">
+                    <n-input :value="testResult.trade_no" readonly class="mono" />
+                  </n-form-item>
+                  <n-form-item label="支付类型">
+                    {{ testResult.pay_type || '-' }}
+                  </n-form-item>
+                  <n-form-item label="收银台">
+                    <n-input :value="testResult.cashier_url || ''" readonly placeholder="暂无收银台链接">
+                      <template #suffix>
+                        <n-button
+                          text
+                          type="primary"
+                          :disabled="!testResult.cashier_url"
+                          @click="handleCopy(testResult.cashier_url, '收银台链接')"
+                        >
+                          <template #icon>
+                            <n-icon :component="CopyOutline" />
+                          </template>
+                          复制
+                        </n-button>
+                      </template>
+                    </n-input>
+                  </n-form-item>
+                  <n-form-item v-if="payInfoText(testResult)" label="pay_info">
+                    <n-code :code="payInfoText(testResult)" language="json" word-wrap />
+                  </n-form-item>
+                </n-form>
+                <n-empty v-else description="还没有创建测试订单" size="small" />
+
+                <n-space v-if="testResult" style="margin-top: 16px">
+                  <n-button
+                    v-if="testResult.cashier_url"
+                    type="primary"
+                    tag="a"
+                    :href="testResult.cashier_url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <template #icon>
+                      <n-icon :component="OpenOutline" />
+                    </template>
+                    打开收银台
+                  </n-button>
+                  <n-button
+                    secondary
+                    :disabled="!testResult.cashier_url"
+                    @click="handleCopy(testResult.cashier_url, '收银台链接')"
+                  >
+                    复制链接
+                  </n-button>
+                  <n-button text :disabled="!payInfoText(testResult)" @click="handleCopy(payInfoText(testResult), 'pay_info')">
+                    复制 pay_info
+                  </n-button>
+                </n-space>
+              </n-spin>
+            </n-gi>
+          </n-grid>
         </n-tab-pane>
       </n-tabs>
     </n-card>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.main-card {
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-.form-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  gap: 16px;
-  align-items: end;
-}
-.field {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.field-label {
-  font-size: 12.5px;
-  color: #64748b;
-}
-.field-submit .n-button {
-  min-width: 132px;
-}
-.tip {
-  margin: 12px 0 0;
-  font-size: 12px;
-  color: #94a3b8;
-  line-height: 1.7;
-}
-.result-box {
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px dashed #e2e8f0;
-  display: flex;
-  gap: 24px;
-  align-items: flex-start;
-  flex-wrap: wrap;
-}
-.code-image {
-  width: 200px;
-  height: 200px;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #fff;
-  display: grid;
-  place-items: center;
-  padding: 10px;
-  flex: none;
-}
-.code-svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-.code-empty {
-  font-size: 12.5px;
-  color: #94a3b8;
-}
-.result-meta {
-  flex: 1;
-  min-width: 280px;
-}
-.result-meta-wide {
-  width: 100%;
-}
-.meta-row {
-  display: flex;
-  gap: 12px;
-  padding: 6px 0;
-  font-size: 13px;
-  border-bottom: 1px dashed #f1f5f9;
-}
-.meta-label {
-  color: #94a3b8;
-  flex: none;
-  width: 76px;
-}
-.meta-value {
-  color: #334155;
-  word-break: break-all;
-}
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-}
-.pre-wrap {
-  white-space: pre-wrap;
-}
-.result-actions {
-  margin-top: 14px;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-@media (max-width: 900px) {
-  .form-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .field-submit .n-button {
-    width: 100%;
-  }
-}
-</style>

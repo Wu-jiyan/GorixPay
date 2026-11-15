@@ -1,23 +1,21 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
 import axios from 'axios';
-import { NButton, NTag, useMessage, type DataTableColumns, type InputInst } from 'naive-ui';
+import { NButton, NTag, NText, useMessage, type DataTableColumns } from 'naive-ui';
+import { GiftOutline, RefreshOutline } from '@vicons/ionicons5';
 import { financeApi, type RedPacketBatch } from '@/api/merchantFinance';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import MoneyText from '@/components/MoneyText.vue';
-import { formatDateTime, formatMoney, yuanToCents } from '@/utils/format';
+import AdminPage from '@/components/AdminPage.vue';
+import { financeStatus, formatDateTime, formatMoney, yuanToCents } from '@/utils/format';
 
 const message = useMessage();
 
 const creating = ref(false);
 const form = reactive({
-  totalYuan: '',
-  count: 10,
+  totalYuan: null as number | null,
+  count: 10 as number | null,
   remark: '',
 });
-const totalInputRef = ref<InputInst | null>(null);
 
 const loading = ref(true);
 const items = ref<RedPacketBatch[]>([]);
@@ -94,23 +92,23 @@ const columns = computed<DataTableColumns<RedPacketBatch>>(() => [
   {
     title: '批次号',
     key: 'batch_no',
-    minWidth: 190,
+    minWidth: 200,
     ellipsis: { tooltip: true },
-    render: (row) => h('span', { class: 'mono-cell' }, row.batch_no || row.transfer_no || '-'),
+    render: (row) => h(NText, { class: 'mono' }, () => row.batch_no || row.transfer_no || '-'),
   },
   {
     title: '金额',
     key: 'amount',
-    width: 120,
+    width: 130,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: row.amount }),
+    render: (row) => h(NText, { class: 'amount' }, () => formatMoney(row.amount)),
   },
   {
     title: '个数',
     key: 'count',
-    width: 80,
+    width: 90,
     align: 'right',
-    render: (row) => `${row.count ?? 0}`,
+    render: (row) => String(row.count ?? 0),
   },
   {
     title: '领取状态',
@@ -125,12 +123,15 @@ const columns = computed<DataTableColumns<RedPacketBatch>>(() => [
     title: '状态',
     key: 'status',
     width: 100,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'finance' }),
+    render: (row) =>
+      h(NTag, { size: 'small', bordered: false, type: financeStatus(row.status).type }, () =>
+        financeStatus(row.status).text,
+      ),
   },
   {
     title: '备注',
     key: 'remark',
-    minWidth: 140,
+    minWidth: 150,
     ellipsis: { tooltip: true },
     render: (row) => row.remark || '-',
   },
@@ -143,10 +144,10 @@ const columns = computed<DataTableColumns<RedPacketBatch>>(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 130,
+    width: 140,
     fixed: 'right',
     render: (row) => {
-      if (row.status !== 'pending') return h('span', { class: 'muted-text' }, '-');
+      if (row.status !== 'pending') return h(NText, { depth: 3 }, () => '-');
       if (cancelUnavailable.value) {
         return h(NTag, { size: 'small', type: 'default', bordered: false }, () => '联系运营撤销');
       }
@@ -194,7 +195,7 @@ function createErrorMessage(err: unknown): string {
 
 async function handleCreate() {
   if (creating.value) return;
-  const cents = yuanToCents(form.totalYuan);
+  const cents = yuanToCents(form.totalYuan ?? 0);
   if (!Number.isFinite(cents) || cents <= 0) {
     message.error('请输入有效的红包总额');
     return;
@@ -216,7 +217,7 @@ async function handleCreate() {
       remark: form.remark.trim() || undefined,
     });
     message.success(`红包已创建：${created.batch_no || created.transfer_no}，共 ${formatMoney(cents)}`);
-    form.totalYuan = '';
+    form.totalYuan = null;
     form.remark = '';
     page.value = 1;
     await load();
@@ -244,48 +245,64 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="红包" subtitle="创建拼手气红包，金额随机分配到每个红包，合计等于总额">
-      <template #actions>
-        <n-button size="small" :loading="loading" @click="load">刷新</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="红包" subtitle="创建拼手气红包，金额随机分配到每个红包，合计等于总额">
+    <template #actions>
+      <n-button :loading="loading" @click="load">
+        <template #icon>
+          <n-icon :component="RefreshOutline" />
+        </template>
+        刷新
+      </n-button>
+    </template>
 
-    <n-card :bordered="false" class="create-card" title="创建红包">
-      <div class="create-grid">
-        <div class="field">
-          <label class="field-label">红包总额（元）</label>
-          <n-input
-            ref="totalInputRef"
-            v-model:value="form.totalYuan"
-            placeholder="例如 100.00"
-            @keyup.enter="handleCreate"
-          >
-            <template #prefix>¥</template>
-          </n-input>
-        </div>
-        <div class="field">
-          <label class="field-label">红包个数</label>
-          <n-input-number v-model:value="form.count" :min="1" :max="1000" :precision="0" style="width: 100%" />
-        </div>
-        <div class="field field-wide">
-          <label class="field-label">备注（可选）</label>
-          <n-input v-model:value="form.remark" placeholder="例如 十一月活动奖励" :maxlength="64" />
-        </div>
-        <div class="field field-submit">
-          <n-button type="primary" :loading="creating" @click="handleCreate">创建红包</n-button>
-        </div>
-      </div>
-      <p class="create-tip">
-        每个红包最少 1 分，金额由平台随机拆分；创建后从可用余额扣减并生成对应的代付单。
-      </p>
+    <n-card size="small" :bordered="false" title="创建红包">
+      <n-form label-placement="left" label-width="160">
+        <n-grid cols="1 m:2" responsive="screen" :x-gap="16">
+          <n-gi>
+            <n-form-item label="红包总额（元）">
+              <n-input-number
+                v-model:value="form.totalYuan"
+                :precision="2"
+                :min="0.01"
+                placeholder="例如 100.00"
+                style="width: 100%"
+              >
+                <template #prefix>¥</template>
+              </n-input-number>
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="红包个数">
+              <n-input-number v-model:value="form.count" :min="1" :max="1000" :precision="0" style="width: 100%" />
+            </n-form-item>
+          </n-gi>
+          <n-gi span="1 m:2">
+            <n-form-item label="备注（可选）">
+              <n-input v-model:value="form.remark" placeholder="例如 十一月活动奖励" :maxlength="64" />
+            </n-form-item>
+          </n-gi>
+        </n-grid>
+        <n-form-item>
+          <n-space align="center">
+            <n-button type="primary" :loading="creating" @click="handleCreate">
+              <template #icon>
+                <n-icon :component="GiftOutline" />
+              </template>
+              创建红包
+            </n-button>
+            <n-text depth="3" style="font-size: 12px">
+              每个红包最少 1 分，金额由平台随机拆分；创建后从可用余额扣减并生成对应的代付单。
+            </n-text>
+          </n-space>
+        </n-form-item>
+      </n-form>
     </n-card>
 
-    <n-alert v-if="cancelUnavailable" type="info" :bordered="false" class="cancel-note">
+    <n-alert v-if="cancelUnavailable" type="info" :bordered="false" style="margin-top: 16px">
       当前平台未开放商户自助撤销红包批次，如需整批退回请联系平台运营。
     </n-alert>
 
-    <n-card :bordered="false" class="table-card" title="我的红包批次">
+    <n-card size="small" :bordered="false" title="我的红包批次" style="margin-top: 16px">
       <n-data-table
         remote
         :columns="columns"
@@ -294,7 +311,7 @@ onMounted(() => {
         :pagination="pagination"
         :bordered="false"
         :row-key="rowKey"
-        :scroll-x="980"
+        :scroll-x="1040"
         size="small"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
@@ -305,139 +322,37 @@ onMounted(() => {
       </n-data-table>
     </n-card>
 
-    <n-modal v-model:show="cancelVisible" preset="card" title="撤销红包批次" style="max-width: 480px">
-      <n-alert type="warning" :bordered="false" class="cancel-alert">
-        将撤销该批次里所有待审核的红包，冻结金额会退回可用余额；已经审核或领取的红包不会被撤销。
-      </n-alert>
-      <div class="cancel-meta">
-        <div class="cancel-row">
-          <span class="cancel-label">批次号</span>
-          <span class="mono-cell cancel-value">{{ cancelTarget?.batch_no || '-' }}</span>
-        </div>
-        <div class="cancel-row">
-          <span class="cancel-label">金额 / 个数</span>
-          <span class="cancel-value">
+    <n-modal v-model:show="cancelVisible" preset="card" title="撤销红包批次" style="width: 620px">
+      <n-space vertical :size="16">
+        <n-alert type="warning" :bordered="false">
+          将撤销该批次里所有待审核的红包，冻结金额会退回可用余额；已经审核或领取的红包不会被撤销。
+        </n-alert>
+        <n-descriptions :column="1" label-placement="left" :label-width="120" size="small" bordered>
+          <n-descriptions-item label="批次号">
+            <n-text class="mono" style="word-break: break-all">{{ cancelTarget?.batch_no || '-' }}</n-text>
+          </n-descriptions-item>
+          <n-descriptions-item label="金额 / 个数">
             {{ cancelTarget ? `${formatMoney(cancelTarget.amount)} / ${cancelTarget.count} 个` : '-' }}
-          </span>
-        </div>
-      </div>
-      <n-form label-placement="top">
-        <n-form-item label="撤销原因（可选）">
-          <n-input
-            v-model:value="cancelReason"
-            type="textarea"
-            :autosize="{ minRows: 2, maxRows: 4 }"
-            placeholder="例如 活动取消，整批退回"
-            :maxlength="120"
-          />
-        </n-form-item>
-      </n-form>
+          </n-descriptions-item>
+        </n-descriptions>
+        <n-form label-placement="left" label-width="160">
+          <n-form-item label="撤销原因（可选）">
+            <n-input
+              v-model:value="cancelReason"
+              type="textarea"
+              :autosize="{ minRows: 2, maxRows: 4 }"
+              placeholder="例如 活动取消，整批退回"
+              :maxlength="120"
+            />
+          </n-form-item>
+        </n-form>
+      </n-space>
       <template #footer>
-        <div class="modal-footer">
+        <n-space justify="end">
           <n-button @click="cancelVisible = false">取消</n-button>
           <n-button type="error" :loading="cancelling" @click="submitCancel">确认撤销</n-button>
-        </div>
+        </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.create-card {
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-.create-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr) auto;
-  gap: 16px;
-  align-items: end;
-}
-.field {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.field-label {
-  font-size: 12.5px;
-  color: #64748b;
-}
-.field-submit {
-  justify-content: flex-end;
-}
-.field-submit .n-button {
-  width: 120px;
-}
-.create-tip {
-  margin: 14px 0 0;
-  font-size: 12px;
-  color: #94a3b8;
-  line-height: 1.7;
-}
-.cancel-note {
-  margin-top: 16px;
-}
-.table-card {
-  margin-top: 16px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-:deep(.mono-cell) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px;
-  color: #334155;
-}
-:deep(.muted-text) {
-  color: #94a3b8;
-  font-size: 12.5px;
-}
-.cancel-alert {
-  margin-bottom: 16px;
-}
-.cancel-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border-radius: 10px;
-  background: #f8fafc;
-  margin-bottom: 16px;
-}
-.cancel-row {
-  display: flex;
-  gap: 12px;
-  font-size: 13px;
-}
-.cancel-label {
-  color: #94a3b8;
-  flex: none;
-  width: 80px;
-}
-.cancel-value {
-  color: #334155;
-  word-break: break-all;
-}
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-@media (max-width: 1100px) {
-  .create-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .field-submit {
-    grid-column: span 2;
-  }
-}
-@media (max-width: 768px) {
-  .create-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .field-submit {
-    grid-column: auto;
-  }
-  .field-submit .n-button {
-    width: 100%;
-  }
-}
-</style>

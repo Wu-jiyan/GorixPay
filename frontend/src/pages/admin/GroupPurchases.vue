@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
-import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui';
+import { NButton, NPopconfirm, NTag, NText, useMessage } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
+import { RefreshOutline, ReloadOutline, SearchOutline } from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { groupPurchasesApi } from '@/api/groupPurchases';
 import type { GroupPurchase } from '@/api/groupPurchases';
 import { errorMessage } from '@/api/client';
-import MoneyText from '@/components/MoneyText.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import { formatDateTime } from '@/utils/format';
+import { formatDateTime, formatMoney } from '@/utils/format';
 import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
 
 const message = useMessage();
@@ -79,7 +79,11 @@ async function refund(row: GroupPurchase) {
 
 function statusTag(value?: string) {
   const resolved = statusMap[value ?? ''] ?? { text: value || '-', type: 'default' as const };
-  return h(NTag, { size: 'small', round: true, type: resolved.type }, { default: () => resolved.text });
+  return h(
+    NTag,
+    { size: 'small', round: true, bordered: false, type: resolved.type },
+    { default: () => resolved.text },
+  );
 }
 
 const columns = computed<DataTableColumns<GroupPurchase>>(() => {
@@ -90,33 +94,34 @@ const columns = computed<DataTableColumns<GroupPurchase>>(() => {
       key: 'merchant_id',
       width: 260,
       ellipsis: true,
-      render: (row) => h('span', { class: 'mono' }, row.merchant_id || '-'),
+      render: (row) => h(NText, { code: true }, { default: () => row.merchant_id || '-' }),
     },
     {
       title: '用户组 ID',
       key: 'group_id',
       width: 260,
       ellipsis: true,
-      render: (row) => h('span', { class: 'mono' }, row.group_id || '-'),
+      render: (row) => h(NText, { code: true }, { default: () => row.group_id || '-' }),
     },
     {
       title: '买断价',
       key: 'price_cents',
-      width: 130,
+      width: 140,
       align: 'right',
-      render: (row) => h(MoneyText, { amount: numberOr(row.price_cents, 0) }),
+      render: (row) =>
+        h(NText, { strong: true }, { default: () => formatMoney(numberOr(row.price_cents, 0)) }),
     },
-    { title: '状态', key: 'status', width: 100, render: (row) => statusTag(row.status) },
+    { title: '状态', key: 'status', width: 110, render: (row) => statusTag(row.status) },
     {
       title: '购买时间',
       key: 'created_at',
-      width: 170,
+      width: 180,
       render: (row) => formatDateTime(row.created_at),
     },
     {
       title: '操作',
       key: 'actions',
-      width: 110,
+      width: 120,
       fixed: 'right',
       render: (row) =>
         h(
@@ -146,28 +151,41 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="用户组购买记录" subtitle="商户买断用户组的支付与退款记录">
-      <template #actions>
-        <n-button secondary :loading="loading" @click="load">刷新</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="用户组购买记录" subtitle="商户买断用户组的支付与退款记录">
+    <template #actions>
+      <n-button :loading="loading" @click="load">
+        <template #icon><n-icon><RefreshOutline /></n-icon></template>
+        刷新
+      </n-button>
+    </template>
 
-    <div class="toolbar">
-      <n-input
-        v-model:value="merchantId"
-        placeholder="商户 ID"
-        clearable
-        style="width: 280px"
-        @keyup.enter="search"
-      />
-      <n-select v-model:value="status" :options="statusOptions" placeholder="全部状态" clearable style="width: 150px" />
-      <n-button type="primary" @click="search">查询</n-button>
-      <n-button @click="resetFilters">重置</n-button>
-      <span class="muted small">共 {{ total }} 条</span>
-    </div>
+    <n-card size="small" :bordered="false">
+      <n-space align="center" :size="12" style="margin-bottom: 12px">
+        <n-input
+          v-model:value="merchantId"
+          placeholder="商户 ID"
+          clearable
+          style="width: 280px"
+          @keyup.enter="search"
+        />
+        <n-select
+          v-model:value="status"
+          :options="statusOptions"
+          placeholder="全部状态"
+          clearable
+          style="width: 160px"
+        />
+        <n-button type="primary" @click="search">
+          <template #icon><n-icon><SearchOutline /></n-icon></template>
+          查询
+        </n-button>
+        <n-button @click="resetFilters">
+          <template #icon><n-icon><ReloadOutline /></n-icon></template>
+          重置
+        </n-button>
+        <n-text depth="3">共 {{ total }} 条</n-text>
+      </n-space>
 
-    <n-card :bordered="false">
       <n-data-table
         :columns="columns"
         :data="rows"
@@ -176,6 +194,7 @@ onMounted(load);
         :row-key="(row: GroupPurchase) => row.id"
         :bordered="false"
         :single-line="false"
+        :scroll-x="1200"
         size="small"
         remote
         @update:page="onPage"
@@ -186,11 +205,5 @@ onMounted(load);
         </template>
       </n-data-table>
     </n-card>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.small {
-  font-size: 12px;
-}
-</style>

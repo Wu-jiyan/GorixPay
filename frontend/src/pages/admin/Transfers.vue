@@ -1,17 +1,25 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui';
+import { NButton, NPopconfirm, NSpace, NTag, NText, useMessage } from 'naive-ui';
 import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-ui';
+import {
+  AddOutline,
+  CashOutline,
+  DownloadOutline,
+  GiftOutline,
+  PaperPlaneOutline,
+  RefreshOutline,
+  SearchOutline,
+  TrashOutline,
+} from '@vicons/ionicons5';
 import { adminApi } from '@/api';
 import type { Transfer } from '@/api';
 import { adminTransfersApi } from '@/api/adminTransfers';
 import type { RedBatch } from '@/api/adminTransfers';
 import { exportCsvUrl } from '@/api/reports';
 import { errorMessage } from '@/api/client';
-import MoneyText from '@/components/MoneyText.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import { formatDateTime, formatMoney } from '@/utils/format';
+import AdminPage from '@/components/AdminPage.vue';
+import { financeStatus, formatDateTime, formatMoney } from '@/utils/format';
 import { asRow, httpStatus, numberOr, usePendingAction, useServerPaging } from './shared';
 
 const message = useMessage();
@@ -320,97 +328,106 @@ async function submitBatch() {
 const columns = computed<DataTableColumns<Transfer>>(() => {
   const pendingSet = actions.pending.value;
   return [
-  {
-    title: '代付单号',
-    key: 'transfer_no',
-    width: 190,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.transfer_no || '-'),
-  },
-  {
-    title: '商户代付单号',
-    key: 'out_transfer_no',
-    width: 180,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.out_transfer_no || '-'),
-  },
-  {
-    title: '商户 ID',
-    key: 'merchant_id',
-    width: 260,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.merchant_id || '-'),
-  },
-  {
-    title: '代付金额',
-    key: 'amount',
-    width: 120,
-    align: 'right',
-    render: (row) => h(MoneyText, { amount: row.amount, color: '#7c3aed' }),
-  },
-  { title: '收款人', key: 'account_name', width: 120, ellipsis: true, render: (row) => row.account_name || '-' },
-  {
-    title: '收款账号',
-    key: 'account_no',
-    width: 190,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.account_no || '-'),
-  },
-  { title: '开户行', key: 'bank_name', minWidth: 150, ellipsis: true, render: (row) => row.bank_name || '-' },
-  {
-    title: '状态',
-    key: 'status',
-    width: 90,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'finance' }),
-  },
-  {
-    title: '创建时间',
-    key: 'created_at',
-    width: 170,
-    render: (row) => formatDateTime(row.created_at),
-  },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 150,
-    fixed: 'right',
-    render: (row) => {
-      if (row.status !== 'pending') return h('span', { class: 'muted' }, '已处理');
-      const approving = pendingSet.has(`approve:${row.id}`);
-      return h(
-        NSpace,
-        { size: 4, wrap: false },
-        {
-          default: () => [
-            h(
-              NPopconfirm,
-              { onPositiveClick: () => approve(row) },
-              {
-                trigger: () =>
-                  h(
-                    NButton,
-                    { size: 'tiny', quaternary: true, type: 'primary', loading: approving, disabled: approving },
-                    { default: () => '通过' },
-                  ),
-                default: () => '确认通过该代付申请？',
-              },
-            ),
-            h(
-              NButton,
-              {
-                size: 'tiny',
-                quaternary: true,
-                type: 'error',
-                disabled: approving,
-                onClick: () => openReject(row),
-              },
-              { default: () => '驳回' },
-            ),
-          ],
-        },
-      );
+    {
+      title: '代付单号',
+      key: 'transfer_no',
+      width: 200,
+      ellipsis: { tooltip: true },
+      render: (row) => h(NText, { class: 'mono' }, () => row.transfer_no || '-'),
     },
-  },
+    {
+      title: '商户代付单号',
+      key: 'out_transfer_no',
+      width: 190,
+      ellipsis: { tooltip: true },
+      render: (row) => h(NText, { class: 'mono' }, () => row.out_transfer_no || '-'),
+    },
+    {
+      title: '商户 ID',
+      key: 'merchant_id',
+      width: 230,
+      ellipsis: { tooltip: true },
+      render: (row) => h(NText, { class: 'mono' }, () => row.merchant_id || '-'),
+    },
+    {
+      title: '代付金额',
+      key: 'amount',
+      width: 130,
+      align: 'right',
+      render: (row) => h(NText, { class: 'amount' }, () => formatMoney(row.amount)),
+    },
+    {
+      title: '收款人',
+      key: 'account_name',
+      width: 130,
+      ellipsis: { tooltip: true },
+      render: (row) => row.account_name || '-',
+    },
+    {
+      title: '收款账号',
+      key: 'account_no',
+      width: 190,
+      ellipsis: { tooltip: true },
+      render: (row) => h(NText, { class: 'mono' }, () => row.account_no || '-'),
+    },
+    {
+      title: '开户行',
+      key: 'bank_name',
+      minWidth: 160,
+      ellipsis: { tooltip: true },
+      render: (row) => row.bank_name || '-',
+    },
+    {
+      title: '状态',
+      key: 'status',
+      width: 100,
+      render: (row) =>
+        h(NTag, { size: 'small', bordered: false, type: financeStatus(row.status).type }, () =>
+          financeStatus(row.status).text,
+        ),
+    },
+    {
+      title: '创建时间',
+      key: 'created_at',
+      width: 170,
+      render: (row) => formatDateTime(row.created_at),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 140,
+      fixed: 'right',
+      render: (row) => {
+        if (row.status !== 'pending') return h(NText, { depth: 3 }, () => '已处理');
+        const approving = pendingSet.has(`approve:${row.id}`);
+        return h(NSpace, { size: 8, wrap: false }, () => [
+          h(
+            NPopconfirm,
+            { onPositiveClick: () => approve(row) },
+            {
+              trigger: () =>
+                h(
+                  NButton,
+                  { size: 'small', text: true, type: 'primary', loading: approving, disabled: approving },
+                  () => '通过',
+                ),
+              default: () => '确认通过该代付申请？',
+            },
+          ),
+          h(
+            NButton,
+            {
+              size: 'small',
+              text: true,
+              type: 'error',
+              disabled: approving,
+              onClick: () => openReject(row),
+            },
+            () => '驳回',
+          ),
+        ]);
+      },
+    },
   ];
 });
 
@@ -420,23 +437,23 @@ const redColumns = computed<DataTableColumns<RedBatch>>(() => {
     {
       title: '批次号',
       key: 'batch_no',
-      width: 200,
-      ellipsis: true,
-      render: (row) => h('span', { class: 'mono' }, row.batch_no || '-'),
+      width: 210,
+      ellipsis: { tooltip: true },
+      render: (row) => h(NText, { class: 'mono' }, () => row.batch_no || '-'),
     },
     {
       title: '商户 ID',
       key: 'merchant_id',
-      width: 240,
-      ellipsis: true,
-      render: (row) => h('span', { class: 'mono' }, row.merchant_id || '-'),
+      width: 230,
+      ellipsis: { tooltip: true },
+      render: (row) => h(NText, { class: 'mono' }, () => row.merchant_id || '-'),
     },
     {
       title: '总额',
       key: 'amount',
-      width: 120,
+      width: 130,
       align: 'right',
-      render: (row) => h(MoneyText, { amount: row.amount }),
+      render: (row) => h(NText, { class: 'amount' }, () => formatMoney(row.amount)),
     },
     {
       title: '领取 / 总数',
@@ -445,7 +462,15 @@ const redColumns = computed<DataTableColumns<RedBatch>>(() => {
       align: 'right',
       render: (row) => `${numberOr(row.claimed_count, 0)} / ${numberOr(row.count, 0)}`,
     },
-    { title: '状态', key: 'status', width: 100, render: (row) => h(StatusTag, { status: row.status, kind: 'finance' }) },
+    {
+      title: '状态',
+      key: 'status',
+      width: 110,
+      render: (row) =>
+        h(NTag, { size: 'small', bordered: false, type: financeStatus(row.status).type }, () =>
+          financeStatus(row.status).text,
+        ),
+    },
     {
       title: '创建时间',
       key: 'created_at',
@@ -457,19 +482,21 @@ const redColumns = computed<DataTableColumns<RedBatch>>(() => {
       key: 'actions',
       width: 110,
       fixed: 'right',
-      render: (row) =>
-        h(
+      render: (row) => {
+        const cancelling = pendingSet.has(`cancel:${row.batch_no}`);
+        return h(
           NButton,
           {
-            size: 'tiny',
-            quaternary: true,
+            size: 'small',
+            text: true,
             type: 'error',
-            loading: pendingSet.has(`cancel:${row.batch_no}`),
-            disabled: pendingSet.has(`cancel:${row.batch_no}`),
+            loading: cancelling,
+            disabled: cancelling,
             onClick: () => openRedCancel(row),
           },
-          { default: () => '撤销' },
-        ),
+          () => '撤销',
+        );
+      },
     },
   ];
 });
@@ -478,78 +505,137 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="代付管理" subtitle="商户代付申请审核，需扣减可用余额或冻结资金">
-      <template #actions>
-        <n-button secondary :loading="loading" @click="load">刷新</n-button>
-        <n-button secondary @click="exportCsv">导出 CSV</n-button>
-        <n-button secondary @click="openRedBatches">红包批次</n-button>
-        <n-button secondary type="primary" @click="openBatch">批量付款</n-button>
-        <n-button type="primary" @click="openManual">手动付款</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="代付管理" subtitle="商户代付申请审核，需扣减可用余额或冻结资金">
+    <template #actions>
+      <n-space>
+        <n-button :loading="loading" @click="load">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
+        <n-button @click="exportCsv">
+          <template #icon>
+            <n-icon :component="DownloadOutline" />
+          </template>
+          导出 CSV
+        </n-button>
+        <n-button @click="openRedBatches">
+          <template #icon>
+            <n-icon :component="GiftOutline" />
+          </template>
+          红包批次
+        </n-button>
+        <n-button @click="openBatch">
+          <template #icon>
+            <n-icon :component="PaperPlaneOutline" />
+          </template>
+          批量付款
+        </n-button>
+        <n-button type="primary" @click="openManual">
+          <template #icon>
+            <n-icon :component="CashOutline" />
+          </template>
+          手动付款
+        </n-button>
+      </n-space>
+    </template>
 
     <n-alert v-if="notAvailable" type="warning" :bordered="false" style="margin-bottom: 16px">
-      代付接口未启用：后端 <span class="mono">/admin/transfers</span> 尚未就绪（404），完成后本页自动可用。
+      代付接口未启用：后端 <n-text class="mono">/admin/transfers</n-text> 尚未就绪（404），完成后本页自动可用。
     </n-alert>
 
-    <div class="toolbar">
-      <n-input
-        v-model:value="keyword"
-        placeholder="代付单号 / 商户单号"
-        clearable
-        style="width: 240px"
-        @keyup.enter="search"
-      />
-      <n-input v-model:value="merchantId" placeholder="商户 ID" clearable style="width: 240px" @keyup.enter="search" />
-      <n-select v-model:value="status" :options="statusOptions" placeholder="全部状态" clearable style="width: 150px" />
-      <n-button type="primary" @click="search">查询</n-button>
-      <n-button @click="resetFilters">重置</n-button>
-    </div>
+    <n-card size="small" :bordered="false">
+      <n-form inline :show-feedback="false">
+        <n-form-item label="关键字">
+          <n-input
+            v-model:value="keyword"
+            placeholder="代付单号 / 商户单号"
+            clearable
+            style="width: 230px"
+            @keyup.enter="search"
+          >
+            <template #prefix>
+              <n-icon :component="SearchOutline" />
+            </template>
+          </n-input>
+        </n-form-item>
+        <n-form-item label="商户 ID">
+          <n-input
+            v-model:value="merchantId"
+            placeholder="按商户筛选"
+            clearable
+            style="width: 230px"
+            @keyup.enter="search"
+          >
+            <template #prefix>
+              <n-icon :component="SearchOutline" />
+            </template>
+          </n-input>
+        </n-form-item>
+        <n-form-item label="状态">
+          <n-select
+            v-model:value="status"
+            :options="statusOptions"
+            placeholder="全部状态"
+            clearable
+            style="width: 140px"
+          />
+        </n-form-item>
+        <n-form-item>
+          <n-space>
+            <n-button type="primary" @click="search">
+              <template #icon>
+                <n-icon :component="SearchOutline" />
+              </template>
+              查询
+            </n-button>
+            <n-button @click="resetFilters">重置</n-button>
+          </n-space>
+        </n-form-item>
+      </n-form>
 
-    <n-card :bordered="false">
-      <n-empty v-if="notAvailable" description="接口未启用" size="large">
+      <n-empty v-if="notAvailable" description="接口未启用">
         <template #extra>
           <n-button size="small" :loading="loading" @click="load">重新检测</n-button>
         </template>
       </n-empty>
+
       <n-data-table
         v-else
+        :remote="true"
+        :loading="loading"
         :columns="columns"
         :data="rows"
-        :loading="loading"
         :pagination="pagination"
         :row-key="(row: Transfer) => row.id"
-        :bordered="false"
-        :single-line="false"
-        size="small"
-        remote
+        :scroll-x="1500"
         @update:page="onPage"
         @update:page-size="onPageSize"
-      >
-        <template #empty>
-          <n-empty description="暂无代付申请" size="small" />
-        </template>
-      </n-data-table>
+      />
     </n-card>
 
-    <n-modal v-model:show="showReject" preset="card" title="驳回代付申请" style="width: 520px; max-width: 94vw">
-      <n-descriptions v-if="rejectTarget" :column="1" label-placement="left" size="small" bordered>
+    <n-modal v-model:show="showReject" preset="card" title="驳回代付申请" style="width: 560px; max-width: 94vw">
+      <n-descriptions v-if="rejectTarget" :column="2" bordered size="small" label-placement="left">
         <n-descriptions-item label="代付单号">
-          <span class="mono">{{ rejectTarget.transfer_no }}</span>
+          <n-text class="mono">{{ rejectTarget.transfer_no }}</n-text>
         </n-descriptions-item>
         <n-descriptions-item label="代付金额">
-          <MoneyText :amount="rejectTarget.amount" />
+          <n-text class="amount">{{ formatMoney(rejectTarget.amount) }}</n-text>
         </n-descriptions-item>
       </n-descriptions>
-      <n-form-item label="驳回原因" style="margin-top: 16px">
-        <n-input
-          v-model:value="rejectionReason"
-          type="textarea"
-          :autosize="{ minRows: 3, maxRows: 6 }"
-          placeholder="请填写驳回原因，商户可见"
-        />
-      </n-form-item>
+
+      <n-form label-placement="left" label-width="120" style="margin-top: 16px">
+        <n-form-item label="驳回原因">
+          <n-input
+            v-model:value="rejectionReason"
+            type="textarea"
+            :autosize="{ minRows: 3, maxRows: 6 }"
+            placeholder="请填写驳回原因，商户可见"
+          />
+        </n-form-item>
+      </n-form>
+
       <template #footer>
         <n-space justify="end">
           <n-button @click="showReject = false">取消</n-button>
@@ -558,10 +644,11 @@ onMounted(load);
       </template>
     </n-modal>
 
-    <n-modal v-model:show="showManual" preset="card" title="手动付款" style="width: 620px; max-width: 94vw">
+    <n-modal v-model:show="showManual" preset="card" title="手动付款" style="width: 640px; max-width: 94vw">
       <n-alert type="warning" :bordered="false" style="margin-bottom: 14px">
         手动付款会直接生成一笔代付单，后端按账本规则扣减可用余额；金额与收款账户请核对后再提交。
       </n-alert>
+
       <n-form ref="manualFormRef" :model="manualForm" :rules="manualRules" label-placement="left" label-width="120">
         <n-form-item label="商户 ID" path="merchant_id">
           <n-input v-model:value="manualForm.merchant_id" placeholder="这笔付款记在哪个商户名下" />
@@ -585,6 +672,7 @@ onMounted(load);
           <n-input v-model:value="manualForm.idempotency_key" placeholder="可选；重试时填同一个值可防重复出账" />
         </n-form-item>
       </n-form>
+
       <template #footer>
         <n-space justify="end">
           <n-button @click="showManual = false">取消</n-button>
@@ -593,10 +681,11 @@ onMounted(load);
       </template>
     </n-modal>
 
-    <n-modal v-model:show="showBatch" preset="card" title="批量付款" style="width: 780px; max-width: 96vw">
+    <n-modal v-model:show="showBatch" preset="card" title="批量付款" style="width: 820px; max-width: 96vw">
       <n-alert type="warning" :bordered="false" style="margin-bottom: 14px">
         所有行记在同一个商户名下，合计金额会先从该商户可用余额扣减；空行或金额为 0 的行提交时会被忽略。
       </n-alert>
+
       <n-form label-placement="left" label-width="120">
         <n-form-item label="商户 ID">
           <n-input v-model:value="batchMerchantId" placeholder="这笔批次记在哪个商户名下" />
@@ -605,8 +694,8 @@ onMounted(load);
           <n-input v-model:value="batchRemark" placeholder="可选，例如：批量代付-11 月" />
         </n-form-item>
         <n-form-item label="付款明细">
-          <div class="batch-box">
-            <div v-for="(row, index) in batchRows" :key="index" class="batch-row">
+          <n-space vertical :size="10" style="width: 100%">
+            <n-space v-for="(row, index) in batchRows" :key="index" align="center" :size="10">
               <n-input-number
                 v-model:value="row.amount_yuan"
                 :min="0"
@@ -615,17 +704,30 @@ onMounted(load);
                 placeholder="金额（元）"
                 style="width: 170px"
               />
-              <n-input v-model:value="row.destination" placeholder="收款账户" style="flex: 1; min-width: 200px" />
-              <n-button size="small" quaternary type="error" @click="removeBatchRow(index)">删除</n-button>
-            </div>
-            <n-button size="small" dashed @click="addBatchRow">添加一行</n-button>
-          </div>
+              <n-input v-model:value="row.destination" placeholder="收款账户" style="width: 360px" />
+              <n-button size="small" text type="error" @click="removeBatchRow(index)">
+                <template #icon>
+                  <n-icon :component="TrashOutline" />
+                </template>
+                删除
+              </n-button>
+            </n-space>
+            <n-button size="small" dashed @click="addBatchRow">
+              <template #icon>
+                <n-icon :component="AddOutline" />
+              </template>
+              添加一行
+            </n-button>
+          </n-space>
         </n-form-item>
       </n-form>
-      <div class="batch-total">
-        合计：<strong>{{ formatMoney(batchTotalCents) }}</strong>
-        <span class="muted small">（{{ batchRows.length }} 行）</span>
-      </div>
+
+      <n-space align="center" :size="6">
+        <n-text depth="3">合计</n-text>
+        <n-text class="amount">{{ formatMoney(batchTotalCents) }}</n-text>
+        <n-text depth="3" style="font-size: 12px">（{{ batchRows.length }} 行）</n-text>
+      </n-space>
+
       <template #footer>
         <n-space justify="end">
           <n-button @click="showBatch = false">取消</n-button>
@@ -639,45 +741,50 @@ onMounted(load);
         <n-alert type="info" :bordered="false" style="margin-bottom: 14px">
           撤销会把该批次里仍是待领取的红包退回商户可用余额；已领取的部分不受影响。
         </n-alert>
-        <div class="rules-toolbar">
-          <n-button size="small" :loading="redLoading" @click="loadRedBatches">刷新</n-button>
-          <span class="muted small">共 {{ redPaging.total.value }} 个批次</span>
-        </div>
+
+        <n-space align="center" justify="space-between" style="margin-bottom: 12px">
+          <n-text depth="3" style="font-size: 12px">共 {{ redPaging.total.value }} 个批次</n-text>
+          <n-button size="small" :loading="redLoading" @click="loadRedBatches">
+            <template #icon>
+              <n-icon :component="RefreshOutline" />
+            </template>
+            刷新
+          </n-button>
+        </n-space>
+
         <n-data-table
+          :remote="true"
+          :loading="redLoading"
           :columns="redColumns"
           :data="redBatches"
-          :loading="redLoading"
           :pagination="redPaging.pagination.value"
           :row-key="(row: RedBatch) => row.batch_no"
-          :bordered="false"
-          :single-line="false"
-          size="small"
-          remote
+          :scroll-x="1100"
           @update:page="redPaging.onPage"
           @update:page-size="redPaging.onPageSize"
-        >
-          <template #empty>
-            <n-empty description="暂无红包批次" size="small" />
-          </template>
-        </n-data-table>
+        />
       </n-drawer-content>
     </n-drawer>
 
-    <n-modal v-model:show="showRedCancel" preset="card" title="撤销红包批次" style="width: 520px; max-width: 94vw">
-      <n-descriptions v-if="redCancelTarget" :column="1" label-placement="left" size="small" bordered>
+    <n-modal v-model:show="showRedCancel" preset="card" title="撤销红包批次" style="width: 560px; max-width: 94vw">
+      <n-descriptions v-if="redCancelTarget" :column="2" bordered size="small" label-placement="left">
         <n-descriptions-item label="批次号">
-          <span class="mono">{{ redCancelTarget.batch_no }}</span>
+          <n-text class="mono">{{ redCancelTarget.batch_no }}</n-text>
         </n-descriptions-item>
         <n-descriptions-item label="商户 ID">
-          <span class="mono">{{ redCancelTarget.merchant_id }}</span>
+          <n-text class="mono">{{ redCancelTarget.merchant_id }}</n-text>
         </n-descriptions-item>
         <n-descriptions-item label="总额">
-          <MoneyText :amount="redCancelTarget.amount" />
+          <n-text class="amount">{{ formatMoney(redCancelTarget.amount) }}</n-text>
         </n-descriptions-item>
       </n-descriptions>
-      <n-form-item label="撤销原因" style="margin-top: 16px">
-        <n-input v-model:value="redCancelReason" placeholder="可选，记录到审计" />
-      </n-form-item>
+
+      <n-form label-placement="left" label-width="120" style="margin-top: 16px">
+        <n-form-item label="撤销原因">
+          <n-input v-model:value="redCancelReason" placeholder="可选，记录到审计" />
+        </n-form-item>
+      </n-form>
+
       <template #footer>
         <n-space justify="end">
           <n-button @click="showRedCancel = false">取消</n-button>
@@ -685,32 +792,5 @@ onMounted(load);
         </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.batch-box {
-  width: 100%;
-}
-.batch-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-.batch-total {
-  margin-top: 4px;
-  font-size: 14px;
-  color: #1f2937;
-}
-.rules-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.small {
-  font-size: 12px;
-}
-</style>

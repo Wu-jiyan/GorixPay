@@ -49,6 +49,12 @@ export function loadSite(): Promise<void> {
   return pending;
 }
 
+/** 后台改完 site.* 之后强制重取，让侧栏站点名与皮肤立刻生效。 */
+export function refreshSite(): Promise<void> {
+  pending = null;
+  return loadSite();
+}
+
 /** 标题统一走这里，站点名换了之后下一次跳转就跟着变。 */
 export function setPageTitle(page: string) {
   lastPageTitle = page;

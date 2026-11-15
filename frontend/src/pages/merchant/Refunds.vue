@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { useMessage, type DataTableColumns, type SelectOption } from 'naive-ui';
+import { NTag, NText, useMessage, type DataTableColumns, type SelectOption } from 'naive-ui';
+import { RefreshOutline, SearchOutline } from '@vicons/ionicons5';
 import { merchantApi } from '@/api';
 import type { PageQuery, Refund } from '@/api/types';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import MoneyText from '@/components/MoneyText.vue';
-import { formatDateTime } from '@/utils/format';
+import AdminPage from '@/components/AdminPage.vue';
+import { financeStatus, formatDateTime, formatMoney } from '@/utils/format';
 
 const message = useMessage();
 
@@ -30,29 +29,33 @@ const columns: DataTableColumns<Refund> = [
   {
     title: '退款单号',
     key: 'refund_no',
-    width: 190,
-    render: (row) => h('span', { class: 'mono-cell' }, row.refund_no),
+    width: 200,
+    ellipsis: { tooltip: true },
+    render: (row) => h(NText, { class: 'mono' }, () => row.refund_no || '-'),
   },
   {
     title: '商户退款单号',
     key: 'out_refund_no',
-    width: 190,
+    width: 200,
     ellipsis: { tooltip: true },
-    render: (row) => h('span', { class: 'mono-cell muted-cell' }, row.out_refund_no),
+    render: (row) => h(NText, { class: 'mono', depth: 3 }, () => row.out_refund_no || '-'),
   },
   {
     title: '退款金额',
     key: 'amount',
-    width: 120,
+    width: 130,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: row.amount, color: '#dc2626' }),
+    render: (row) => h(NText, { class: 'amount', type: 'error' }, () => formatMoney(row.amount)),
   },
-  { title: '退款原因', key: 'reason', minWidth: 160, ellipsis: { tooltip: true } },
+  { title: '退款原因', key: 'reason', minWidth: 180, ellipsis: { tooltip: true } },
   {
     title: '状态',
     key: 'status',
     width: 110,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'finance' }),
+    render: (row) =>
+      h(NTag, { size: 'small', bordered: false, type: financeStatus(row.status).type }, () =>
+        financeStatus(row.status).text,
+      ),
   },
   {
     title: '申请时间',
@@ -63,7 +66,7 @@ const columns: DataTableColumns<Refund> = [
   {
     title: '审核备注',
     key: 'rejection_reason',
-    minWidth: 140,
+    minWidth: 160,
     ellipsis: { tooltip: true },
     render: (row) => row.rejection_reason || '-',
   },
@@ -121,25 +124,39 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="退款记录" subtitle="查看退款申请的处理进度与审核结果">
-      <template #actions>
-        <n-button size="small" :loading="loading" @click="load">刷新</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="退款记录" subtitle="查看退款申请的处理进度与审核结果">
+    <template #actions>
+      <n-button :loading="loading" @click="load">
+        <template #icon>
+          <n-icon :component="RefreshOutline" />
+        </template>
+        刷新
+      </n-button>
+    </template>
 
-    <n-card :bordered="false" class="table-card">
-      <div class="toolbar">
-        <n-select
-          v-model:value="filters.status"
-          :options="statusOptions"
-          placeholder="退款状态"
-          clearable
-          style="width: 150px"
-        />
-        <n-button type="primary" @click="handleSearch">查询</n-button>
-        <n-button quaternary @click="handleReset">重置</n-button>
-      </div>
+    <n-card size="small" :bordered="false">
+      <n-form inline :show-feedback="false">
+        <n-form-item label="退款状态">
+          <n-select
+            v-model:value="filters.status"
+            :options="statusOptions"
+            placeholder="全部状态"
+            clearable
+            style="width: 160px"
+          />
+        </n-form-item>
+        <n-form-item>
+          <n-space>
+            <n-button type="primary" :loading="loading" @click="handleSearch">
+              <template #icon>
+                <n-icon :component="SearchOutline" />
+              </template>
+              查询
+            </n-button>
+            <n-button @click="handleReset">重置</n-button>
+          </n-space>
+        </n-form-item>
+      </n-form>
 
       <n-data-table
         remote
@@ -149,30 +166,15 @@ onMounted(() => {
         :pagination="pagination"
         :bordered="false"
         :row-key="rowKey"
-        :scroll-x="1100"
+        :scroll-x="1140"
         size="small"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
-      />
+      >
+        <template #empty>
+          <n-empty description="暂无退款记录" size="small" />
+        </template>
+      </n-data-table>
     </n-card>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.table-card {
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-:deep(.mono-cell) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px;
-  color: #334155;
-}
-:deep(.muted-cell) {
-  color: #64748b;
-}
-@media (max-width: 768px) {
-  .toolbar :deep(.n-select) {
-    width: 100% !important;
-  }
-}
-</style>

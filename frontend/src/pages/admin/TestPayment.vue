@@ -2,12 +2,18 @@
 import { computed, onMounted, ref } from 'vue';
 import { useMessage } from 'naive-ui';
 import type { SelectOption } from 'naive-ui';
+import {
+  CardOutline,
+  CopyOutline,
+  OpenOutline,
+  RefreshOutline,
+} from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { adminApi } from '@/api';
 import type { Channel } from '@/api';
 import { testPaymentApi } from '@/api/testPayment';
 import type { TestOrderResult } from '@/api/testPayment';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
 import { copyText, paymentTypeText } from '@/utils/format';
 import { asRow, itemsOf, prettyJson } from './shared';
 
@@ -44,24 +50,25 @@ const selectedChannel = computed<Channel | null>(
   () => channels.value.find((item) => item.id === channelId.value) ?? null,
 );
 
-const resultRows = computed(() => {
-  const data = asRow(result.value);
-  const rows: { label: string; value: string; mono?: boolean }[] = [];
-  if (data.trade_no) rows.push({ label: '订单号', value: String(data.trade_no), mono: true });
-  if (data.pay_type) rows.push({ label: 'pay_type', value: String(data.pay_type), mono: true });
-  if (data.cashier_url) rows.push({ label: '收银台', value: String(data.cashier_url), mono: true });
-  return rows;
+const tradeNo = computed(() => {
+  const value = asRow(result.value).trade_no;
+  return typeof value === 'string' ? value : '';
+});
+
+const payType = computed(() => {
+  const value = asRow(result.value).pay_type;
+  return typeof value === 'string' ? value : '';
+});
+
+const cashierUrl = computed(() => {
+  const value = asRow(result.value).cashier_url;
+  return typeof value === 'string' ? value : '';
 });
 
 const payInfoText = computed(() => {
   const info = asRow(result.value).pay_info;
   if (info === undefined || info === null || info === '') return '';
   return prettyJson(info);
-});
-
-const cashierUrl = computed(() => {
-  const url = asRow(result.value).cashier_url;
-  return typeof url === 'string' ? url : '';
 });
 
 async function loadChannels() {
@@ -111,8 +118,12 @@ async function submit() {
   }
 }
 
-async function copy(url: string) {
-  const ok = await copyText(url);
+async function copy(text: string) {
+  if (!text) {
+    message.warning('没有可复制的内容');
+    return;
+  }
+  const ok = await copyText(text);
   if (ok) message.success('已复制');
   else message.warning('复制失败，请手动选择');
 }
@@ -125,21 +136,23 @@ onMounted(loadChannels);
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="测试支付" subtitle="用指定渠道创建一笔测试订单，验证上游参数是否配通">
-      <template #actions>
-        <n-button secondary :loading="loading" @click="loadChannels">刷新渠道</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="测试支付" subtitle="用指定渠道创建一笔测试订单，验证上游参数是否配通">
+    <template #actions>
+      <n-button :loading="loading" @click="loadChannels">
+        <template #icon><n-icon><RefreshOutline /></n-icon></template>
+        刷新渠道
+      </n-button>
+    </template>
 
-    <n-alert type="info" :bordered="false" style="margin-bottom: 16px">
-      测试订单只用于验证渠道配置，建议金额 0.01 元；是否真实下单由渠道插件决定，可能是 mock 上游。
+    <n-alert type="info" :bordered="false" :show-icon="true" style="margin-bottom: 16px">
+      测试订单只用于验证渠道配置，建议金额 0.01 元；是否真实下单由渠道插件决定，可能是 mock
+      上游。测试单不计入报表与对账。
     </n-alert>
 
     <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16">
       <n-gi>
-        <n-card :bordered="false" title="下单参数">
-          <n-form label-placement="left" label-width="100">
+        <n-card size="small" :bordered="false" title="下单参数">
+          <n-form label-placement="left" label-width="180">
             <n-form-item label="支付渠道">
               <n-select
                 :value="channelId"
@@ -151,7 +164,7 @@ onMounted(loadChannels);
               />
             </n-form-item>
             <n-form-item label="支付方式">
-              <n-select v-model:value="paymentType" :options="paymentTypeOptions" />
+              <n-select v-model:value="paymentType" :options="paymentTypeOptions" style="max-width: 260px" />
             </n-form-item>
             <n-form-item label="金额（元）">
               <n-input-number
@@ -159,71 +172,91 @@ onMounted(loadChannels);
                 :min="0.01"
                 :step="0.01"
                 :precision="2"
-                style="width: 180px"
-              />
+                style="width: 200px"
+              >
+                <template #suffix>元</template>
+              </n-input-number>
+            </n-form-item>
+            <n-form-item label="说明">
+              <n-text depth="3">
+                按上面的渠道与金额创建一笔测试单，提交后返回订单号与收银台链接；不写入商户业务报表。
+              </n-text>
             </n-form-item>
           </n-form>
-          <p v-if="selectedChannel" class="muted small">
-            当前渠道：{{ selectedChannel.name }} · 插件 {{ selectedChannel.plugin_code }} ·
-            优先级 {{ selectedChannel.priority ?? '-' }} · 状态 {{ selectedChannel.status ?? '-' }}
-          </p>
-          <n-space justify="end" style="margin-top: 12px">
-            <n-button type="primary" :loading="submitting" :disabled="channels.length === 0" @click="submit">
-              创建测试订单
-            </n-button>
-          </n-space>
-          <n-empty v-if="!loading && channels.length === 0" description="还没有可用渠道，先去支付渠道页创建" size="small" />
-        </n-card>
-      </n-gi>
 
-      <n-gi>
-        <n-card :bordered="false" title="返回结果">
-          <n-empty v-if="!result" description="还没有创建测试订单" />
-          <template v-else>
-            <n-descriptions :column="1" label-placement="left" bordered size="small">
-              <n-descriptions-item v-for="row in resultRows" :key="row.label" :label="row.label">
-                <span :class="{ mono: row.mono }">{{ row.value }}</span>
-              </n-descriptions-item>
-            </n-descriptions>
-            <div v-if="payInfoText" class="payinfo">
-              <div class="payinfo-label">pay_info</div>
-              <pre class="json">{{ payInfoText }}</pre>
-            </div>
-            <n-space v-if="cashierUrl" justify="end" style="margin-top: 12px">
-              <n-button size="small" @click="copy(cashierUrl)">复制收银台链接</n-button>
-              <n-button size="small" type="primary" @click="openCashier">新窗口打开</n-button>
+          <n-alert v-if="selectedChannel" type="default" :bordered="false">
+            当前渠道：{{ selectedChannel.name }} · 插件 {{ selectedChannel.plugin_code }} · 优先级
+            {{ selectedChannel.priority ?? '-' }} · 状态 {{ selectedChannel.status ?? '-' }}
+          </n-alert>
+
+          <template #footer>
+            <n-space justify="space-between" align="center">
+              <n-text depth="3">
+                {{ channels.length > 0 ? `可选渠道 ${channels.length} 个` : '暂无可用渠道' }}
+              </n-text>
+              <n-button
+                type="primary"
+                :loading="submitting"
+                :disabled="channels.length === 0"
+                @click="submit"
+              >
+                <template #icon><n-icon><CardOutline /></n-icon></template>
+                创建测试订单
+              </n-button>
             </n-space>
           </template>
         </n-card>
+
+        <n-empty
+          v-if="!loading && channels.length === 0"
+          description="还没有可用渠道，先去支付渠道页创建"
+          size="small"
+          style="margin-top: 12px"
+        />
+      </n-gi>
+
+      <n-gi>
+        <n-card size="small" :bordered="false" title="订单结果">
+          <n-empty v-if="!result" description="还没有创建测试订单" size="small" />
+          <n-form v-else label-placement="left" label-width="180">
+            <n-form-item label="订单号">
+              <n-input :value="tradeNo" readonly placeholder="-">
+                <template #suffix>
+                  <n-button text type="primary" @click="copy(tradeNo)">
+                    <template #icon><n-icon><CopyOutline /></n-icon></template>
+                  </n-button>
+                </template>
+              </n-input>
+            </n-form-item>
+            <n-form-item label="支付方式">
+              <n-space align="center" :size="8">
+                <n-tag size="small" round :bordered="false" type="info">
+                  {{ paymentTypeText(payType) }}
+                </n-tag>
+                <n-text v-if="payType" depth="3">{{ payType }}</n-text>
+              </n-space>
+            </n-form-item>
+            <n-form-item label="收银台链接">
+              <n-space align="center" :size="8" style="width: 100%">
+                <n-input :value="cashierUrl" readonly placeholder="-">
+                  <template #suffix>
+                    <n-button text type="primary" @click="copy(cashierUrl)">
+                      <template #icon><n-icon><CopyOutline /></n-icon></template>
+                    </n-button>
+                  </template>
+                </n-input>
+                <n-button :disabled="!cashierUrl" @click="openCashier">
+                  <template #icon><n-icon><OpenOutline /></n-icon></template>
+                  新窗口打开
+                </n-button>
+              </n-space>
+            </n-form-item>
+            <n-form-item v-if="payInfoText" label="pay_info">
+              <n-code :code="payInfoText" language="json" word-wrap />
+            </n-form-item>
+          </n-form>
+        </n-card>
       </n-gi>
     </n-grid>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.small {
-  font-size: 12px;
-}
-.payinfo {
-  margin-top: 14px;
-}
-.payinfo-label {
-  font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 6px;
-}
-.json {
-  margin: 0;
-  max-height: 320px;
-  overflow: auto;
-  background: #0f172a;
-  color: #e2e8f0;
-  border-radius: 10px;
-  padding: 12px 14px;
-  font-size: 12px;
-  line-height: 1.6;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-</style>

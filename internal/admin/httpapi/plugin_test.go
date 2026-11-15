@@ -341,3 +341,69 @@ func performAdmin(t *testing.T, router http.Handler, method, path string, payloa
 	router.ServeHTTP(response, request)
 	return response
 }
+
+// TestAdminChannelUpdateKeepsStoredCredentialsWhenBlank pins the usability fix: the
+// console never receives stored credentials, so an edit form submits only the fields
+// the operator retyped. Blank must mean "keep", not "erase".
+func TestAdminChannelUpdateKeepsStoredCredentialsWhenBlank(t *testing.T) {
+	router, db, configs, _ := adminPluginRouter(t, "admin-channel-keep-secrets")
+	response := performAdmin(t, router, http.MethodPost, "/api/v1/admin/channels", map[string]any{
+		"name": "epay", "plugin_code": "epay", "payment_type": "alipay", "priority": 1, "weight": 10,
+		"api_url": "https://upstream.example", "pid": "1001", "key": "legacy-secret",
+		"config": map[string]string{"app_id": "app-1", "private_key": "pk-1"},
+	})
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+
+	// Only the name and weight change; every credential field is omitted.
+	update := performAdmin(t, router, http.MethodPut, "/api/v1/admin/channels/"+created.ID, map[string]any{
+		"name": "epay-renamed", "plugin_code": "epay", "payment_type": "alipay", "priority": 1, "weight": 30,
+	})
+	if update.Code != http.StatusNoContent {
+		t.Fatalf("update status=%d body=%s", update.Code, update.Body.String())
+	}
+
+	var channel channelrouter.Channel
+	if err := db.First(&channel, "id = ?", created.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if channel.Name != "epay-renamed" || channel.Weight != 30 {
+		t.Fatalf("channel=%+v", channel)
+	}
+	decoded, err := configs.Decrypt(channel.ID, channel.ConfigEncrypted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.APIURL != "https://upstream.example" || decoded.PID != "1001" || decoded.Key != "legacy-secret" {
+		t.Fatalf("legacy credentials were wiped: %+v", decoded)
+	}
+	if decoded.Extra["app_id"] != "app-1" || decoded.Extra["private_key"] != "pk-1" {
+		t.Fatalf("plugin credentials were wiped: %+v", decoded.Extra)
+	}
+
+	// A retyped value still overwrites, and untouched siblings survive.
+	second := performAdmin(t, router, http.MethodPut, "/api/v1/admin/channels/"+created.ID, map[string]any{
+		"name": "epay-renamed", "plugin_code": "epay", "payment_type": "alipay", "priority": 1, "weight": 30,
+		"config": map[string]string{"app_id": "app-2"},
+	})
+	if second.Code != http.StatusNoContent {
+		t.Fatalf("second update status=%d", second.Code)
+	}
+	if err := db.First(&channel, "id = ?", created.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	decoded, err = configs.Decrypt(channel.ID, channel.ConfigEncrypted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Extra["app_id"] != "app-2" || decoded.Extra["private_key"] != "pk-1" || decoded.Key != "legacy-secret" {
+		t.Fatalf("merge after retype = %+v", decoded.Extra)
+	}
+}

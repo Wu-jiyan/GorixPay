@@ -1,12 +1,22 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui';
-import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-ui';
+import {
+  NAvatar,
+  NButton,
+  NInput,
+  NInputNumber,
+  NPopconfirm,
+  NSpace,
+  NSwitch,
+  NText,
+  useMessage,
+} from 'naive-ui';
+import type { DataTableColumns, FormInst, FormRules } from 'naive-ui';
+import { AddOutline, RefreshOutline } from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { payTypesApi } from '@/api/payTypes';
 import type { PayType } from '@/api/payTypes';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
 import { formatDateTime } from '@/utils/format';
 import { itemsOf } from './shared';
 
@@ -26,6 +36,8 @@ const submitting = ref(false);
 const showForm = ref(false);
 const editingId = ref<string | null>(null);
 const formRef = ref<FormInst | null>(null);
+const pendingStatusId = ref('');
+const removingId = ref('');
 
 const form = reactive<PayTypeForm>({
   code: '',
@@ -35,17 +47,19 @@ const form = reactive<PayTypeForm>({
   status: 'active',
 });
 
-const statusOptions: SelectOption[] = [
-  { label: '启用', value: 'active' },
-  { label: '禁用', value: 'disabled' },
-];
-
 const rules: FormRules = {
   code: { required: true, message: '请输入支付方式编码', trigger: ['blur', 'input'] },
   name: { required: true, message: '请输入显示名称', trigger: ['blur', 'input'] },
 };
 
 const isEditing = computed(() => editingId.value !== null);
+
+const statusSwitch = computed({
+  get: () => form.status === 'active',
+  set: (value: boolean) => {
+    form.status = value ? 'active' : 'disabled';
+  },
+});
 
 async function load() {
   loading.value = true;
@@ -111,32 +125,38 @@ async function submit() {
 
 async function toggleStatus(row: PayType) {
   const next = row.status === 'active' ? 'disabled' : 'active';
+  pendingStatusId.value = row.id;
   try {
     await payTypesApi.setStatus(row.id, next);
     message.success(next === 'active' ? '已启用' : '已禁用');
     await load();
   } catch (error) {
     message.error(errorMessage(error));
+  } finally {
+    pendingStatusId.value = '';
   }
 }
 
 async function remove(row: PayType) {
+  removingId.value = row.id;
   try {
     await payTypesApi.remove(row.id);
     message.success('支付方式已删除');
     await load();
   } catch (error) {
     message.error(errorMessage(error));
+  } finally {
+    removingId.value = '';
   }
 }
 
 function iconCell(row: PayType) {
   const icon = row.icon || '';
-  if (icon === '') return h('span', { class: 'muted' }, '-');
+  if (icon === '') return h(NText, { depth: 3 }, { default: () => '-' });
   if (icon.startsWith('http') || icon.startsWith('/')) {
-    return h('img', { src: icon, alt: row.name || row.code, class: 'icon' });
+    return h(NAvatar, { src: icon, size: 24, objectFit: 'contain', round: false, bordered: true });
   }
-  return h('span', { class: 'mono' }, icon);
+  return h(NText, { code: true }, { default: () => icon });
 }
 
 const columns = computed<DataTableColumns<PayType>>(() => [
@@ -145,10 +165,10 @@ const columns = computed<DataTableColumns<PayType>>(() => [
     key: 'code',
     width: 160,
     ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.code || '-'),
+    render: (row) => h(NText, { code: true }, { default: () => row.code || '-' }),
   },
   { title: '名称', key: 'name', minWidth: 140, ellipsis: true, render: (row) => row.name || '-' },
-  { title: '图标', key: 'icon', width: 120, render: (row) => iconCell(row) },
+  { title: '图标', key: 'icon', width: 110, render: (row) => iconCell(row) },
   {
     title: '排序',
     key: 'sort',
@@ -159,8 +179,29 @@ const columns = computed<DataTableColumns<PayType>>(() => [
   {
     title: '状态',
     key: 'status',
-    width: 90,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'active' }),
+    width: 110,
+    render: (row) =>
+      h(
+        NPopconfirm,
+        {
+          positiveText: '确定',
+          negativeText: '取消',
+          onPositiveClick: () => toggleStatus(row),
+        },
+        {
+          trigger: () =>
+            h(
+              NSwitch,
+              {
+                value: row.status === 'active',
+                size: 'small',
+                loading: pendingStatusId.value === row.id,
+              },
+              { checked: () => '启用', unchecked: () => '禁用' },
+            ),
+          default: () => (row.status === 'active' ? '确认禁用该支付方式？' : '确认启用该支付方式？'),
+        },
+      ),
   },
   {
     title: '创建时间',
@@ -171,37 +212,34 @@ const columns = computed<DataTableColumns<PayType>>(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 190,
+    width: 130,
     fixed: 'right',
     render: (row) =>
       h(
         NSpace,
-        { size: 4, wrap: false },
+        { size: 12, wrap: false },
         {
           default: () => [
             h(
               NButton,
-              { size: 'tiny', quaternary: true, type: 'info', onClick: () => openEdit(row) },
+              { text: true, size: 'small', type: 'primary', onClick: () => openEdit(row) },
               { default: () => '编辑' },
             ),
             h(
               NPopconfirm,
-              { onPositiveClick: () => toggleStatus(row) },
+              { positiveText: '确定', negativeText: '取消', onPositiveClick: () => remove(row) },
               {
                 trigger: () =>
                   h(
                     NButton,
-                    { size: 'tiny', quaternary: true, type: row.status === 'active' ? 'warning' : 'primary' },
-                    { default: () => (row.status === 'active' ? '禁用' : '启用') },
+                    {
+                      text: true,
+                      size: 'small',
+                      type: 'error',
+                      loading: removingId.value === row.id,
+                    },
+                    { default: () => '删除' },
                   ),
-                default: () => (row.status === 'active' ? '确认禁用该支付方式？' : '确认启用该支付方式？'),
-              },
-            ),
-            h(
-              NPopconfirm,
-              { onPositiveClick: () => remove(row) },
-              {
-                trigger: () => h(NButton, { size: 'tiny', quaternary: true, type: 'error' }, { default: () => '删除' }),
                 default: () => '确认删除该支付方式？',
               },
             ),
@@ -215,23 +253,32 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="支付方式" subtitle="收银台展示的支付方式与排序，可上传图标地址">
-      <template #actions>
-        <n-button secondary :loading="loading" @click="load">刷新</n-button>
-        <n-button type="primary" @click="openCreate">新建支付方式</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="支付方式" subtitle="收银台展示的支付方式与排序，可上传图标地址">
+    <template #actions>
+      <n-space>
+        <n-button :loading="loading" @click="load">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
+        <n-button type="primary" @click="openCreate">
+          <template #icon>
+            <n-icon :component="AddOutline" />
+          </template>
+          新建支付方式
+        </n-button>
+      </n-space>
+    </template>
 
-    <n-card :bordered="false">
+    <n-card size="small" :bordered="false">
       <n-data-table
         :columns="columns"
         :data="rows"
         :loading="loading"
         :pagination="{ pageSize: 10 }"
         :row-key="(row: PayType) => row.id"
-        :bordered="false"
-        :single-line="false"
+        :scroll-x="1000"
         size="small"
       >
         <template #empty>
@@ -244,9 +291,9 @@ onMounted(load);
       v-model:show="showForm"
       preset="card"
       :title="isEditing ? '编辑支付方式' : '新建支付方式'"
-      style="width: 560px; max-width: 94vw"
+      style="width: 640px"
     >
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="110">
+      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="120">
         <n-form-item label="编码" path="code">
           <n-input v-model:value="form.code" placeholder="例如 alipay / wxpay，创建后尽量别改" />
         </n-form-item>
@@ -257,10 +304,13 @@ onMounted(load);
           <n-input v-model:value="form.icon" placeholder="https:// 开头的图片地址，或图标代码" />
         </n-form-item>
         <n-form-item label="排序">
-          <n-input-number v-model:value="form.sort" :min="0" :step="1" style="width: 100%" />
+          <n-input-number v-model:value="form.sort" :min="0" :step="1" style="width: 160px" />
         </n-form-item>
         <n-form-item label="状态">
-          <n-select v-model:value="form.status" :options="statusOptions" />
+          <n-switch v-model:value="statusSwitch">
+            <template #checked>启用</template>
+            <template #unchecked>禁用</template>
+          </n-switch>
         </n-form-item>
       </n-form>
       <template #footer>
@@ -270,15 +320,5 @@ onMounted(load);
         </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.icon {
-  width: 28px;
-  height: 28px;
-  object-fit: contain;
-  border-radius: 6px;
-  background: #fff;
-}
-</style>

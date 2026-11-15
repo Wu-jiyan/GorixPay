@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, NTag, useMessage } from 'naive-ui';
+import { NButton, NFormItemGi, NPopconfirm, NSpace, NTag, NText, useMessage } from 'naive-ui';
 import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-ui';
+import { AddOutline, CreateOutline, RefreshOutline } from '@vicons/ionicons5';
 import { adminApi } from '@/api';
 import type { Channel, PluginConfigField, PluginMeta } from '@/api';
 import { errorMessage, http } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import { paymentTypeText } from '@/utils/format';
+import AdminPage from '@/components/AdminPage.vue';
+import { activeStatus, paymentTypeText } from '@/utils/format';
 import { asRow, itemsOf, prettyJson } from './shared';
 
 interface ChannelForm {
@@ -341,7 +341,10 @@ async function testChannel(row: Channel) {
       channelName: row.name || row.id,
       ok: data.ok === true,
       pay_type: data.pay_type || '-',
-      pay_info: data.pay_info === undefined || data.pay_info === null || data.pay_info === '' ? '-' : prettyJson(data.pay_info),
+      pay_info:
+        data.pay_info === undefined || data.pay_info === null || data.pay_info === ''
+          ? '-'
+          : prettyJson(data.pay_info),
       error: data.error || '',
     };
   } catch (error) {
@@ -361,73 +364,78 @@ async function testChannel(row: Channel) {
 function configuredTag(row: Channel) {
   const value = asRow(row).configured;
   const configured = value === true || value === 1 || value === 'true';
-  return h(NTag, { size: 'small', round: true, type: configured ? 'success' : 'warning' }, {
-    default: () => (configured ? '已配置' : '未配置'),
-  });
+  return h(
+    NTag,
+    { size: 'small', bordered: false, type: configured ? 'success' : 'warning' },
+    () => (configured ? '已配置' : '未配置'),
+  );
 }
 
 const columns = computed<DataTableColumns<Channel>>(() => {
   const testing = testingId.value;
   return [
-    { title: '渠道名称', key: 'name', minWidth: 150, render: (row) => row.name || '-' },
+    {
+      title: '渠道名称',
+      key: 'name',
+      minWidth: 160,
+      ellipsis: { tooltip: true },
+      render: (row) => row.name || '-',
+    },
     {
       title: '插件',
       key: 'plugin_code',
-      width: 130,
-      render: (row) => h('span', { class: 'mono' }, row.plugin_code || '-'),
+      width: 140,
+      render: (row) => h(NText, { class: 'mono' }, () => row.plugin_code || '-'),
     },
-    { title: '支付方式', key: 'payment_type', width: 110, render: (row) => paymentTypeText(row.payment_type) },
-    { title: '优先级', key: 'priority', width: 90, align: 'right', render: (row) => row.priority ?? '-' },
-    { title: '权重', key: 'weight', width: 90, align: 'right', render: (row) => row.weight ?? '-' },
+    {
+      title: '支付方式',
+      key: 'payment_type',
+      width: 120,
+      render: (row) => paymentTypeText(row.payment_type),
+    },
+    { title: '优先级', key: 'priority', width: 100, align: 'right', render: (row) => row.priority ?? '-' },
+    { title: '权重', key: 'weight', width: 100, align: 'right', render: (row) => row.weight ?? '-' },
     {
       title: '状态',
       key: 'status',
-      width: 90,
-      render: (row) => h(StatusTag, { status: row.status, kind: 'active' }),
+      width: 100,
+      render: (row) =>
+        h(NTag, { size: 'small', bordered: false, type: activeStatus(row.status).type }, () =>
+          activeStatus(row.status).text,
+        ),
     },
-    { title: '配置', key: 'configured', width: 100, render: (row) => configuredTag(row) },
+    { title: '配置', key: 'configured', width: 110, render: (row) => configuredTag(row) },
     {
       title: '操作',
       key: 'actions',
-      width: 220,
+      width: 210,
       fixed: 'right',
       render: (row) =>
-        h(
-          NSpace,
-          { size: 4, wrap: false },
-          {
-            default: () => [
-              h(
-                NButton,
-                { size: 'tiny', quaternary: true, type: 'info', onClick: () => openEdit(row) },
-                { default: () => '编辑' },
-              ),
-              h(
-                NButton,
-                {
-                  size: 'tiny',
-                  quaternary: true,
-                  loading: testing === row.id,
-                  onClick: () => testChannel(row),
-                },
-                { default: () => '测试' },
-              ),
-              h(
-                NPopconfirm,
-                { onPositiveClick: () => toggleStatus(row) },
-                {
-                  trigger: () =>
-                    h(
-                      NButton,
-                      { size: 'tiny', quaternary: true, type: row.status === 'active' ? 'warning' : 'primary' },
-                      { default: () => (row.status === 'active' ? '禁用' : '启用') },
-                    ),
-                  default: () => (row.status === 'active' ? '确认禁用该渠道？' : '确认启用该渠道？'),
-                },
-              ),
-            ],
-          },
-        ),
+        h(NSpace, { size: 8, wrap: false }, () => [
+          h(
+            NButton,
+            { size: 'small', text: true, type: 'primary', onClick: () => openEdit(row) },
+            () => '编辑',
+          ),
+          h(
+            NButton,
+            { size: 'small', text: true, loading: testing === row.id, onClick: () => testChannel(row) },
+            () => '测试',
+          ),
+          h(
+            NPopconfirm,
+            { onPositiveClick: () => toggleStatus(row) },
+            {
+              trigger: () =>
+                h(
+                  NButton,
+                  { size: 'small', text: true, type: row.status === 'active' ? 'warning' : 'primary' },
+                  () => (row.status === 'active' ? '禁用' : '启用'),
+                ),
+              default: () => (row.status === 'active' ? '确认禁用该渠道？' : '确认启用该渠道？'),
+            },
+          ),
+        ]),
     },
   ];
 });
@@ -439,192 +447,177 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="支付渠道" subtitle="上游支付通道的插件配置、优先级、权重与启用状态管理">
-      <template #actions>
-        <n-button secondary :loading="loading" @click="load">刷新</n-button>
-        <n-button type="primary" @click="openCreate">新建渠道</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="支付渠道" subtitle="上游支付通道的插件配置、优先级、权重与启用状态管理">
+    <template #actions>
+      <n-space>
+        <n-button :loading="loading" @click="load">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
+        <n-button type="primary" @click="openCreate">
+          <template #icon>
+            <n-icon :component="AddOutline" />
+          </template>
+          新建渠道
+        </n-button>
+      </n-space>
+    </template>
 
-    <n-card :bordered="false">
+    <n-card size="small" :bordered="false">
       <n-data-table
+        :loading="loading"
         :columns="columns"
         :data="rows"
-        :loading="loading"
         :pagination="{ pageSize: 10 }"
         :row-key="(row: Channel) => row.id"
-        :bordered="false"
-        :single-line="false"
-        size="small"
-      >
-        <template #empty>
-          <n-empty description="暂无支付渠道，点击右上角新建" size="small" />
-        </template>
-      </n-data-table>
+        :scroll-x="1300"
+      />
     </n-card>
 
     <n-modal
       v-model:show="showForm"
       preset="card"
       :title="isEditing ? '编辑渠道' : '新建渠道'"
-      style="width: 720px; max-width: 94vw"
+      style="width: 880px; max-width: 96vw"
     >
-      <n-alert v-if="isEditing" type="warning" :bordered="false" style="margin-bottom: 16px">
-        编辑时不回显已保存的配置（密钥类字段一律留空），请重新填写本插件需要的全部字段；留空提交会以空值覆盖原配置。
-      </n-alert>
-      <n-alert v-else-if="isSandbox" type="info" :bordered="false" style="margin-bottom: 16px">
-        沙箱渠道不依赖上游配置，不填配置也能直接保存。
-      </n-alert>
-      <n-alert v-else-if="!pluginsReady" type="info" :bordered="false" style="margin-bottom: 16px">
-        插件元数据接口未就绪，当前仅能选择插件编码；配置字段由插件注册表提供，接口可用后自动出现。
-      </n-alert>
+      <n-space vertical :size="12">
+        <n-alert v-if="isEditing" type="warning" :bordered="false">
+          编辑时不回显已保存的配置（密钥类字段一律留空），请重新填写本插件需要的全部字段；留空提交会以空值覆盖原配置。
+        </n-alert>
+        <n-alert v-else-if="isSandbox" type="info" :bordered="false">
+          沙箱渠道不依赖上游配置，不填配置也能直接保存。
+        </n-alert>
+        <n-alert v-else-if="!pluginsReady" type="info" :bordered="false">
+          插件元数据接口未就绪，当前仅能选择插件编码；配置字段由插件注册表提供，接口可用后自动出现。
+        </n-alert>
+      </n-space>
 
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="130">
-        <n-form-item label="渠道名称" path="name">
-          <n-input v-model:value="form.name" placeholder="例如：支付宝-主通道" />
-        </n-form-item>
-        <n-form-item label="插件" path="plugin_code">
-          <n-select :value="form.plugin_code" :options="pluginOptions" @update:value="onPluginChange" />
-        </n-form-item>
-        <n-form-item label="支付方式" path="payment_type">
-          <n-select v-model:value="form.payment_type" :options="paymentTypeOptions" />
-        </n-form-item>
-        <n-form-item label="优先级" path="priority">
-          <n-input-number v-model:value="form.priority" :min="0" :step="1" style="width: 100%" />
-        </n-form-item>
-        <n-form-item label="权重" path="weight">
-          <n-input-number v-model:value="form.weight" :min="1" :step="1" style="width: 100%" />
-        </n-form-item>
-        <n-form-item label="状态" path="status">
-          <n-select v-model:value="form.status" :options="statusOptions" />
-        </n-form-item>
+      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="120">
+        <n-grid :cols="2" :x-gap="16">
+          <n-form-item-gi label="渠道名称" path="name">
+            <n-input v-model:value="form.name" placeholder="例如：支付宝-主通道" />
+          </n-form-item-gi>
+          <n-form-item-gi label="插件" path="plugin_code">
+            <n-select :value="form.plugin_code" :options="pluginOptions" @update:value="onPluginChange" />
+          </n-form-item-gi>
+          <n-form-item-gi label="支付方式" path="payment_type">
+            <n-select v-model:value="form.payment_type" :options="paymentTypeOptions" />
+          </n-form-item-gi>
+          <n-form-item-gi label="状态" path="status">
+            <n-select v-model:value="form.status" :options="statusOptions" />
+          </n-form-item-gi>
+          <n-form-item-gi label="优先级" path="priority">
+            <n-input-number v-model:value="form.priority" :min="0" :step="1" style="width: 100%" />
+          </n-form-item-gi>
+          <n-form-item-gi label="权重" path="weight">
+            <n-input-number v-model:value="form.weight" :min="1" :step="1" style="width: 100%" />
+          </n-form-item-gi>
 
-        <template v-if="configFields.length > 0">
-          <n-divider title-placement="left">插件配置（{{ form.plugin_code }}）</n-divider>
-          <n-form-item
-            v-for="field in configFields"
-            :key="field.key"
-            :label="field.label || field.key"
-            :path="`config.${field.key}`"
-          >
-            <div class="field-wrap">
-              <n-select
-                v-if="fieldOptions(field)"
-                v-model:value="form.config[field.key]"
-                :options="fieldOptions(field) ?? []"
-                :placeholder="fieldPlaceholder(field)"
-              />
-              <n-input
-                v-else
-                v-model:value="form.config[field.key]"
-                :type="inputTypeOf(field)"
-                :show-password-on="field.type === 'password' ? 'click' : undefined"
-                :autosize="field.type === 'textarea' ? { minRows: 3, maxRows: 8 } : undefined"
-                :placeholder="fieldPlaceholder(field)"
-              />
-              <div class="field-hint">
-                <span class="mono">{{ field.key }}</span>
-                <span v-if="field.required" class="tag-required">必填</span>
-                <span v-if="field.secret" class="tag-secret">密文</span>
-                <span v-if="field.secret && isEditing" class="muted">编辑需重新填写密钥（后端不回显）</span>
-              </div>
-            </div>
-          </n-form-item>
-        </template>
+          <n-form-item-gi :span="2" :show-label="false" :show-feedback="false">
+            <n-collapse :default-expanded-names="['plugin-config', 'upstream']" style="width: 100%">
+              <n-collapse-item name="plugin-config">
+                <template #header>
+                  插件配置（<n-text class="mono">{{ form.plugin_code }}</n-text>）
+                </template>
+                <n-empty v-if="configFields.length === 0" description="该插件没有额外配置项" size="small" />
+                <n-grid v-else :cols="2" :x-gap="16">
+                  <n-form-item-gi
+                    v-for="field in configFields"
+                    :key="field.key"
+                    :label="field.label || field.key"
+                    :path="`config.${field.key}`"
+                  >
+                    <n-select
+                      v-if="fieldOptions(field)"
+                      v-model:value="form.config[field.key]"
+                      :options="fieldOptions(field) ?? []"
+                      :placeholder="fieldPlaceholder(field)"
+                    />
+                    <n-input
+                      v-else
+                      v-model:value="form.config[field.key]"
+                      :type="inputTypeOf(field)"
+                      :show-password-on="field.type === 'password' ? 'click' : undefined"
+                      :autosize="field.type === 'textarea' ? { minRows: 3, maxRows: 8 } : undefined"
+                      :placeholder="fieldPlaceholder(field)"
+                    />
+                    <template #feedback>
+                      <n-space :size="6" align="center" style="font-size: 12px">
+                        <n-text class="mono" depth="3" style="font-size: 12px">{{ field.key }}</n-text>
+                        <n-tag v-if="field.required" size="small" type="warning" :bordered="false">必填</n-tag>
+                        <n-tag v-if="field.secret" size="small" type="error" :bordered="false">密文</n-tag>
+                      </n-space>
+                    </template>
+                  </n-form-item-gi>
+                </n-grid>
+              </n-collapse-item>
 
-        <template v-if="isEpay">
-          <n-divider title-placement="left">上游参数（epay 兼容字段，同时写入 config）</n-divider>
-          <n-form-item label="接口地址" path="api_url">
-            <n-input v-model:value="form.api_url" placeholder="上游网关地址，例如 https://epay.example.com" />
-          </n-form-item>
-          <n-form-item label="商户号 PID" path="pid">
-            <n-input v-model:value="form.pid" placeholder="上游分配的商户号" />
-          </n-form-item>
-          <n-form-item label="密钥 Key" path="key">
-            <n-input v-model:value="form.key" type="password" show-password-on="click" placeholder="上游分配的通信密钥" />
-          </n-form-item>
-        </template>
+              <n-collapse-item v-if="isEpay" name="upstream">
+                <template #header>上游参数（epay 兼容字段，同时写入 config）</template>
+                <n-grid :cols="2" :x-gap="16">
+                  <n-form-item-gi label="接口地址" path="api_url">
+                    <n-input v-model:value="form.api_url" placeholder="上游网关地址，例如 https://epay.example.com" />
+                  </n-form-item-gi>
+                  <n-form-item-gi label="商户号 PID" path="pid">
+                    <n-input v-model:value="form.pid" placeholder="上游分配的商户号" />
+                  </n-form-item-gi>
+                  <n-form-item-gi label="密钥 Key" path="key">
+                    <n-input
+                      v-model:value="form.key"
+                      type="password"
+                      show-password-on="click"
+                      placeholder="上游分配的通信密钥"
+                    />
+                  </n-form-item-gi>
+                </n-grid>
+              </n-collapse-item>
+            </n-collapse>
+          </n-form-item-gi>
+        </n-grid>
       </n-form>
 
       <template #footer>
         <n-space justify="end">
           <n-button @click="showForm = false">取消</n-button>
-          <n-button type="primary" :loading="submitting" @click="submit">保存</n-button>
+          <n-button type="primary" :loading="submitting" @click="submit">
+            <template #icon>
+              <n-icon :component="CreateOutline" />
+            </template>
+            保存
+          </n-button>
         </n-space>
       </template>
     </n-modal>
 
-    <n-modal v-model:show="showTest" preset="card" title="渠道测试结果" style="width: 660px; max-width: 94vw">
+    <n-modal v-model:show="showTest" preset="card" title="渠道测试结果" style="width: 680px; max-width: 94vw">
       <n-empty v-if="!testResult" description="暂无测试结果" />
       <template v-else>
-        <n-descriptions :column="1" label-placement="left" size="small" bordered>
+        <n-descriptions :column="2" bordered size="small" label-placement="left">
           <n-descriptions-item label="渠道">{{ testResult.channelName }}</n-descriptions-item>
           <n-descriptions-item label="结果">
-            <n-tag :type="testResult.ok ? 'success' : 'error'" size="small" round>
+            <n-tag :type="testResult.ok ? 'success' : 'error'" size="small" :bordered="false">
               {{ testResult.ok ? '成功' : '失败' }}
             </n-tag>
           </n-descriptions-item>
-          <n-descriptions-item label="pay_type">{{ testResult.pay_type }}</n-descriptions-item>
+          <n-descriptions-item label="pay_type">
+            <n-text class="mono">{{ testResult.pay_type }}</n-text>
+          </n-descriptions-item>
           <n-descriptions-item v-if="testResult.error" label="错误">
-            <span class="error-text">{{ testResult.error }}</span>
+            <n-text type="error">{{ testResult.error }}</n-text>
           </n-descriptions-item>
         </n-descriptions>
-        <div class="payinfo">
-          <div class="payinfo-label">pay_info</div>
-          <pre class="json">{{ testResult.pay_info }}</pre>
-        </div>
+
+        <n-divider title-placement="left">pay_info</n-divider>
+        <n-input :value="testResult.pay_info" type="textarea" readonly :autosize="{ minRows: 6, maxRows: 14 }" />
       </template>
+
       <template #footer>
         <n-space justify="end">
           <n-button @click="showTest = false">关闭</n-button>
         </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.field-wrap {
-  width: 100%;
-}
-.field-hint {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
-  font-size: 12px;
-  color: #64748b;
-}
-.tag-required {
-  color: #b45309;
-}
-.tag-secret {
-  color: #b91c1c;
-}
-.payinfo {
-  margin-top: 14px;
-}
-.payinfo-label {
-  font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 6px;
-}
-.json {
-  margin: 0;
-  max-height: 320px;
-  overflow: auto;
-  background: #0f172a;
-  color: #e2e8f0;
-  border-radius: 10px;
-  padding: 12px 14px;
-  font-size: 12px;
-  line-height: 1.6;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-.error-text {
-  color: #b91c1c;
-}
-</style>

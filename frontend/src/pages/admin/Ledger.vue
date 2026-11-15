@@ -1,22 +1,32 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui';
+import { NButton, NCollapseItem, NTag, NText, useMessage } from 'naive-ui';
 import type { DataTableColumns } from 'naive-ui';
+import {
+  CashOutline,
+  CheckmarkCircleOutline,
+  CloseOutline,
+  CopyOutline,
+  DownloadOutline,
+  ListOutline,
+  RefreshOutline,
+  SwapHorizontalOutline,
+} from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { adminApi } from '@/api';
 import { adminLedgerApi } from '@/api/adminLedger';
 import type { LedgerEntryRow } from '@/api/adminLedger';
 import { exportCsvUrl } from '@/api/reports';
 import { errorMessage } from '@/api/client';
-import MoneyText from '@/components/MoneyText.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import { copyText, formatDateTime } from '@/utils/format';
+import { activeStatus, copyText, formatDateTime, formatMoney, orderStatus } from '@/utils/format';
 import {
   asRow,
+  fieldDateTime,
   fieldText,
   itemsOf,
   normalizeLedgerAccount,
   numberOr,
+  pick,
   previewJson,
   prettyJson,
   textOf,
@@ -39,9 +49,6 @@ const accountsLoading = ref(false);
 const transactionsLoading = ref(false);
 const operationsLoading = ref(false);
 
-const showDetail = ref(false);
-const detailRow = ref<Row | null>(null);
-
 const pending = usePendingAction();
 
 const showAccount = ref(false);
@@ -62,6 +69,8 @@ const operationLoading = ref(false);
 const operationReason = ref('');
 
 const accountEntriesPaging = useServerPaging(loadAccountEntries);
+const entryPagination = accountEntriesPaging.pagination;
+const entryTotal = accountEntriesPaging.total;
 
 const {
   page: accountsPage,
@@ -100,6 +109,8 @@ const columnLabels: Record<string, string> = {
   created_at: '创建时间',
   updated_at: '更新时间',
 };
+
+const timeKeys = ['created_at', 'updated_at', 'processed_at', 'available_at'];
 
 async function loadAccounts() {
   accountsLoading.value = true;
@@ -156,19 +167,18 @@ function handleTab(value: string) {
   else void loadOperations();
 }
 
-function openDetail(row: Row) {
-  detailRow.value = row;
-  showDetail.value = true;
-}
-
-async function copyDetail() {
-  const ok = await copyText(prettyJson(detailRow.value));
-  if (ok) message.success('已复制到剪贴板');
-  else message.warning('复制失败，请手动选择文本');
+function reloadCurrent() {
+  handleTab(tab.value);
 }
 
 function exportLedger() {
   window.open(exportCsvUrl('ledger'), '_blank');
+}
+
+async function copyJson(value: unknown) {
+  const ok = await copyText(prettyJson(value));
+  if (ok) message.success('已复制到剪贴板');
+  else message.warning('复制失败，请手动选择文本');
 }
 
 async function loadAccountDetail() {
@@ -266,21 +276,69 @@ async function processOperation(action: 'approve' | 'reject') {
   });
 }
 
+const accountStatus = computed(() => activeStatus(fieldText(asRow(accountDetail.value).account, 'status')));
+
+const operationId = computed(() => textOf(asRow(operationDetail.value).id, ''));
+const operationPending = computed(() => fieldText(operationDetail.value, 'status') === 'pending');
+const operationBusy = computed(() => pending.pending.value.has(`operation:${operationId.value}`));
+
+interface TimelineNode {
+  key: string;
+  title: string;
+  time: string;
+  content: string;
+  type: 'default' | 'info' | 'success' | 'warning' | 'error';
+}
+
+const operationTimeline = computed<TimelineNode[]>(() => {
+  const row = asRow(operationDetail.value);
+  const rejected = textOf(pick(row, 'rejection_reason'), '');
+  const nodes: TimelineNode[] = [
+    {
+      key: 'created',
+      title: '资金操作提交',
+      time: fieldDateTime(row, 'created_at'),
+      content: `发起人 ${fieldText(row, 'created_by')}`,
+      type: 'info',
+    },
+  ];
+  if (pick(row, 'processed_at') !== undefined) {
+    nodes.push({
+      key: 'processed',
+      title: rejected === '' ? '审批通过' : '审批驳回',
+      time: fieldDateTime(row, 'processed_at'),
+      content: rejected === '' ? `处理人 ${fieldText(row, 'processed_by')}` : `驳回原因：${rejected}`,
+      type: rejected === '' ? 'success' : 'error',
+    });
+  } else {
+    nodes.push({ key: 'waiting', title: '等待审批', time: '-', content: '尚未产生处理记录', type: 'warning' });
+  }
+  return nodes;
+});
+
+function statusTag(status: string, kind: 'active' | 'order') {
+  const resolved = kind === 'active' ? activeStatus(status) : orderStatus(status);
+  return h(NTag, { size: 'small', round: true, bordered: false, type: resolved.type }, {
+    default: () => resolved.text,
+  });
+}
+
+function moneyNode(amount: number | null, type?: 'default' | 'success' | 'warning' | 'error') {
+  return h(NText, { class: 'amount', type }, { default: () => formatMoney(amount) });
+}
+
+function monoNode(value: string) {
+  return h('span', { class: 'mono' }, value || '-');
+}
+
 function cellOf(key: string, value: unknown) {
-  if (key === 'created_at' || key === 'updated_at' || key === 'processed_at' || key === 'available_at') {
+  if (timeKeys.includes(key)) {
     return formatDateTime(typeof value === 'string' ? value : null);
   }
   if (typeof value === 'object' && value !== null) {
-    return h('span', { class: 'muted' }, previewJson(value, 60));
+    return previewJson(value, 60);
   }
-  const text = textOf(value);
-  if (key === 'id' || key === 'idempotency_key' || key === 'reference_id' || key === 'account_id') {
-    return h('span', { class: 'mono' }, previewJson(text, 40));
-  }
-  if (text.length > 60) {
-    return h('span', { title: text }, previewJson(text, 60));
-  }
-  return text;
+  return textOf(value);
 }
 
 const transactionKeys = computed<string[]>(() => {
@@ -297,17 +355,17 @@ const accountColumns: DataTableColumns<LedgerAccountRow> = [
   {
     title: '账户 ID',
     key: 'id',
-    width: 280,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.id || '-'),
+    width: 260,
+    ellipsis: { tooltip: true },
+    render: (row) => monoNode(row.id),
   },
   { title: '归属类型', key: 'owner_type', width: 100, render: (row) => row.owner_type || '-' },
   {
     title: '归属 ID',
     key: 'owner_id',
-    width: 260,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.owner_id || '-'),
+    width: 240,
+    ellipsis: { tooltip: true },
+    render: (row) => monoNode(row.owner_id),
   },
   { title: '用途', key: 'purpose', width: 110, render: (row) => row.purpose || '-' },
   { title: '币种', key: 'currency', width: 80, render: (row) => row.currency || '-' },
@@ -315,21 +373,21 @@ const accountColumns: DataTableColumns<LedgerAccountRow> = [
     title: '状态',
     key: 'status',
     width: 90,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'active' }),
+    render: (row) => statusTag(row.status, 'active'),
   },
   {
     title: '可用余额',
     key: 'available',
-    width: 130,
+    width: 140,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: row.available }),
+    render: (row) => moneyNode(row.available),
   },
   {
     title: '冻结金额',
     key: 'frozen',
-    width: 130,
+    width: 140,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: row.frozen, color: '#b45309' }),
+    render: (row) => moneyNode(row.frozen, 'warning'),
   },
   {
     title: '创建时间',
@@ -340,10 +398,10 @@ const accountColumns: DataTableColumns<LedgerAccountRow> = [
   {
     title: '操作',
     key: 'actions',
-    width: 100,
+    width: 90,
     fixed: 'right',
     render: (row) =>
-      h(NButton, { size: 'tiny', quaternary: true, type: 'info', onClick: () => openAccount(row) }, {
+      h(NButton, { text: true, size: 'small', type: 'primary', onClick: () => openAccount(row) }, {
         default: () => '分录',
       }),
   },
@@ -358,21 +416,21 @@ const entryColumns: DataTableColumns<LedgerEntryRow> = [
     key: 'amount',
     width: 130,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: typeof row.amount === 'number' ? row.amount : null }),
+    render: (row) => moneyNode(typeof row.amount === 'number' ? row.amount : null),
   },
   {
     title: '分录后余额',
     key: 'balance_after',
     width: 140,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: typeof row.balance_after === 'number' ? row.balance_after : null }),
+    render: (row) => moneyNode(typeof row.balance_after === 'number' ? row.balance_after : null),
   },
   {
     title: '账户 ID',
     key: 'account_id',
-    minWidth: 220,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.account_id || '-'),
+    width: 220,
+    ellipsis: { tooltip: true },
+    render: (row) => monoNode(row.account_id ?? ''),
   },
   {
     title: '时间',
@@ -386,8 +444,8 @@ const transactionColumns = computed<DataTableColumns<Row>>(() =>
   transactionKeys.value.map((key) => ({
     title: columnLabels[key] ?? key,
     key,
-    minWidth: key === 'metadata' ? 240 : 150,
-    ellipsis: key !== 'metadata',
+    minWidth: key === 'metadata' ? 240 : 160,
+    ellipsis: key === 'metadata' ? false : { tooltip: true },
     render: (row: Row) => cellOf(key, row[key]),
   })),
 );
@@ -396,9 +454,9 @@ const operationColumns: DataTableColumns<Row> = [
   {
     title: '操作 ID',
     key: 'id',
-    width: 260,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, textOf(row.id)),
+    width: 250,
+    ellipsis: { tooltip: true },
+    render: (row) => monoNode(textOf(row.id, '')),
   },
   {
     title: '操作类型',
@@ -410,30 +468,36 @@ const operationColumns: DataTableColumns<Row> = [
     title: '状态',
     key: 'status',
     width: 100,
-    render: (row) => h(StatusTag, { status: textOf(row.status, 'pending'), kind: 'order' }),
+    render: (row) => statusTag(textOf(row.status, 'pending'), 'order'),
   },
   {
     title: '金额',
     key: 'amount',
     width: 130,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: typeof row.amount === 'number' ? row.amount : null }),
+    render: (row) => moneyNode(typeof row.amount === 'number' ? row.amount : null),
   },
   {
     title: '账户 ID',
     key: 'account_id',
     width: 240,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, textOf(row.account_id)),
+    ellipsis: { tooltip: true },
+    render: (row) => monoNode(textOf(row.account_id, '')),
   },
   {
     title: '关联单号',
     key: 'reference_id',
     width: 200,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, textOf(row.reference_id)),
+    ellipsis: { tooltip: true },
+    render: (row) => monoNode(textOf(row.reference_id, '')),
   },
-  { title: '摘要', key: 'description', minWidth: 160, ellipsis: true, render: (row) => textOf(row.description) },
+  {
+    title: '摘要',
+    key: 'description',
+    minWidth: 160,
+    ellipsis: { tooltip: true },
+    render: (row) => textOf(row.description),
+  },
   {
     title: '创建时间',
     key: 'created_at',
@@ -443,10 +507,10 @@ const operationColumns: DataTableColumns<Row> = [
   {
     title: '操作',
     key: 'actions',
-    width: 110,
+    width: 90,
     fixed: 'right',
     render: (row) =>
-      h(NButton, { size: 'tiny', quaternary: true, type: 'info', onClick: () => openOperation(row) }, {
+      h(NButton, { text: true, size: 'small', type: 'primary', onClick: () => openOperation(row) }, {
         default: () => '审批',
       }),
   },
@@ -456,37 +520,46 @@ function rowProps(row: Row) {
   return { style: 'cursor: pointer', onClick: () => openTransaction(row) };
 }
 
-function showRawTransaction() {
-  openDetail(asRow(transactionDetail));
-}
-
 onMounted(() => {
   void loadAccounts();
 });
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="资金账本" subtitle="复式记账账户、交易流水与人工资金操作">
-      <template #actions>
-        <n-button secondary :loading="accountsLoading || transactionsLoading || operationsLoading" @click="handleTab(tab)">
+  <admin-page title="资金账本" subtitle="复式记账账户、交易流水与人工资金操作">
+    <template #actions>
+      <n-space>
+        <n-button :loading="accountsLoading || transactionsLoading || operationsLoading" @click="reloadCurrent">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
           刷新当前页签
         </n-button>
-        <n-button secondary @click="exportLedger">导出 CSV</n-button>
-      </template>
-    </PageHeader>
+        <n-button @click="exportLedger">
+          <template #icon>
+            <n-icon :component="DownloadOutline" />
+          </template>
+          导出 CSV
+        </n-button>
+      </n-space>
+    </template>
 
-    <n-card :bordered="false">
+    <n-card size="small" :bordered="false">
       <n-tabs :value="tab" type="line" animated @update:value="handleTab">
-        <n-tab-pane name="accounts" tab="账户">
+        <n-tab-pane name="accounts">
+          <template #tab>
+            <n-space :size="6" align="center">
+              <n-icon :component="CashOutline" />
+              <span>账户</span>
+            </n-space>
+          </template>
           <n-data-table
             :columns="accountColumns"
             :data="accounts"
             :loading="accountsLoading"
             :pagination="accountsPagination"
             :row-key="(row: LedgerAccountRow) => row.id"
-            :bordered="false"
-            :single-line="false"
+            :scroll-x="1600"
             size="small"
             remote
             @update:page="onAccountsPage"
@@ -498,7 +571,13 @@ onMounted(() => {
           </n-data-table>
         </n-tab-pane>
 
-        <n-tab-pane name="transactions" tab="流水">
+        <n-tab-pane name="transactions">
+          <template #tab>
+            <n-space :size="6" align="center">
+              <n-icon :component="SwapHorizontalOutline" />
+              <span>流水</span>
+            </n-space>
+          </template>
           <n-data-table
             :columns="transactionColumns"
             :data="transactions"
@@ -506,8 +585,7 @@ onMounted(() => {
             :pagination="transactionsPagination"
             :row-key="(row: Row) => String(row.id ?? '')"
             :row-props="rowProps"
-            :bordered="false"
-            :single-line="false"
+            :scroll-x="1200"
             size="small"
             remote
             @update:page="onTransactionsPage"
@@ -517,18 +595,25 @@ onMounted(() => {
               <n-empty description="暂无账本流水" size="small" />
             </template>
           </n-data-table>
-          <p class="muted tip">点击任意流水行查看完整 JSON。</p>
+          <n-text depth="3" style="display: block; margin-top: 10px; font-size: 12px">
+            点击任意流水行，右侧查看该笔交易的分录与原始数据。
+          </n-text>
         </n-tab-pane>
 
-        <n-tab-pane name="operations" tab="操作">
+        <n-tab-pane name="operations">
+          <template #tab>
+            <n-space :size="6" align="center">
+              <n-icon :component="ListOutline" />
+              <span>操作</span>
+            </n-space>
+          </template>
           <n-data-table
             :columns="operationColumns"
             :data="operations"
             :loading="operationsLoading"
             :pagination="operationsPagination"
             :row-key="(row: Row) => String(row.id ?? '')"
-            :bordered="false"
-            :single-line="false"
+            :scroll-x="1600"
             size="small"
             remote
             @update:page="onOperationsPage"
@@ -542,98 +627,123 @@ onMounted(() => {
       </n-tabs>
     </n-card>
 
-    <n-modal v-model:show="showDetail" preset="card" title="明细" style="width: 760px; max-width: 94vw">
-      <pre class="json">{{ prettyJson(detailRow) }}</pre>
-      <template #footer>
-        <n-space justify="end">
-          <n-button @click="copyDetail">复制 JSON</n-button>
-          <n-button type="primary" @click="showDetail = false">关闭</n-button>
-        </n-space>
-      </template>
-    </n-modal>
-
-    <n-drawer v-model:show="showAccount" :width="900" placement="right">
+    <n-drawer v-model:show="showAccount" :width="640" placement="right">
       <n-drawer-content :title="`账户 ${accountId}`" closable>
         <n-spin :show="accountLoading">
-          <n-empty v-if="!accountDetail && !accountLoading" description="暂无账户数据" />
-          <template v-else>
-            <n-descriptions :column="2" label-placement="left" size="small" bordered>
-              <n-descriptions-item label="账户 ID">
-                <span class="mono">{{ accountId }}</span>
-              </n-descriptions-item>
-              <n-descriptions-item label="状态">
-                {{ fieldText(asRow(accountDetail).account, 'status') }}
-              </n-descriptions-item>
-              <n-descriptions-item label="归属">
-                {{ fieldText(asRow(accountDetail).account, 'owner_type') }} /
-                <span class="mono">{{ fieldText(asRow(accountDetail).account, 'owner_id') }}</span>
-              </n-descriptions-item>
-              <n-descriptions-item label="用途">{{ fieldText(asRow(accountDetail).account, 'purpose') }}</n-descriptions-item>
-              <n-descriptions-item label="可用余额">
-                <MoneyText :amount="numberOr(asRow(asRow(accountDetail).balance).available, 0)" />
-              </n-descriptions-item>
-              <n-descriptions-item label="冻结金额">
-                <MoneyText :amount="numberOr(asRow(asRow(accountDetail).balance).frozen, 0)" color="#b45309" />
-              </n-descriptions-item>
-            </n-descriptions>
-            <div class="drawer-toolbar">
-              <span class="muted small">分录（{{ accountEntriesPaging.total.value }} 条）</span>
-              <n-button size="small" @click="loadAccountEntries">刷新分录</n-button>
-            </div>
-            <n-data-table
-              :columns="entryColumns"
-              :data="accountEntries"
-              :loading="accountEntriesLoading"
-              :pagination="accountEntriesPaging.pagination.value"
-              :row-key="(row: LedgerEntryRow) => String(row.id ?? row.sequence ?? '')"
-              :bordered="false"
-              :single-line="false"
-              size="small"
-              remote
-              @update:page="accountEntriesPaging.onPage"
-              @update:page-size="accountEntriesPaging.onPageSize"
-            >
-              <template #empty>
-                <n-empty description="该账户还没有分录" size="small" />
+          <n-descriptions :column="2" bordered label-placement="left" size="small">
+            <n-descriptions-item label="账户 ID">
+              <span class="mono">{{ accountId }}</span>
+            </n-descriptions-item>
+            <n-descriptions-item label="状态">
+              <n-tag size="small" round :bordered="false" :type="accountStatus.type">{{ accountStatus.text }}</n-tag>
+            </n-descriptions-item>
+            <n-descriptions-item label="归属类型">
+              {{ fieldText(asRow(accountDetail).account, 'owner_type') }}
+            </n-descriptions-item>
+            <n-descriptions-item label="归属 ID">
+              <span class="mono">{{ fieldText(asRow(accountDetail).account, 'owner_id') }}</span>
+            </n-descriptions-item>
+            <n-descriptions-item label="用途">
+              {{ fieldText(asRow(accountDetail).account, 'purpose') }}
+            </n-descriptions-item>
+            <n-descriptions-item label="币种">
+              {{ fieldText(asRow(accountDetail).account, 'currency') }}
+            </n-descriptions-item>
+            <n-descriptions-item label="可用余额">
+              <span class="amount">{{ formatMoney(numberOr(asRow(asRow(accountDetail).balance).available, 0)) }}</span>
+            </n-descriptions-item>
+            <n-descriptions-item label="冻结金额">
+              <span class="amount">{{ formatMoney(numberOr(asRow(asRow(accountDetail).balance).frozen, 0)) }}</span>
+            </n-descriptions-item>
+          </n-descriptions>
+
+          <n-divider title-placement="left">
+            分录（{{ entryTotal }} 条）
+          </n-divider>
+          <n-space justify="end" style="margin-bottom: 10px">
+            <n-button size="small" :loading="accountEntriesLoading" @click="loadAccountEntries">
+              <template #icon>
+                <n-icon :component="RefreshOutline" />
               </template>
-            </n-data-table>
-          </template>
+              刷新分录
+            </n-button>
+          </n-space>
+          <n-data-table
+            :columns="entryColumns"
+            :data="accountEntries"
+            :loading="accountEntriesLoading"
+            :pagination="entryPagination"
+            :row-key="(row: LedgerEntryRow) => String(row.id ?? row.sequence ?? '')"
+            :scroll-x="900"
+            size="small"
+            remote
+            @update:page="accountEntriesPaging.onPage"
+            @update:page-size="accountEntriesPaging.onPageSize"
+          >
+            <template #empty>
+              <n-empty description="该账户还没有分录" size="small" />
+            </template>
+          </n-data-table>
         </n-spin>
       </n-drawer-content>
     </n-drawer>
 
-    <n-drawer v-model:show="showTransaction" :width="900" placement="right">
+    <n-drawer v-model:show="showTransaction" :width="640" placement="right">
       <n-drawer-content title="交易明细" closable>
         <n-spin :show="transactionLoading">
-          <n-descriptions :column="2" label-placement="left" size="small" bordered>
+          <n-descriptions :column="2" bordered label-placement="left" size="small">
             <n-descriptions-item label="交易 ID">
               <span class="mono">{{ fieldText(transactionDetail, 'id') }}</span>
             </n-descriptions-item>
             <n-descriptions-item label="幂等键">
               <span class="mono">{{ fieldText(transactionDetail, 'idempotency_key') }}</span>
             </n-descriptions-item>
-            <n-descriptions-item label="关联">
-              {{ fieldText(transactionDetail, 'reference_type') }} /
+            <n-descriptions-item label="关联类型">
+              {{ fieldText(transactionDetail, 'reference_type') }}
+            </n-descriptions-item>
+            <n-descriptions-item label="关联单号">
               <span class="mono">{{ fieldText(transactionDetail, 'reference_id') }}</span>
             </n-descriptions-item>
-            <n-descriptions-item label="摘要">{{ fieldText(transactionDetail, 'description') }}</n-descriptions-item>
+            <n-descriptions-item label="摘要" :span="2">
+              {{ fieldText(transactionDetail, 'description') }}
+            </n-descriptions-item>
+            <n-descriptions-item label="创建时间" :span="2">
+              {{ formatDateTime(textOf(pick(transactionDetail, 'created_at'), '')) }}
+            </n-descriptions-item>
           </n-descriptions>
-          <div class="drawer-toolbar">
-            <span class="muted small">分录（{{ transactionEntries.length }} 条）</span>
-            <n-button size="small" @click="showRawTransaction">查看原始 JSON</n-button>
-          </div>
+
+          <n-divider title-placement="left">
+            分录（{{ transactionEntries.length }} 条）
+          </n-divider>
           <n-data-table
             :columns="entryColumns"
             :data="transactionEntries"
-            :bordered="false"
-            :single-line="false"
-            size="small"
             :row-key="(row: LedgerEntryRow) => String(row.id ?? row.sequence ?? '')"
+            :scroll-x="900"
+            :pagination="false"
+            size="small"
           >
             <template #empty>
               <n-empty description="这笔交易没有分录" size="small" />
             </template>
           </n-data-table>
+
+          <n-divider title-placement="left">
+            原始数据
+          </n-divider>
+          <n-collapse :default-expanded-names="['raw']">
+            <n-collapse-item title="原始 JSON" name="raw">
+              <n-space justify="end" style="margin-bottom: 8px">
+                <n-button text type="primary" size="small" @click="copyJson(transactionDetail)">
+                  <template #icon>
+                    <n-icon :component="CopyOutline" />
+                  </template>
+                  复制 JSON
+                </n-button>
+              </n-space>
+              <n-code :code="prettyJson(transactionDetail)" language="json" word-wrap />
+            </n-collapse-item>
+          </n-collapse>
         </n-spin>
       </n-drawer-content>
     </n-drawer>
@@ -641,18 +751,27 @@ onMounted(() => {
     <n-drawer v-model:show="showOperation" :width="640" placement="right">
       <n-drawer-content title="资金操作审批" closable>
         <n-spin :show="operationLoading">
-          <n-descriptions :column="1" label-placement="left" size="small" bordered>
+          <n-descriptions :column="2" bordered label-placement="left" size="small">
             <n-descriptions-item label="操作 ID">
               <span class="mono">{{ fieldText(operationDetail, 'id') }}</span>
             </n-descriptions-item>
-            <n-descriptions-item label="类型">{{ fieldText(operationDetail, 'operation_type') }}</n-descriptions-item>
+            <n-descriptions-item label="类型">
+              {{ fieldText(operationDetail, 'operation_type') }}
+            </n-descriptions-item>
             <n-descriptions-item label="状态">
-              {{ fieldText(operationDetail, 'status') }}
+              <n-tag
+                size="small"
+                round
+                :bordered="false"
+                :type="orderStatus(fieldText(operationDetail, 'status')).type"
+              >
+                {{ orderStatus(fieldText(operationDetail, 'status')).text }}
+              </n-tag>
             </n-descriptions-item>
             <n-descriptions-item label="金额">
-              <MoneyText :amount="numberOr(asRow(operationDetail).amount, 0)" />
+              <span class="amount">{{ formatMoney(numberOr(asRow(operationDetail).amount, 0)) }}</span>
             </n-descriptions-item>
-            <n-descriptions-item label="账户">
+            <n-descriptions-item label="账户 ID">
               <span class="mono">{{ fieldText(operationDetail, 'account_id') }}</span>
             </n-descriptions-item>
             <n-descriptions-item label="对手账户">
@@ -662,74 +781,85 @@ onMounted(() => {
               <span class="mono">{{ fieldText(operationDetail, 'reference_id') }}</span>
             </n-descriptions-item>
             <n-descriptions-item label="摘要">{{ fieldText(operationDetail, 'description') }}</n-descriptions-item>
-            <n-descriptions-item label="驳回原因">
+            <n-descriptions-item label="驳回原因" :span="2">
               {{ fieldText(operationDetail, 'rejection_reason') }}
             </n-descriptions-item>
           </n-descriptions>
-          <template v-if="fieldText(operationDetail, 'status') === 'pending'">
-            <n-divider title-placement="left">审批</n-divider>
-            <n-form-item label="驳回原因">
-              <n-input v-model:value="operationReason" placeholder="驳回时必填，通过可留空" />
-            </n-form-item>
-            <n-space justify="end">
+
+          <n-divider title-placement="left">
+            审批轨迹
+          </n-divider>
+          <n-timeline>
+            <n-timeline-item
+              v-for="node in operationTimeline"
+              :key="node.key"
+              :title="node.title"
+              :content="node.content"
+              :time="node.time"
+              :type="node.type"
+            />
+          </n-timeline>
+
+          <template v-if="operationPending">
+            <n-divider title-placement="left">
+              审批
+            </n-divider>
+            <n-form label-placement="left" label-width="90" :show-feedback="false">
+              <n-form-item label="驳回原因">
+                <n-input v-model:value="operationReason" placeholder="驳回时必填，通过可留空" />
+              </n-form-item>
+            </n-form>
+          </template>
+
+          <n-divider title-placement="left">
+            原始数据
+          </n-divider>
+          <n-collapse>
+            <n-collapse-item title="原始 JSON" name="raw">
+              <n-space justify="end" style="margin-bottom: 8px">
+                <n-button text type="primary" size="small" @click="copyJson(operationDetail)">
+                  <template #icon>
+                    <n-icon :component="CopyOutline" />
+                  </template>
+                  复制 JSON
+                </n-button>
+              </n-space>
+              <n-code :code="prettyJson(operationDetail)" language="json" word-wrap />
+            </n-collapse-item>
+          </n-collapse>
+        </n-spin>
+
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="showOperation = false">关闭</n-button>
+            <template v-if="operationPending">
               <n-button
                 type="error"
                 secondary
-                :loading="pending.pending.value.has(`operation:${fieldText(operationDetail, 'id')}`)"
-                :disabled="pending.pending.value.has(`operation:${fieldText(operationDetail, 'id')}`)"
+                :loading="operationBusy"
+                :disabled="operationBusy"
                 @click="processOperation('reject')"
               >
+                <template #icon>
+                  <n-icon :component="CloseOutline" />
+                </template>
                 驳回
               </n-button>
               <n-popconfirm @positive-click="processOperation('approve')">
                 <template #trigger>
-                  <n-button
-                    type="primary"
-                    :loading="pending.pending.value.has(`operation:${fieldText(operationDetail, 'id')}`)"
-                    :disabled="pending.pending.value.has(`operation:${fieldText(operationDetail, 'id')}`)"
-                  >
+                  <n-button type="primary" :loading="operationBusy" :disabled="operationBusy">
+                    <template #icon>
+                      <n-icon :component="CheckmarkCircleOutline" />
+                    </template>
                     通过
                   </n-button>
                 </template>
                 确认通过该资金操作？会产生账本分录。
               </n-popconfirm>
-            </n-space>
-          </template>
-          <n-divider title-placement="left">原始数据</n-divider>
-          <pre class="json">{{ prettyJson(operationDetail) }}</pre>
-        </n-spin>
+            </template>
+          </n-space>
+        </template>
       </n-drawer-content>
     </n-drawer>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.tip {
-  margin: 10px 0 0;
-  font-size: 12px;
-}
-.drawer-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 14px 0 10px;
-}
-.small {
-  font-size: 12px;
-}
-.json {
-  margin: 0;
-  max-height: 60vh;
-  overflow: auto;
-  background: #0f172a;
-  color: #e2e8f0;
-  border-radius: 10px;
-  padding: 14px 16px;
-  font-size: 12px;
-  line-height: 1.6;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-</style>

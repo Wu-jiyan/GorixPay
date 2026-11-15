@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui';
+import { NButton, NPopconfirm, NSpace, NTag, NText, useMessage } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
+import { RefreshOutline, SearchOutline } from '@vicons/ionicons5';
 import { adminApi } from '@/api';
 import type { Credential, LedgerAccount, Merchant } from '@/api';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import MoneyText from '@/components/MoneyText.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import { formatDateTime } from '@/utils/format';
+import AdminPage from '@/components/AdminPage.vue';
+import { activeStatus, formatDateTime, formatMoney } from '@/utils/format';
 import { normalizeLedgerAccount, useServerPaging } from './shared';
 import type { LedgerAccountRow } from './shared';
 
@@ -99,35 +98,38 @@ const columns = computed<DataTableColumns<Merchant>>(() => [
   {
     title: '商户 ID',
     key: 'id',
-    width: 280,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.id),
+    width: 260,
+    ellipsis: { tooltip: true },
+    render: (row) => h(NText, { class: 'mono' }, () => row.id),
   },
   {
     title: '商户名称',
     key: 'display_name',
-    minWidth: 140,
-    ellipsis: true,
+    minWidth: 150,
+    ellipsis: { tooltip: true },
     render: (row) => row.display_name || '-',
   },
   {
     title: '邮箱',
     key: 'email',
-    minWidth: 160,
-    ellipsis: true,
+    minWidth: 170,
+    ellipsis: { tooltip: true },
     render: (row) => row.email || '-',
   },
   {
     title: '手机号',
     key: 'phone',
-    width: 130,
+    width: 140,
     render: (row) => row.phone || '-',
   },
   {
     title: '状态',
     key: 'status',
-    width: 90,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'active' }),
+    width: 100,
+    render: (row) =>
+      h(NTag, { size: 'small', bordered: false, type: activeStatus(row.status).type }, () =>
+        activeStatus(row.status).text,
+      ),
   },
   {
     title: '创建时间',
@@ -141,32 +143,26 @@ const columns = computed<DataTableColumns<Merchant>>(() => [
     width: 150,
     fixed: 'right',
     render: (row) =>
-      h(
-        NSpace,
-        { size: 4, wrap: false },
-        {
-          default: () => [
-            h(
-              NPopconfirm,
-              { onPositiveClick: () => toggleStatus(row) },
-              {
-                trigger: () =>
-                  h(
-                    NButton,
-                    { size: 'tiny', quaternary: true, type: row.status === 'active' ? 'warning' : 'primary' },
-                    { default: () => (row.status === 'active' ? '禁用' : '启用') },
-                  ),
-                default: () => (row.status === 'active' ? '确认禁用该商户？' : '确认启用该商户？'),
-              },
-            ),
-            h(
-              NButton,
-              { size: 'tiny', quaternary: true, type: 'info', onClick: () => openDetail(row) },
-              { default: () => '详情' },
-            ),
-          ],
-        },
-      ),
+      h(NSpace, { size: 8, wrap: false }, () => [
+        h(
+          NPopconfirm,
+          { onPositiveClick: () => toggleStatus(row) },
+          {
+            trigger: () =>
+              h(
+                NButton,
+                { size: 'small', text: true, type: row.status === 'active' ? 'warning' : 'primary' },
+                () => (row.status === 'active' ? '禁用' : '启用'),
+              ),
+            default: () => (row.status === 'active' ? '确认禁用该商户？' : '确认启用该商户？'),
+          },
+        ),
+        h(
+          NButton,
+          { size: 'small', text: true, type: 'primary', onClick: () => openDetail(row) },
+          () => '详情',
+        ),
+      ]),
   },
 ]);
 
@@ -174,17 +170,17 @@ const credentialColumns: DataTableColumns<Credential> = [
   {
     title: '类型',
     key: 'credential_type',
-    width: 90,
+    width: 100,
     render: (row) => (row.credential_type === 'rsa' ? 'V2 RSA' : 'V1 MD5'),
   },
   {
     title: 'Key ID',
     key: 'key_id',
-    minWidth: 140,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.key_id || '-'),
+    minWidth: 150,
+    ellipsis: { tooltip: true },
+    render: (row) => h(NText, { class: 'mono' }, () => row.key_id || '-'),
   },
-  { title: '状态', key: 'status', width: 90 },
+  { title: '状态', key: 'status', width: 100 },
   {
     title: '创建时间',
     key: 'created_at',
@@ -194,24 +190,38 @@ const credentialColumns: DataTableColumns<Credential> = [
 ];
 
 const accountColumns: DataTableColumns<LedgerAccountRow> = [
-  { title: '账户 ID', key: 'id', minWidth: 200, ellipsis: true, render: (row) => h('span', { class: 'mono' }, row.id) },
-  { title: '归属类型', key: 'owner_type', width: 100, render: (row) => row.owner_type || '-' },
+  {
+    title: '账户 ID',
+    key: 'id',
+    minWidth: 200,
+    ellipsis: { tooltip: true },
+    render: (row) => h(NText, { class: 'mono' }, () => row.id),
+  },
+  { title: '归属类型', key: 'owner_type', width: 110, render: (row) => row.owner_type || '-' },
   { title: '用途', key: 'purpose', width: 110, render: (row) => row.purpose || '-' },
-  { title: '币种', key: 'currency', width: 80, render: (row) => row.currency || '-' },
-  { title: '状态', key: 'status', width: 90, render: (row) => h(StatusTag, { status: row.status, kind: 'active' }) },
+  { title: '币种', key: 'currency', width: 90, render: (row) => row.currency || '-' },
+  {
+    title: '状态',
+    key: 'status',
+    width: 100,
+    render: (row) =>
+      h(NTag, { size: 'small', bordered: false, type: activeStatus(row.status).type }, () =>
+        activeStatus(row.status).text,
+      ),
+  },
   {
     title: '可用余额',
     key: 'available',
-    width: 130,
+    width: 140,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: row.available }),
+    render: (row) => h(NText, { class: 'amount' }, () => formatMoney(row.available)),
   },
   {
     title: '冻结金额',
     key: 'frozen',
-    width: 130,
+    width: 140,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: row.frozen, color: '#b45309' }),
+    render: (row) => h(NText, { class: 'amount' }, () => formatMoney(row.frozen)),
   },
 ];
 
@@ -219,96 +229,107 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="商户管理" subtitle="查看商户资料、密钥与账本余额，控制商户启用状态">
-      <template #actions>
-        <n-button secondary :loading="loading" @click="load">刷新</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="商户管理" subtitle="查看商户资料、密钥与账本余额，控制商户启用状态">
+    <template #actions>
+      <n-space>
+        <n-button :loading="loading" @click="load">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
+      </n-space>
+    </template>
 
-    <div class="toolbar">
-      <n-input
-        v-model:value="keyword"
-        placeholder="搜索名称 / 邮箱 / 手机号"
-        clearable
-        style="width: 260px"
-        @keyup.enter="search"
-      />
-      <n-select
-        v-model:value="status"
-        :options="statusOptions"
-        placeholder="全部状态"
-        clearable
-        style="width: 160px"
-      />
-      <n-button type="primary" @click="search">查询</n-button>
-      <n-button @click="resetFilters">重置</n-button>
-    </div>
+    <n-card size="small" :bordered="false">
+      <n-form inline :show-feedback="false">
+        <n-form-item label="关键字">
+          <n-input
+            v-model:value="keyword"
+            placeholder="搜索名称 / 邮箱 / 手机号"
+            clearable
+            style="width: 250px"
+            @keyup.enter="search"
+          >
+            <template #prefix>
+              <n-icon :component="SearchOutline" />
+            </template>
+          </n-input>
+        </n-form-item>
+        <n-form-item label="状态">
+          <n-select
+            v-model:value="status"
+            :options="statusOptions"
+            placeholder="全部状态"
+            clearable
+            style="width: 150px"
+          />
+        </n-form-item>
+        <n-form-item>
+          <n-space align="center">
+            <n-button type="primary" @click="search">
+              <template #icon>
+                <n-icon :component="SearchOutline" />
+              </template>
+              查询
+            </n-button>
+            <n-button @click="resetFilters">重置</n-button>
+            <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
+          </n-space>
+        </n-form-item>
+      </n-form>
 
-    <n-card :bordered="false">
       <n-data-table
+        :remote="true"
+        :loading="loading"
         :columns="columns"
         :data="rows"
-        :loading="loading"
         :pagination="pagination"
         :row-key="(row: Merchant) => row.id"
-        :bordered="false"
-        :single-line="false"
-        size="small"
-        remote
+        :scroll-x="1200"
         @update:page="onPage"
         @update:page-size="onPageSize"
       />
     </n-card>
 
-    <n-drawer v-model:show="showDetail" :width="620" placement="right">
+    <n-drawer v-model:show="showDetail" :width="720" placement="right">
       <n-drawer-content :title="detail?.display_name ?? '商户详情'" closable>
         <n-spin :show="detailLoading">
           <n-empty v-if="!detail && !detailLoading" description="暂无商户数据" />
           <template v-else-if="detail">
-            <n-descriptions :column="1" label-placement="left" bordered size="small">
+            <n-descriptions :column="2" bordered size="small" label-placement="left">
               <n-descriptions-item label="商户 ID">
-                <span class="mono">{{ detail.id }}</span>
+                <n-text class="mono">{{ detail.id }}</n-text>
               </n-descriptions-item>
               <n-descriptions-item label="商户名称">{{ detail.display_name || '-' }}</n-descriptions-item>
               <n-descriptions-item label="邮箱">{{ detail.email || '-' }}</n-descriptions-item>
               <n-descriptions-item label="手机号">{{ detail.phone || '-' }}</n-descriptions-item>
               <n-descriptions-item label="状态">
-                <StatusTag :status="detail.status" kind="active" />
+                <n-tag :type="activeStatus(detail.status).type" size="small" :bordered="false">
+                  {{ activeStatus(detail.status).text }}
+                </n-tag>
               </n-descriptions-item>
               <n-descriptions-item label="创建时间">{{ formatDateTime(detail.created_at) }}</n-descriptions-item>
             </n-descriptions>
 
-            <n-divider>密钥（Credentials）</n-divider>
+            <n-divider title-placement="left">密钥（Credentials）</n-divider>
             <n-data-table
               :columns="credentialColumns"
               :data="detail.credentials ?? []"
-              :bordered="false"
-              :single-line="false"
-              size="small"
               :row-key="(row: Credential) => row.id"
-            >
-              <template #empty>
-                <n-empty description="暂无密钥" size="small" />
-              </template>
-            </n-data-table>
+              :scroll-x="700"
+            />
 
-            <n-divider>账本账户与余额</n-divider>
+            <n-divider title-placement="left">账本账户与余额</n-divider>
             <n-data-table
               :columns="accountColumns"
               :data="detailAccounts"
-              :bordered="false"
-              :single-line="false"
-              size="small"
               :row-key="(row: LedgerAccountRow) => row.id"
-            >
-              <template #empty>
-                <n-empty description="暂无账本账户" size="small" />
-              </template>
-            </n-data-table>
+              :scroll-x="900"
+            />
           </template>
         </n-spin>
       </n-drawer-content>
     </n-drawer>
-  </div>
+  </admin-page>
 </template>

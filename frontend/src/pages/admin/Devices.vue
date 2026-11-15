@@ -1,13 +1,23 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui';
-import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-ui';
+import {
+  NButton,
+  NIcon,
+  NInput,
+  NPopconfirm,
+  NSpace,
+  NSwitch,
+  NTag,
+  NText,
+  useMessage,
+} from 'naive-ui';
+import type { DataTableColumns, FormInst, FormRules } from 'naive-ui';
+import { AddOutline, CopyOutline, PaperPlaneOutline, RefreshOutline } from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { devicesApi } from '@/api/devices';
 import type { Printer, VoiceDevice } from '@/api/devices';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import { copyText, formatDateTime } from '@/utils/format';
+import { activeStatus, copyText, formatDateTime } from '@/utils/format';
 import { asRow, itemsOf } from './shared';
 
 interface DeviceForm {
@@ -51,11 +61,8 @@ const voiceTestTarget = ref<VoiceDevice | null>(null);
 const voiceTestText = ref('');
 const voiceTesting = ref(false);
 const printerTestingId = ref('');
-
-const statusOptions: SelectOption[] = [
-  { label: '启用', value: 'active' },
-  { label: '禁用', value: 'disabled' },
-];
+const removingDeviceId = ref('');
+const removingPrinterId = ref('');
 
 const deviceRules: FormRules = {
   device_no: { required: true, message: '请输入设备号', trigger: ['blur', 'input'] },
@@ -65,6 +72,20 @@ const deviceRules: FormRules = {
 const printerRules: FormRules = {
   name: { required: true, message: '请输入打印机名称', trigger: ['blur', 'input'] },
 };
+
+const deviceStatusSwitch = computed({
+  get: () => deviceForm.status === 'active',
+  set: (value: boolean) => {
+    deviceForm.status = value ? 'active' : 'disabled';
+  },
+});
+
+const printerStatusSwitch = computed({
+  get: () => printerForm.status === 'active',
+  set: (value: boolean) => {
+    printerForm.status = value ? 'active' : 'disabled';
+  },
+});
 
 async function loadDevices() {
   devicesLoading.value = true;
@@ -91,6 +112,11 @@ async function loadPrinters() {
 function handleTab(value: string) {
   tab.value = value;
   if (value === 'voice') void loadDevices();
+  else void loadPrinters();
+}
+
+function reloadCurrent() {
+  if (tab.value === 'voice') void loadDevices();
   else void loadPrinters();
 }
 
@@ -155,12 +181,15 @@ async function submitDevice() {
 }
 
 async function removeDevice(row: VoiceDevice) {
+  removingDeviceId.value = row.id;
   try {
     await devicesApi.deleteVoiceDevice(row.id);
     message.success('语音设备已删除');
     await loadDevices();
   } catch (error) {
     message.error(errorMessage(error));
+  } finally {
+    removingDeviceId.value = '';
   }
 }
 
@@ -232,12 +261,15 @@ async function submitPrinter() {
 }
 
 async function removePrinter(row: Printer) {
+  removingPrinterId.value = row.id;
   try {
     await devicesApi.deletePrinter(row.id);
     message.success('打印机已删除');
     await loadPrinters();
   } catch (error) {
     message.error(errorMessage(error));
+  } finally {
+    removingPrinterId.value = '';
   }
 }
 
@@ -253,21 +285,25 @@ async function testPrinter(row: Printer) {
   }
 }
 
+function statusTag(status?: string) {
+  const meta = activeStatus(status);
+  return h(
+    NTag,
+    { size: 'small', round: true, type: meta.type, bordered: false },
+    { default: () => meta.text },
+  );
+}
+
 const deviceColumns = computed<DataTableColumns<VoiceDevice>>(() => [
   {
     title: '设备号',
     key: 'device_no',
     width: 220,
     ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.device_no || '-'),
+    render: (row) => h(NText, { code: true }, { default: () => row.device_no || '-' }),
   },
   { title: '名称', key: 'name', minWidth: 160, ellipsis: true, render: (row) => row.name || '-' },
-  {
-    title: '状态',
-    key: 'status',
-    width: 90,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'active' }),
-  },
+  { title: '状态', key: 'status', width: 110, render: (row) => statusTag(row.status) },
   {
     title: '最后心跳',
     key: 'last_seen_at',
@@ -282,25 +318,34 @@ const deviceColumns = computed<DataTableColumns<VoiceDevice>>(() => [
     render: (row) =>
       h(
         NSpace,
-        { size: 4, wrap: false },
+        { size: 12, wrap: false },
         {
           default: () => [
             h(
               NButton,
-              { size: 'tiny', quaternary: true, type: 'info', onClick: () => openEditDevice(row) },
+              { text: true, size: 'small', type: 'primary', onClick: () => openEditDevice(row) },
               { default: () => '编辑' },
             ),
             h(
               NButton,
-              { size: 'tiny', quaternary: true, type: 'primary', onClick: () => openVoiceTest(row) },
+              { text: true, size: 'small', type: 'info', onClick: () => openVoiceTest(row) },
               { default: () => '测试播报' },
             ),
             h(
               NPopconfirm,
-              { onPositiveClick: () => removeDevice(row) },
+              { positiveText: '确定', negativeText: '取消', onPositiveClick: () => removeDevice(row) },
               {
                 trigger: () =>
-                  h(NButton, { size: 'tiny', quaternary: true, type: 'error' }, { default: () => '删除' }),
+                  h(
+                    NButton,
+                    {
+                      text: true,
+                      size: 'small',
+                      type: 'error',
+                      loading: removingDeviceId.value === row.id,
+                    },
+                    { default: () => '删除' },
+                  ),
                 default: () => '确认删除该语音设备？删除后设备无法再轮询。',
               },
             ),
@@ -310,64 +355,65 @@ const deviceColumns = computed<DataTableColumns<VoiceDevice>>(() => [
   },
 ]);
 
-const printerColumns = computed<DataTableColumns<Printer>>(() => {
-  const testing = printerTestingId.value;
-  return [
-    { title: '名称', key: 'name', minWidth: 200, ellipsis: true, render: (row) => row.name || '-' },
-    {
-      title: '状态',
-      key: 'status',
-      width: 90,
-      render: (row) => h(StatusTag, { status: row.status, kind: 'active' }),
-    },
-    {
-      title: '创建时间',
-      key: 'created_at',
-      width: 170,
-      render: (row) => formatDateTime(row.created_at),
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 200,
-      fixed: 'right',
-      render: (row) =>
-        h(
-          NSpace,
-          { size: 4, wrap: false },
-          {
-            default: () => [
-              h(
-                NButton,
-                { size: 'tiny', quaternary: true, type: 'info', onClick: () => openEditPrinter(row) },
-                { default: () => '编辑' },
-              ),
-              h(
-                NButton,
-                {
-                  size: 'tiny',
-                  quaternary: true,
-                  type: 'primary',
-                  loading: testing === row.id,
-                  onClick: () => testPrinter(row),
-                },
-                { default: () => '测试打印' },
-              ),
-              h(
-                NPopconfirm,
-                { onPositiveClick: () => removePrinter(row) },
-                {
-                  trigger: () =>
-                    h(NButton, { size: 'tiny', quaternary: true, type: 'error' }, { default: () => '删除' }),
-                  default: () => '确认删除该打印机？',
-                },
-              ),
-            ],
-          },
-        ),
-    },
-  ];
-});
+const printerColumns = computed<DataTableColumns<Printer>>(() => [
+  { title: '名称', key: 'name', minWidth: 200, ellipsis: true, render: (row) => row.name || '-' },
+  { title: '状态', key: 'status', width: 110, render: (row) => statusTag(row.status) },
+  {
+    title: '创建时间',
+    key: 'created_at',
+    width: 170,
+    render: (row) => formatDateTime(row.created_at),
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 200,
+    fixed: 'right',
+    render: (row) =>
+      h(
+        NSpace,
+        { size: 12, wrap: false },
+        {
+          default: () => [
+            h(
+              NButton,
+              { text: true, size: 'small', type: 'primary', onClick: () => openEditPrinter(row) },
+              { default: () => '编辑' },
+            ),
+            h(
+              NButton,
+              {
+                text: true,
+                size: 'small',
+                type: 'info',
+                loading: printerTestingId.value === row.id,
+                onClick: () => testPrinter(row),
+              },
+              { default: () => '测试打印' },
+            ),
+            h(
+              NPopconfirm,
+              { positiveText: '确定', negativeText: '取消', onPositiveClick: () => removePrinter(row) },
+              {
+                trigger: () =>
+                  h(
+                    NButton,
+                    {
+                      text: true,
+                      size: 'small',
+                      type: 'error',
+                      loading: removingPrinterId.value === row.id,
+                    },
+                    { default: () => '删除' },
+                  ),
+                default: () => '确认删除该打印机？',
+              },
+            ),
+          ],
+        },
+      ),
+  },
+]);
 
 onMounted(() => {
   void loadDevices();
@@ -375,21 +421,35 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="语音设备与打印机" subtitle="设备侧拿 device_no + secret 轮询，播报与打印由支付成功钩子入队">
-      <template #actions>
-        <n-button secondary :loading="devicesLoading || printersLoading" @click="handleTab(tab)">刷新</n-button>
-        <n-button v-if="tab === 'voice'" type="primary" @click="openCreateDevice">新增语音设备</n-button>
-        <n-button v-else type="primary" @click="openCreatePrinter">新增打印机</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="语音设备与打印机" subtitle="设备侧拿 device_no + secret 轮询，播报与打印由支付成功钩子入队">
+    <template #actions>
+      <n-space>
+        <n-button :loading="devicesLoading || printersLoading" @click="reloadCurrent">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
+        <n-button v-if="tab === 'voice'" type="primary" @click="openCreateDevice">
+          <template #icon>
+            <n-icon :component="AddOutline" />
+          </template>
+          新增语音设备
+        </n-button>
+        <n-button v-else type="primary" @click="openCreatePrinter">
+          <template #icon>
+            <n-icon :component="AddOutline" />
+          </template>
+          新增打印机
+        </n-button>
+      </n-space>
+    </template>
 
     <n-alert type="info" :bordered="false" style="margin-bottom: 16px">
-      设备端用「device_no + secret」轮询取任务；支付成功钩子会把播报文案与打印小票写入队列。
-      创建时返回的 secret 只显示一次，丢了只能删设备重建。
+      设备端用「device_no + secret」轮询取任务；支付成功钩子会把播报文案与打印小票写入队列。创建时返回的 secret 只显示一次，丢了只能删设备重建。
     </n-alert>
 
-    <n-card :bordered="false">
+    <n-card size="small" :bordered="false">
       <n-tabs :value="tab" type="line" animated @update:value="handleTab">
         <n-tab-pane name="voice" tab="语音设备">
           <n-data-table
@@ -398,8 +458,7 @@ onMounted(() => {
             :loading="devicesLoading"
             :pagination="{ pageSize: 10 }"
             :row-key="(row: VoiceDevice) => row.id"
-            :bordered="false"
-            :single-line="false"
+            :scroll-x="900"
             size="small"
           >
             <template #empty>
@@ -415,8 +474,7 @@ onMounted(() => {
             :loading="printersLoading"
             :pagination="{ pageSize: 10 }"
             :row-key="(row: Printer) => row.id"
-            :bordered="false"
-            :single-line="false"
+            :scroll-x="900"
             size="small"
           >
             <template #empty>
@@ -431,17 +489,24 @@ onMounted(() => {
       v-model:show="showDeviceForm"
       preset="card"
       :title="deviceEditingId ? '编辑语音设备' : '新增语音设备'"
-      style="width: 560px; max-width: 94vw"
+      style="width: 640px"
     >
-      <n-form ref="deviceFormRef" :model="deviceForm" :rules="deviceRules" label-placement="left" label-width="100">
+      <n-form ref="deviceFormRef" :model="deviceForm" :rules="deviceRules" label-placement="left" label-width="120">
         <n-form-item label="设备号" path="device_no">
-          <n-input v-model:value="deviceForm.device_no" placeholder="设备唯一编号，设备端用它轮询" :disabled="!!deviceEditingId" />
+          <n-input
+            v-model:value="deviceForm.device_no"
+            placeholder="设备唯一编号，设备端用它轮询"
+            :disabled="!!deviceEditingId"
+          />
         </n-form-item>
         <n-form-item label="名称" path="name">
           <n-input v-model:value="deviceForm.name" placeholder="例如 一号收银台音箱" />
         </n-form-item>
         <n-form-item label="状态">
-          <n-select v-model:value="deviceForm.status" :options="statusOptions" />
+          <n-switch v-model:value="deviceStatusSwitch">
+            <template #checked>启用</template>
+            <template #unchecked>禁用</template>
+          </n-switch>
         </n-form-item>
       </n-form>
       <template #footer>
@@ -456,14 +521,17 @@ onMounted(() => {
       v-model:show="showPrinterForm"
       preset="card"
       :title="printerEditingId ? '编辑打印机' : '新增打印机'"
-      style="width: 560px; max-width: 94vw"
+      style="width: 640px"
     >
-      <n-form ref="printerFormRef" :model="printerForm" :rules="printerRules" label-placement="left" label-width="100">
+      <n-form ref="printerFormRef" :model="printerForm" :rules="printerRules" label-placement="left" label-width="120">
         <n-form-item label="名称" path="name">
           <n-input v-model:value="printerForm.name" placeholder="例如 前台热敏打印机" />
         </n-form-item>
         <n-form-item label="状态">
-          <n-select v-model:value="printerForm.status" :options="statusOptions" />
+          <n-switch v-model:value="printerStatusSwitch">
+            <template #checked>启用</template>
+            <template #unchecked>禁用</template>
+          </n-switch>
         </n-form-item>
       </n-form>
       <template #footer>
@@ -474,64 +542,61 @@ onMounted(() => {
       </template>
     </n-modal>
 
-    <n-modal v-model:show="showSecret" preset="card" :title="secretTitle" style="width: 560px; max-width: 94vw">
-      <n-alert type="warning" :bordered="false" style="margin-bottom: 14px">
+    <n-modal v-model:show="showSecret" preset="card" :title="secretTitle" style="width: 640px">
+      <n-alert type="warning" :bordered="false" style="margin-bottom: 16px">
         secret 只显示这一次，关掉就查不到了；丢了只能删除设备重建。
       </n-alert>
-      <div class="secret-box mono">{{ secretValue }}</div>
+      <n-space align="center" :size="12">
+        <n-input
+          :value="secretValue"
+          type="password"
+          show-password-on="click"
+          readonly
+          style="width: 440px"
+        />
+        <n-button @click="copySecret">
+          <template #icon>
+            <n-icon :component="CopyOutline" />
+          </template>
+          复制
+        </n-button>
+      </n-space>
       <template #footer>
         <n-space justify="end">
-          <n-button @click="copySecret">复制</n-button>
           <n-button type="primary" @click="showSecret = false">我已保存</n-button>
         </n-space>
       </template>
     </n-modal>
 
-    <n-modal v-model:show="showVoiceTest" preset="card" title="发送测试播报" style="width: 560px; max-width: 94vw">
+    <n-modal v-model:show="showVoiceTest" preset="card" title="发送测试播报" style="width: 640px">
       <n-descriptions v-if="voiceTestTarget" :column="1" label-placement="left" size="small" bordered>
-        <n-descriptions-item label="设备号">
-          <span class="mono">{{ voiceTestTarget.device_no }}</span>
-        </n-descriptions-item>
+        <n-descriptions-item label="设备号">{{ voiceTestTarget.device_no }}</n-descriptions-item>
         <n-descriptions-item label="名称">{{ voiceTestTarget.name || '-' }}</n-descriptions-item>
       </n-descriptions>
-      <div class="field">
-        <div class="field-label">播报内容</div>
-        <n-input
-          v-model:value="voiceTestText"
-          type="textarea"
-          :autosize="{ minRows: 2, maxRows: 4 }"
-          placeholder="例如：支付宝到账 1.00 元"
-        />
-      </div>
-      <n-alert type="info" :bordered="false" style="margin-top: 14px">
+      <n-form label-placement="left" label-width="120" style="margin-top: 16px">
+        <n-form-item label="播报内容">
+          <n-input
+            v-model:value="voiceTestText"
+            type="textarea"
+            :autosize="{ minRows: 2, maxRows: 4 }"
+            placeholder="例如：支付宝到账 1.00 元"
+          />
+        </n-form-item>
+      </n-form>
+      <n-alert type="info" :bordered="false">
         设备在线时会通过轮询取到这条播报；离线时任务会留在队列里。
       </n-alert>
       <template #footer>
         <n-space justify="end">
           <n-button @click="showVoiceTest = false">取消</n-button>
-          <n-button type="primary" :loading="voiceTesting" @click="runVoiceTest">发送</n-button>
+          <n-button type="primary" :loading="voiceTesting" @click="runVoiceTest">
+            <template #icon>
+              <n-icon :component="PaperPlaneOutline" />
+            </template>
+            发送
+          </n-button>
         </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.secret-box {
-  word-break: break-all;
-  background: #0f172a;
-  color: #e2e8f0;
-  border-radius: 10px;
-  padding: 12px 14px;
-  font-size: 13px;
-  line-height: 1.6;
-}
-.field {
-  margin-top: 16px;
-}
-.field-label {
-  font-size: 13px;
-  color: #4b5563;
-  margin-bottom: 6px;
-}
-</style>

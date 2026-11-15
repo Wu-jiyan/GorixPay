@@ -1,18 +1,46 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, h, ref, watch } from 'vue';
+import type { Component } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   NAvatar,
   NButton,
+  NBreadcrumb,
+  NBreadcrumbItem,
   NDropdown,
+  NIcon,
   NLayout,
   NLayoutContent,
   NLayoutHeader,
   NLayoutSider,
   NMenu,
   NSpace,
+  NText,
   useMessage,
 } from 'naive-ui';
+import type { MenuOption } from 'naive-ui';
+import {
+  BookOutline,
+  CardOutline,
+  CashOutline,
+  ChatboxEllipsesOutline,
+  ChevronDownOutline,
+  GiftOutline,
+  GitCompareOutline,
+  GlobeOutline,
+  IdCardOutline,
+  KeyOutline,
+  LinkOutline,
+  MenuOutline,
+  PaperPlaneOutline,
+  PersonCircleOutline,
+  PricetagsOutline,
+  QrCodeOutline,
+  ReceiptOutline,
+  ReturnDownBackOutline,
+  SpeedometerOutline,
+  WalletOutline,
+} from '@vicons/ionicons5';
 import { useAuthStore } from '@/stores/auth';
 import { siteLogo, siteName } from '@/stores/site';
 
@@ -21,34 +49,81 @@ const route = useRoute();
 const message = useMessage();
 const auth = useAuthStore();
 const collapsed = ref(false);
-// 站点 Logo 是后台填的 URL，加载失败时退回默认的「G」方块
+// 站点 Logo 是后台填的 URL，加载失败时退回站点名首字
 const logoBroken = ref(false);
 watch(siteLogo, () => {
   logoBroken.value = false;
 });
 
-const menuOptions = [
-  { label: '商户概览', key: '/merchant' },
-  { label: '我的订单', key: '/merchant/orders' },
-  { label: '退款记录', key: '/merchant/refunds' },
-  { label: '我的投诉', key: '/merchant/complaints' },
-  { label: '资金明细', key: '/merchant/records' },
-  { label: '结算记录', key: '/merchant/settlements' },
-  { label: '代付申请', key: '/merchant/transfers' },
-  { label: '分账管理', key: '/merchant/profit-sharing' },
-  { label: '红包', key: '/merchant/red-packet' },
-  { label: '收款码', key: '/merchant/pay-code' },
-  { label: '余额充值', key: '/merchant/recharge' },
-  { label: '用户组', key: '/merchant/group-plans' },
-  { label: '实名认证', key: '/merchant/certification' },
-  { label: '支付域名', key: '/merchant/domains' },
-  { label: '邀请返佣', key: '/merchant/invite' },
-  { label: '密钥管理', key: '/merchant/credentials' },
-  { label: '账户资料', key: '/merchant/profile' },
-  { label: '开发文档', key: '/doc' },
+const renderIcon = (icon: Component) => () => h(NIcon, null, { default: () => h(icon) });
+
+const groups: Array<{ key: string; label: string; items: Array<[string, string, Component]> }> = [
+  {
+    key: 'overview',
+    label: '概览',
+    items: [['/merchant', '商户概览', SpeedometerOutline]],
+  },
+  {
+    key: 'trade',
+    label: '交易',
+    items: [
+      ['/merchant/orders', '我的订单', ReceiptOutline],
+      ['/merchant/refunds', '退款记录', ReturnDownBackOutline],
+      ['/merchant/complaints', '我的投诉', ChatboxEllipsesOutline],
+      ['/merchant/pay-code', '收款码', QrCodeOutline],
+    ],
+  },
+  {
+    key: 'fund',
+    label: '资金',
+    items: [
+      ['/merchant/records', '资金明细', WalletOutline],
+      ['/merchant/settlements', '结算记录', CashOutline],
+      ['/merchant/transfers', '代付申请', PaperPlaneOutline],
+      ['/merchant/profit-sharing', '分账管理', GitCompareOutline],
+      ['/merchant/red-packet', '红包', GiftOutline],
+      ['/merchant/recharge', '余额充值', CardOutline],
+    ],
+  },
+  {
+    key: 'account',
+    label: '账号',
+    items: [
+      ['/merchant/group-plans', '用户组', PricetagsOutline],
+      ['/merchant/certification', '实名认证', IdCardOutline],
+      ['/merchant/domains', '支付域名', GlobeOutline],
+      ['/merchant/invite', '邀请返佣', LinkOutline],
+      ['/merchant/credentials', '密钥管理', KeyOutline],
+      ['/merchant/profile', '账户资料', PersonCircleOutline],
+    ],
+  },
+  {
+    key: 'help',
+    label: '帮助',
+    items: [['/doc', '开发文档', BookOutline]],
+  },
 ];
 
+const menuOptions: MenuOption[] = groups.map((group) => ({
+  type: 'group',
+  key: group.key,
+  label: group.label,
+  children: group.items.map(([key, label, icon]) => ({ key, label, icon: renderIcon(icon) })),
+}));
+
+const routeIndex = computed(() => {
+  const index = new Map<string, { group: string; label: string }>();
+  for (const group of groups) {
+    for (const [key, label] of group.items) {
+      index.set(key, { group: group.label, label });
+    }
+  }
+  return index;
+});
+
 const activeKey = computed(() => (route.path === '/merchant/' ? '/merchant' : route.path));
+const current = computed(() => routeIndex.value.get(activeKey.value));
+const headerTitle = computed(() => current.value?.label ?? (route.meta.title as string | undefined) ?? '商户中心');
 
 const userOptions = [
   { label: '返回官网', key: 'home' },
@@ -71,14 +146,15 @@ async function handleUserSelect(key: string) {
     <n-layout-sider
       bordered
       collapse-mode="width"
-      :collapsed-width="0"
-      :width="210"
+      :collapsed-width="64"
+      :width="216"
       :collapsed="collapsed"
+      :native-scrollbar="false"
       show-trigger="bar"
       @collapse="collapsed = true"
       @expand="collapsed = false"
     >
-      <div class="brand">
+      <div class="brand" :class="{ 'brand-collapsed': collapsed }">
         <img
           v-if="siteLogo && !logoBroken"
           :src="siteLogo"
@@ -86,10 +162,10 @@ async function handleUserSelect(key: string) {
           class="brand-logo"
           @error="logoBroken = true"
         />
-        <div v-else class="brand-mark">G</div>
+        <div v-else class="brand-logo brand-logo-text">{{ (siteName || 'G').slice(0, 1) }}</div>
         <div v-if="!collapsed" class="brand-text">
-          <strong>{{ siteName }}</strong>
-          <span>商户中心</span>
+          <n-text strong>{{ siteName }}</n-text>
+          <n-text depth="3" class="brand-sub">商户中心</n-text>
         </div>
       </div>
       <n-menu
@@ -97,23 +173,38 @@ async function handleUserSelect(key: string) {
         :options="menuOptions"
         :collapsed="collapsed"
         :collapsed-width="64"
+        :collapsed-icon-size="20"
+        :indent="18"
+        :root-indent="18"
         @update:value="(key: string) => router.push(key)"
       />
     </n-layout-sider>
+
     <n-layout>
       <n-layout-header bordered class="topbar">
-        <n-space align="center">
-          <n-button text @click="collapsed = !collapsed">☰</n-button>
-          <div class="topbar-title">{{ route.meta.title ?? '商户中心' }}</div>
+        <n-space align="center" :size="12">
+          <n-button quaternary circle size="small" @click="collapsed = !collapsed">
+            <template #icon>
+              <n-icon :component="MenuOutline" />
+            </template>
+          </n-button>
+          <n-breadcrumb>
+            <n-breadcrumb-item>商户中心</n-breadcrumb-item>
+            <n-breadcrumb-item v-if="current?.group">{{ current.group }}</n-breadcrumb-item>
+            <n-breadcrumb-item>{{ headerTitle }}</n-breadcrumb-item>
+          </n-breadcrumb>
         </n-space>
+
         <n-dropdown :options="userOptions" trigger="click" @select="handleUserSelect">
-          <n-space align="center" style="cursor: pointer">
-            <n-avatar round size="small" color="#0ea5e9">{{ auth.displayName.slice(0, 1) }}</n-avatar>
-            <span class="topbar-user">{{ auth.displayName }}</span>
+          <n-space align="center" :size="8" style="cursor: pointer">
+            <n-avatar round size="small">{{ auth.displayName.slice(0, 1) }}</n-avatar>
+            <n-text depth="2">{{ auth.displayName }}</n-text>
+            <n-icon :component="ChevronDownOutline" size="14" />
           </n-space>
         </n-dropdown>
       </n-layout-header>
-      <n-layout-content class="content" content-style="min-height: calc(100vh - 56px);">
+
+      <n-layout-content class="content" content-style="padding: 20px 24px 40px; min-height: calc(100vh - 57px);">
         <router-view />
       </n-layout-content>
     </n-layout>
@@ -128,60 +219,45 @@ async function handleUserSelect(key: string) {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 18px 18px 12px;
+  padding: 16px 18px 12px;
 }
-.brand-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #0ea5e9, #22c55e);
-  color: #fff;
-  font-weight: 700;
-  display: grid;
-  place-items: center;
-  flex: none;
+.brand-collapsed {
+  justify-content: center;
+  padding: 16px 0 12px;
 }
 .brand-logo {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
   object-fit: contain;
   background: #fff;
   flex: none;
 }
+.brand-logo-text {
+  display: grid;
+  place-items: center;
+  background: #18a058;
+  color: #fff;
+  font-weight: 600;
+  font-size: 16px;
+}
 .brand-text {
   display: flex;
   flex-direction: column;
-  line-height: 1.2;
+  line-height: 1.35;
   min-width: 0;
 }
-.brand-text strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 130px;
-}
-.brand-text span {
-  font-size: 11px;
-  color: #94a3b8;
+.brand-sub {
+  font-size: 12px;
 }
 .topbar {
-  height: 56px;
+  height: 57px;
   padding: 0 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #fff;
-}
-.topbar-title {
-  font-weight: 600;
-  font-size: 15px;
-}
-.topbar-user {
-  font-size: 13px;
-  color: #475569;
 }
 .content {
-  background: #f5f7fb;
+  background: var(--n-color-embedded, #f5f7fa);
 }
 </style>

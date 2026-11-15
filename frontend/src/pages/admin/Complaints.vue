@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, NTag, useMessage } from 'naive-ui';
-import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-ui';
+import { NButton, NPopconfirm, NSpace, NTag, NText, useMessage } from 'naive-ui';
+import type { DataTableColumns, FormInst, FormRules, SelectOption, TimelineItemProps } from 'naive-ui';
+import { AddOutline, RefreshOutline, SearchOutline, SendOutline, SettingsOutline } from '@vicons/ionicons5';
 import dayjs from 'dayjs';
 import { complaintAutoRulesApi } from '@/api/complaintAutoRules';
 import type { ComplaintAutoRule } from '@/api/complaintAutoRules';
 import { complaintsApi } from '@/api/adminComplaints';
 import type { Complaint } from '@/api/adminComplaints';
 import { errorMessage } from '@/api/client';
-import MoneyText from '@/components/MoneyText.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import { formatDateTime } from '@/utils/format';
+import AdminPage from '@/components/AdminPage.vue';
+import { activeStatus, formatDateTime, formatMoney } from '@/utils/format';
 import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
 
 interface ComplaintForm {
@@ -51,6 +50,7 @@ const detail = ref<Complaint | null>(null);
 const detailLoading = ref(false);
 const replyText = ref('');
 const replying = ref(false);
+const showClose = ref(false);
 const closeReason = ref('');
 const closing = ref(false);
 
@@ -226,6 +226,7 @@ async function closeComplaint() {
     await complaintsApi.close(target.id, reason);
     message.success('投诉已关闭');
     closeReason.value = '';
+    showClose.value = false;
     detail.value = await complaintsApi.detail(target.id);
     await load();
   } catch (error) {
@@ -313,63 +314,62 @@ function ruleColumns(): DataTableColumns<ComplaintAutoRule> {
     {
       title: '渠道',
       key: 'channel',
-      width: 100,
+      width: 110,
       render: (row) => channelLabels[row.channel ?? ''] ?? row.channel ?? '-',
     },
-    { title: '自动回复', key: 'reply_text', minWidth: 220, ellipsis: true, render: (row) => row.reply_text || '-' },
+    {
+      title: '自动回复',
+      key: 'reply_text',
+      minWidth: 220,
+      ellipsis: { tooltip: true },
+      render: (row) => row.reply_text || '-',
+    },
     {
       title: '几小时后关闭',
       key: 'close_after_hours',
-      width: 130,
+      width: 140,
       align: 'right',
       render: (row) =>
-        typeof row.close_after_hours === 'number' && row.close_after_hours > 0 ? `${row.close_after_hours} 小时` : '不自动关闭',
+        typeof row.close_after_hours === 'number' && row.close_after_hours > 0
+          ? `${row.close_after_hours} 小时`
+          : '不自动关闭',
     },
     {
       title: '状态',
       key: 'status',
-      width: 90,
-      render: (row) => h(StatusTag, { status: row.status, kind: 'active' }),
+      width: 100,
+      render: (row) =>
+        h(NTag, { size: 'small', bordered: false, type: activeStatus(row.status).type }, () =>
+          activeStatus(row.status).text,
+        ),
     },
     {
       title: '操作',
       key: 'actions',
-      width: 150,
+      width: 140,
       fixed: 'right',
       render: (row) =>
-        h(
-          NSpace,
-          { size: 4, wrap: false },
-          {
-            default: () => [
-              h(
-                NButton,
-                { size: 'tiny', quaternary: true, type: 'info', onClick: () => openRuleEdit(row) },
-                { default: () => '编辑' },
-              ),
-              h(
-                NPopconfirm,
-                { onPositiveClick: () => removeRule(row) },
-                {
-                  trigger: () =>
-                    h(NButton, { size: 'tiny', quaternary: true, type: 'error' }, { default: () => '删除' }),
-                  default: () => '确认删除该自动规则？',
-                },
-              ),
-            ],
-          },
-        ),
+        h(NSpace, { size: 8, wrap: false }, () => [
+          h(
+            NButton,
+            { size: 'small', text: true, type: 'primary', onClick: () => openRuleEdit(row) },
+            () => '编辑',
+          ),
+          h(
+            NPopconfirm,
+            { onPositiveClick: () => removeRule(row) },
+            {
+              trigger: () => h(NButton, { size: 'small', text: true, type: 'error' }, () => '删除'),
+              default: () => '确认删除该自动规则？',
+            },
+          ),
+        ]),
     },
   ];
 }
 
 function statusMeta(value?: string) {
   return statusMap[value ?? ''] ?? { text: value || '-', type: 'default' as const };
-}
-
-function statusTag(value?: string) {
-  const resolved = statusMeta(value);
-  return h(NTag, { size: 'small', round: true, type: resolved.type }, { default: () => resolved.text });
 }
 
 function directionText(direction?: string): string {
@@ -384,50 +384,74 @@ function directionText(direction?: string): string {
   return map[direction ?? ''] ?? direction ?? '-';
 }
 
+function directionType(direction?: string): TimelineItemProps['type'] {
+  if (direction === 'outbound' || direction === 'platform') return 'success';
+  if (direction === 'system') return 'default';
+  return 'info';
+}
+
 function deadlineCell(row: Complaint) {
-  if (!row.deadline_at) return h('span', { class: 'muted' }, '-');
+  if (!row.deadline_at) return h(NText, { depth: 3 }, () => '-');
   const overdue = row.status !== 'closed' && dayjs(row.deadline_at).isBefore(dayjs());
-  return h('span', { style: overdue ? 'color: #b91c1c; font-weight: 600' : undefined }, formatDateTime(row.deadline_at));
+  return h(NText, { type: overdue ? 'error' : undefined, strong: overdue }, () =>
+    formatDateTime(row.deadline_at),
+  );
 }
 
 const columns = computed<DataTableColumns<Complaint>>(() => [
   {
     title: '投诉单号',
     key: 'complaint_no',
-    width: 190,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.complaint_no || '-'),
+    width: 200,
+    ellipsis: { tooltip: true },
+    render: (row) => h(NText, { class: 'mono' }, () => row.complaint_no || '-'),
   },
   {
     title: '渠道',
     key: 'channel',
-    width: 100,
+    width: 110,
     render: (row) => channelLabels[row.channel ?? ''] ?? row.channel ?? '-',
   },
   {
     title: '商户 ID',
     key: 'merchant_id',
-    width: 240,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.merchant_id || '-'),
+    width: 230,
+    ellipsis: { tooltip: true },
+    render: (row) => h(NText, { class: 'mono' }, () => row.merchant_id || '-'),
   },
   {
     title: '订单号',
     key: 'order_id',
     width: 200,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.order_id || '-'),
+    ellipsis: { tooltip: true },
+    render: (row) => h(NText, { class: 'mono' }, () => row.order_id || '-'),
   },
-  { title: '投诉原因', key: 'reason', minWidth: 180, ellipsis: true, render: (row) => row.reason || '-' },
+  {
+    title: '投诉原因',
+    key: 'reason',
+    minWidth: 180,
+    ellipsis: { tooltip: true },
+    render: (row) => row.reason || '-',
+  },
   {
     title: '金额',
     key: 'amount_cents',
-    width: 120,
+    width: 130,
     align: 'right',
     render: (row) =>
-      typeof row.amount_cents === 'number' ? h(MoneyText, { amount: row.amount_cents }) : '-',
+      typeof row.amount_cents === 'number'
+        ? h(NText, { class: 'amount' }, () => formatMoney(row.amount_cents))
+        : h(NText, { depth: 3 }, () => '-'),
   },
-  { title: '状态', key: 'status', width: 100, render: (row) => statusTag(row.status) },
+  {
+    title: '状态',
+    key: 'status',
+    width: 100,
+    render: (row) =>
+      h(NTag, { size: 'small', bordered: false, type: statusMeta(row.status).type }, () =>
+        statusMeta(row.status).text,
+      ),
+  },
   { title: '截止时间', key: 'deadline_at', width: 170, render: (row) => deadlineCell(row) },
   {
     title: '创建时间',
@@ -440,12 +464,7 @@ const columns = computed<DataTableColumns<Complaint>>(() => [
     key: 'actions',
     width: 100,
     fixed: 'right',
-    render: (row) =>
-      h(
-        NButton,
-        { size: 'tiny', quaternary: true, type: 'info', onClick: () => openDetail(row) },
-        { default: () => '详情' },
-      ),
+    render: (row) => h(NButton, { size: 'small', text: true, type: 'primary', onClick: () => openDetail(row) }, () => '详情'),
   },
 ]);
 
@@ -453,61 +472,95 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="投诉管理" subtitle="渠道投诉登记、回复与关闭，超期未处理会标红">
-      <template #actions>
-        <n-button secondary :loading="loading" @click="load">刷新</n-button>
-        <n-button secondary type="primary" @click="openRules">自动规则</n-button>
-        <n-button type="primary" @click="openCreate">手工登记</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="投诉管理" subtitle="渠道投诉登记、回复与关闭，超期未处理会标红">
+    <template #actions>
+      <n-space>
+        <n-button :loading="loading" @click="load">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
+        <n-button @click="openRules">
+          <template #icon>
+            <n-icon :component="SettingsOutline" />
+          </template>
+          自动规则
+        </n-button>
+        <n-button type="primary" @click="openCreate">
+          <template #icon>
+            <n-icon :component="AddOutline" />
+          </template>
+          手工登记
+        </n-button>
+      </n-space>
+    </template>
 
-    <div class="toolbar">
-      <n-select v-model:value="status" :options="statusOptions" placeholder="全部状态" clearable style="width: 140px" />
-      <n-select v-model:value="channel" :options="channelOptions" placeholder="全部渠道" clearable style="width: 140px" />
-      <n-input
-        v-model:value="merchantId"
-        placeholder="商户 ID"
-        clearable
-        style="width: 260px"
-        @keyup.enter="search"
-      />
-      <n-button type="primary" @click="search">查询</n-button>
-      <n-button @click="resetFilters">重置</n-button>
-      <span class="muted small">共 {{ total }} 条</span>
-    </div>
+    <n-card size="small" :bordered="false">
+      <n-form inline :show-feedback="false">
+        <n-form-item label="状态">
+          <n-select
+            v-model:value="status"
+            :options="statusOptions"
+            placeholder="全部状态"
+            clearable
+            style="width: 140px"
+          />
+        </n-form-item>
+        <n-form-item label="渠道">
+          <n-select
+            v-model:value="channel"
+            :options="channelOptions"
+            placeholder="全部渠道"
+            clearable
+            style="width: 140px"
+          />
+        </n-form-item>
+        <n-form-item label="商户 ID">
+          <n-input v-model:value="merchantId" placeholder="按商户筛选" clearable style="width: 240px" @keyup.enter="search">
+            <template #prefix>
+              <n-icon :component="SearchOutline" />
+            </template>
+          </n-input>
+        </n-form-item>
+        <n-form-item>
+          <n-space align="center">
+            <n-button type="primary" @click="search">
+              <template #icon>
+                <n-icon :component="SearchOutline" />
+              </template>
+              查询
+            </n-button>
+            <n-button @click="resetFilters">重置</n-button>
+            <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
+          </n-space>
+        </n-form-item>
+      </n-form>
 
-    <n-card :bordered="false">
       <n-data-table
+        :remote="true"
+        :loading="loading"
         :columns="columns"
         :data="rows"
-        :loading="loading"
         :pagination="pagination"
         :row-key="(row: Complaint) => row.id"
-        :bordered="false"
-        :single-line="false"
-        size="small"
-        remote
+        :scroll-x="1500"
         @update:page="onPage"
         @update:page-size="onPageSize"
-      >
-        <template #empty>
-          <n-empty description="暂无投诉记录" size="small" />
-        </template>
-      </n-data-table>
+      />
     </n-card>
 
-    <n-drawer v-model:show="showDetail" :width="620" placement="right">
+    <n-drawer v-model:show="showDetail" :width="680" placement="right">
       <n-drawer-content :title="detail?.complaint_no || '投诉详情'" closable>
         <n-spin :show="detailLoading">
           <n-empty v-if="!detail && !detailLoading" description="暂无数据" />
           <template v-else-if="detail">
-            <n-descriptions :column="1" label-placement="left" bordered size="small">
+            <n-descriptions :column="2" bordered size="small" label-placement="left">
               <n-descriptions-item label="投诉单号">
-                <span class="mono">{{ detail.complaint_no || '-' }}</span>
+                <n-text class="mono">{{ detail.complaint_no || '-' }}</n-text>
               </n-descriptions-item>
               <n-descriptions-item label="状态">
-                <n-tag :type="statusMeta(detail.status).type" size="small" round>
+                <n-tag :type="statusMeta(detail.status).type" size="small" :bordered="false">
                   {{ statusMeta(detail.status).text }}
                 </n-tag>
               </n-descriptions-item>
@@ -515,65 +568,87 @@ onMounted(load);
                 {{ channelLabels[detail.channel ?? ''] ?? detail.channel ?? '-' }}
               </n-descriptions-item>
               <n-descriptions-item label="商户 ID">
-                <span class="mono">{{ detail.merchant_id || '-' }}</span>
+                <n-text class="mono">{{ detail.merchant_id || '-' }}</n-text>
               </n-descriptions-item>
               <n-descriptions-item label="订单号">
-                <span class="mono">{{ detail.order_id || '-' }}</span>
+                <n-text class="mono">{{ detail.order_id || '-' }}</n-text>
               </n-descriptions-item>
               <n-descriptions-item label="投诉金额">
-                <MoneyText v-if="typeof detail.amount_cents === 'number'" :amount="detail.amount_cents" />
-                <span v-else>-</span>
+                <n-text v-if="typeof detail.amount_cents === 'number'" class="amount">
+                  {{ formatMoney(detail.amount_cents) }}
+                </n-text>
+                <n-text v-else depth="3">-</n-text>
               </n-descriptions-item>
-              <n-descriptions-item label="投诉原因">{{ detail.reason || '-' }}</n-descriptions-item>
               <n-descriptions-item label="截止时间">{{ formatDateTime(detail.deadline_at) }}</n-descriptions-item>
               <n-descriptions-item label="创建时间">{{ formatDateTime(detail.created_at) }}</n-descriptions-item>
+              <n-descriptions-item label="投诉原因" :span="2">{{ detail.reason || '-' }}</n-descriptions-item>
             </n-descriptions>
 
             <n-divider title-placement="left">沟通记录</n-divider>
-            <n-empty v-if="(detail.messages ?? []).length === 0" description="暂无沟通记录" size="small" />
-            <div v-else class="msg-list">
-              <div v-for="(msg, index) in detail.messages ?? []" :key="msg.id ?? index" class="msg-item">
-                <div class="msg-head">
-                  <span class="msg-who">{{ directionText(msg.direction) }}</span>
-                  <span class="muted small">{{ msg.operator || '-' }} · {{ formatDateTime(msg.created_at) }}</span>
-                </div>
-                <div class="msg-body">{{ msg.content }}</div>
-              </div>
-            </div>
+            <n-timeline v-if="(detail.messages ?? []).length > 0">
+              <n-timeline-item
+                v-for="(msg, index) in detail.messages ?? []"
+                :key="msg.id ?? index"
+                :title="directionText(msg.direction)"
+                :time="formatDateTime(msg.created_at)"
+                :type="directionType(msg.direction)"
+              >
+                {{ msg.content }}
+                <template #footer>
+                  <n-text depth="3" style="font-size: 12px">{{ msg.operator || '-' }}</n-text>
+                </template>
+              </n-timeline-item>
+            </n-timeline>
+            <n-empty v-else description="暂无沟通记录" size="small" />
+          </template>
+        </n-spin>
 
-            <n-divider title-placement="left">回复</n-divider>
+        <template #footer>
+          <n-space vertical :size="10" style="width: 100%">
             <n-input
               v-model:value="replyText"
               type="textarea"
               :autosize="{ minRows: 3, maxRows: 6 }"
+              :disabled="detail?.status === 'closed'"
               placeholder="填写回复内容，会记录到投诉沟通记录"
             />
-            <n-space justify="end" style="margin-top: 10px">
-              <n-button type="primary" :loading="replying" :disabled="detail.status === 'closed'" @click="sendReply">
+            <n-space justify="end">
+              <n-button type="error" secondary :disabled="detail?.status === 'closed'" @click="showClose = true">
+                关闭投诉
+              </n-button>
+              <n-button
+                type="primary"
+                :loading="replying"
+                :disabled="!detail || detail.status === 'closed'"
+                @click="sendReply"
+              >
+                <template #icon>
+                  <n-icon :component="SendOutline" />
+                </template>
                 发送回复
               </n-button>
             </n-space>
-
-            <n-divider title-placement="left">关闭投诉</n-divider>
-            <n-input v-model:value="closeReason" placeholder="关闭原因，例如：已退款完成 / 双方协商一致" />
-            <n-space justify="end" style="margin-top: 10px">
-              <n-button
-                type="error"
-                secondary
-                :loading="closing"
-                :disabled="detail.status === 'closed'"
-                @click="closeComplaint"
-              >
-                关闭投诉
-              </n-button>
-            </n-space>
-          </template>
-        </n-spin>
+          </n-space>
+        </template>
       </n-drawer-content>
     </n-drawer>
 
+    <n-modal v-model:show="showClose" preset="card" title="关闭投诉" style="width: 520px; max-width: 94vw">
+      <n-form label-placement="left" label-width="110">
+        <n-form-item label="关闭原因">
+          <n-input v-model:value="closeReason" placeholder="例如：已退款完成 / 双方协商一致" />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showClose = false">取消</n-button>
+          <n-button type="error" :loading="closing" @click="closeComplaint">确认关闭</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
     <n-modal v-model:show="showCreate" preset="card" title="手工登记投诉" style="width: 660px; max-width: 94vw">
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="120">
+      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="130">
         <n-form-item label="商户 ID" path="merchant_id">
           <n-input v-model:value="form.merchant_id" placeholder="投诉所属商户" />
         </n-form-item>
@@ -601,6 +676,7 @@ onMounted(load);
           <n-date-picker v-model:value="form.deadline" type="datetime" clearable style="width: 220px" />
         </n-form-item>
       </n-form>
+
       <template #footer>
         <n-space justify="end">
           <n-button @click="showCreate = false">取消</n-button>
@@ -609,29 +685,35 @@ onMounted(load);
       </template>
     </n-modal>
 
-    <n-drawer v-model:show="showRules" :width="720" placement="right">
+    <n-drawer v-model:show="showRules" :width="760" placement="right">
       <n-drawer-content title="客诉自动规则" closable>
         <n-alert type="info" :bordered="false" style="margin-bottom: 14px">
           规则按渠道匹配：命中渠道的新投诉会自动回复，并按设定小时数自动关闭（填 0 表示只回复不关闭）。
         </n-alert>
-        <div class="rules-toolbar">
-          <n-button type="primary" size="small" @click="openRuleCreate">新建规则</n-button>
-          <n-button size="small" :loading="rulesLoading" @click="loadRules">刷新</n-button>
-        </div>
+
+        <n-space align="center" justify="space-between" style="margin-bottom: 12px">
+          <n-button size="small" type="primary" @click="openRuleCreate">
+            <template #icon>
+              <n-icon :component="AddOutline" />
+            </template>
+            新建规则
+          </n-button>
+          <n-button size="small" :loading="rulesLoading" @click="loadRules">
+            <template #icon>
+              <n-icon :component="RefreshOutline" />
+            </template>
+            刷新
+          </n-button>
+        </n-space>
+
         <n-data-table
+          :loading="rulesLoading"
           :columns="ruleColumns()"
           :data="autoRules"
-          :loading="rulesLoading"
           :pagination="{ pageSize: 10 }"
           :row-key="(row: ComplaintAutoRule) => row.id"
-          :bordered="false"
-          :single-line="false"
-          size="small"
-        >
-          <template #empty>
-            <n-empty description="还没有自动规则" size="small" />
-          </template>
-        </n-data-table>
+          :scroll-x="900"
+        />
       </n-drawer-content>
     </n-drawer>
 
@@ -639,9 +721,9 @@ onMounted(load);
       v-model:show="showRuleForm"
       preset="card"
       :title="ruleEditingId ? '编辑自动规则' : '新建自动规则'"
-      style="width: 560px; max-width: 94vw"
+      style="width: 580px; max-width: 94vw"
     >
-      <n-form ref="ruleFormRef" :model="ruleForm" label-placement="left" label-width="120">
+      <n-form ref="ruleFormRef" :model="ruleForm" label-placement="left" label-width="130">
         <n-form-item label="适用渠道">
           <n-select v-model:value="ruleForm.channel" :options="channelOptions" tag filterable />
         </n-form-item>
@@ -655,7 +737,7 @@ onMounted(load);
         </n-form-item>
         <n-form-item label="几小时后关闭">
           <n-input-number v-model:value="ruleForm.close_after_hours" :min="0" :step="1" style="width: 160px" />
-          <span class="muted small" style="margin-left: 10px">0 表示不自动关闭</span>
+          <n-text depth="3" style="margin-left: 10px; font-size: 12px">0 表示不自动关闭</n-text>
         </n-form-item>
         <n-form-item label="状态">
           <n-select
@@ -667,6 +749,7 @@ onMounted(load);
           />
         </n-form-item>
       </n-form>
+
       <template #footer>
         <n-space justify="end">
           <n-button @click="showRuleForm = false">取消</n-button>
@@ -674,44 +757,5 @@ onMounted(load);
         </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.small {
-  font-size: 12px;
-}
-.rules-toolbar {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-.msg-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.msg-item {
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: #fafbfc;
-}
-.msg-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
-  font-size: 12px;
-}
-.msg-who {
-  font-weight: 600;
-  color: #2563eb;
-}
-.msg-body {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 13px;
-  color: #1f2937;
-}
-</style>

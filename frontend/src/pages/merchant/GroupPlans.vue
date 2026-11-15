@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
-import { NButton, NPopconfirm, NTag, useMessage, type DataTableColumns } from 'naive-ui';
+import { NButton, NPopconfirm, NTag, NText, useMessage, type DataTableColumns } from 'naive-ui';
+import { PricetagsOutline, RefreshOutline } from '@vicons/ionicons5';
 import { merchantApi } from '@/api';
 import type { Merchant } from '@/api/types';
 import { merchantGroupPlanApi, type GroupPlan } from '@/api/merchantGroupPlans';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import MoneyText from '@/components/MoneyText.vue';
+import AdminPage from '@/components/AdminPage.vue';
 import { formatMoney, paymentTypeText } from '@/utils/format';
 
 // 商户表可能已经带了用户组字段（M1 加的），类型文件不归我改，这里做可选扩展。
@@ -86,7 +86,8 @@ async function purchase(plan: GroupPlan) {
 
 const rowKey = (row: GroupPlan) => row.group_id;
 
-const columns: DataTableColumns<GroupPlan> = [  { title: '用户组', key: 'name', minWidth: 160 },
+const columns: DataTableColumns<GroupPlan> = [
+  { title: '用户组', key: 'name', minWidth: 160 },
   {
     title: '费率',
     key: 'rate_bp',
@@ -98,6 +99,7 @@ const columns: DataTableColumns<GroupPlan> = [  { title: '用户组', key: 'name
     title: '可用支付方式',
     key: 'pay_types',
     minWidth: 180,
+    ellipsis: { tooltip: true },
     render: (row) => payTypesText(row),
   },
   {
@@ -107,13 +109,13 @@ const columns: DataTableColumns<GroupPlan> = [  { title: '用户组', key: 'name
     align: 'right',
     render: (row) =>
       row.price_cents > 0
-        ? h(MoneyText, { amount: row.price_cents })
+        ? h(NText, { class: 'amount' }, () => formatMoney(row.price_cents))
         : h(NTag, { size: 'small', type: 'success', bordered: false }, () => '免费'),
   },
   {
     title: '操作',
     key: 'actions',
-    width: 120,
+    width: 130,
     fixed: 'right',
     render: (row) => {
       if (profile.value?.group_id && profile.value.group_id === row.group_id) {
@@ -143,36 +145,30 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="用户组" subtitle="按费率与支付方式选择用户组，购买后立即生效">
-      <template #actions>
-        <n-button size="small" :loading="loading" @click="load">刷新</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="用户组" subtitle="按费率与支付方式选择用户组，购买后立即生效">
+    <template #actions>
+      <n-button :loading="loading" @click="load">
+        <template #icon>
+          <n-icon :component="RefreshOutline" />
+        </template>
+        刷新
+      </n-button>
+    </template>
 
-    <n-card :bordered="false" class="info-card" title="当前用户组">
+    <n-card size="small" :bordered="false" title="当前用户组">
       <n-spin :show="loading">
-        <div class="info-grid">
-          <div class="info-item">
-            <span class="info-label">用户组</span>
-            <span class="info-value">{{ currentGroupName }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">费率</span>
-            <span class="info-value">{{ rateText }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">结算模式</span>
-            <span class="info-value">{{ settleModeText }}</span>
-          </div>
-        </div>
-        <p v-if="!hasGroupInfo" class="info-tip">
+        <n-descriptions :column="3" bordered size="small" label-placement="top">
+          <n-descriptions-item label="用户组">{{ currentGroupName }}</n-descriptions-item>
+          <n-descriptions-item label="费率">{{ rateText }}</n-descriptions-item>
+          <n-descriptions-item label="结算模式">{{ settleModeText }}</n-descriptions-item>
+        </n-descriptions>
+        <n-text v-if="!hasGroupInfo" depth="3" style="display: block; margin-top: 12px; font-size: 12px">
           平台暂未返回当前用户组信息，以下只展示可购买的用户组。
-        </p>
+        </n-text>
       </n-spin>
     </n-card>
 
-    <n-card :bordered="false" class="table-card" title="可购买用户组">
+    <n-card size="small" :bordered="false" title="可购买用户组" style="margin-top: 16px">
       <n-data-table
         :columns="columns"
         :data="plans"
@@ -180,7 +176,7 @@ onMounted(() => {
         :bordered="false"
         :row-key="rowKey"
         :pagination="false"
-        :scroll-x="820"
+        :scroll-x="880"
         size="small"
       >
         <template #empty>
@@ -188,45 +184,5 @@ onMounted(() => {
         </template>
       </n-data-table>
     </n-card>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.info-card {
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
-}
-.info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.info-label {
-  font-size: 12.5px;
-  color: #94a3b8;
-}
-.info-value {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1e293b;
-}
-.info-tip {
-  margin: 14px 0 0;
-  font-size: 12px;
-  color: #94a3b8;
-}
-.table-card {
-  margin-top: 16px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-@media (max-width: 768px) {
-  .info-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
-  }
-}
-</style>

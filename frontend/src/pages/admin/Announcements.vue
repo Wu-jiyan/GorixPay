@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, NTag, useMessage } from 'naive-ui';
-import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-ui';
+import { NButton, NPopconfirm, NSpace, NSwitch, NTag, useMessage } from 'naive-ui';
+import type { DataTableColumns, FormInst, FormRules } from 'naive-ui';
+import { AddOutline, RefreshOutline } from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { adminApi } from '@/api';
 import type { Announcement } from '@/api';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
 import { formatDateTime } from '@/utils/format';
 
 const message = useMessage();
@@ -16,6 +17,8 @@ const submitting = ref(false);
 const showForm = ref(false);
 const editingId = ref<string | null>(null);
 const formRef = ref<FormInst | null>(null);
+const pendingStatusId = ref('');
+const removingId = ref('');
 
 const form = reactive({
   title: '',
@@ -23,18 +26,19 @@ const form = reactive({
   status: 'draft',
 });
 
-const statusOptions: SelectOption[] = [
-  { label: '草稿', value: 'draft' },
-  { label: '已发布', value: 'published' },
-];
-
 const rules: FormRules = {
   title: { required: true, message: '请输入公告标题', trigger: ['blur', 'input'] },
   content: { required: true, message: '请输入公告内容', trigger: ['blur', 'input'] },
-  status: { required: true, message: '请选择状态', trigger: ['change', 'blur'] },
 };
 
 const isEditing = computed(() => editingId.value !== null);
+
+const publishSwitch = computed({
+  get: () => form.status === 'published',
+  set: (value: boolean) => {
+    form.status = value ? 'published' : 'draft';
+  },
+});
 
 async function load() {
   loading.value = true;
@@ -88,26 +92,49 @@ async function submit() {
   }
 }
 
+async function togglePublished(row: Announcement) {
+  const next = row.status === 'published' ? 'draft' : 'published';
+  pendingStatusId.value = row.id;
+  try {
+    await adminApi.updateAnnouncement(row.id, {
+      title: row.title,
+      content: row.content,
+      status: next,
+    });
+    message.success(next === 'published' ? '公告已发布' : '公告已转为草稿');
+    await load();
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    pendingStatusId.value = '';
+  }
+}
+
 async function remove(row: Announcement) {
+  removingId.value = row.id;
   try {
     await adminApi.deleteAnnouncement(row.id);
     message.success('公告已删除');
     await load();
   } catch (error) {
     message.error(errorMessage(error));
+  } finally {
+    removingId.value = '';
   }
 }
 
 function statusTag(status?: string) {
   const published = status === 'published';
-  return h(NTag, { size: 'small', round: true, type: published ? 'success' : 'default' }, {
-    default: () => (published ? '已发布' : '草稿'),
-  });
+  return h(
+    NTag,
+    { size: 'small', round: true, type: published ? 'success' : 'default', bordered: false },
+    { default: () => (published ? '已发布' : '草稿') },
+  );
 }
 
 const columns = computed<DataTableColumns<Announcement>>(() => [
   { title: '标题', key: 'title', minWidth: 220, ellipsis: true, render: (row) => row.title || '-' },
-  { title: '状态', key: 'status', width: 100, render: (row) => statusTag(row.status) },
+  { title: '状态', key: 'status', width: 110, render: (row) => statusTag(row.status) },
   {
     title: '发布时间',
     key: 'published_at',
@@ -123,25 +150,56 @@ const columns = computed<DataTableColumns<Announcement>>(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 150,
+    width: 190,
     fixed: 'right',
     render: (row) =>
       h(
         NSpace,
-        { size: 4, wrap: false },
+        { size: 12, wrap: false },
         {
           default: () => [
             h(
               NButton,
-              { size: 'tiny', quaternary: true, type: 'info', onClick: () => openEdit(row) },
+              { text: true, size: 'small', type: 'primary', onClick: () => openEdit(row) },
               { default: () => '编辑' },
             ),
             h(
               NPopconfirm,
-              { onPositiveClick: () => remove(row) },
+              {
+                positiveText: '确定',
+                negativeText: '取消',
+                onPositiveClick: () => togglePublished(row),
+              },
               {
                 trigger: () =>
-                  h(NButton, { size: 'tiny', quaternary: true, type: 'error' }, { default: () => '删除' }),
+                  h(
+                    NSwitch,
+                    {
+                      value: row.status === 'published',
+                      size: 'small',
+                      loading: pendingStatusId.value === row.id,
+                    },
+                    { checked: () => '发布', unchecked: () => '草稿' },
+                  ),
+                default: () =>
+                  row.status === 'published' ? '确认把该公告转为草稿（下线）？' : '确认发布该公告？',
+              },
+            ),
+            h(
+              NPopconfirm,
+              { positiveText: '确定', negativeText: '取消', onPositiveClick: () => remove(row) },
+              {
+                trigger: () =>
+                  h(
+                    NButton,
+                    {
+                      text: true,
+                      size: 'small',
+                      type: 'error',
+                      loading: removingId.value === row.id,
+                    },
+                    { default: () => '删除' },
+                  ),
                 default: () => '确认删除该公告？删除后不可恢复。',
               },
             ),
@@ -155,23 +213,32 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="公告管理" subtitle="站点公告的发布、编辑与下线">
-      <template #actions>
-        <n-button secondary :loading="loading" @click="load">刷新</n-button>
-        <n-button type="primary" @click="openCreate">新建公告</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="公告管理" subtitle="站点公告的发布、编辑与下线">
+    <template #actions>
+      <n-space>
+        <n-button :loading="loading" @click="load">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
+        <n-button type="primary" @click="openCreate">
+          <template #icon>
+            <n-icon :component="AddOutline" />
+          </template>
+          新建公告
+        </n-button>
+      </n-space>
+    </template>
 
-    <n-card :bordered="false">
+    <n-card size="small" :bordered="false">
       <n-data-table
         :columns="columns"
         :data="rows"
         :loading="loading"
         :pagination="{ pageSize: 10 }"
         :row-key="(row: Announcement) => row.id"
-        :bordered="false"
-        :single-line="false"
+        :scroll-x="1000"
         size="small"
       >
         <template #empty>
@@ -184,9 +251,9 @@ onMounted(load);
       v-model:show="showForm"
       preset="card"
       :title="isEditing ? '编辑公告' : '新建公告'"
-      style="width: 680px; max-width: 94vw"
+      style="width: 720px"
     >
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="80">
+      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="90">
         <n-form-item label="标题" path="title">
           <n-input v-model:value="form.title" placeholder="例如：系统升级维护通知" />
         </n-form-item>
@@ -198,8 +265,11 @@ onMounted(load);
             placeholder="支持纯文本，换行会保留"
           />
         </n-form-item>
-        <n-form-item label="状态" path="status">
-          <n-select v-model:value="form.status" :options="statusOptions" style="width: 200px" />
+        <n-form-item label="状态">
+          <n-switch v-model:value="publishSwitch">
+            <template #checked>已发布</template>
+            <template #unchecked>草稿</template>
+          </n-switch>
         </n-form-item>
       </n-form>
       <template #footer>
@@ -209,5 +279,5 @@ onMounted(load);
         </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>

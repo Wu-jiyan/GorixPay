@@ -3,10 +3,14 @@ import { computed, h, onMounted, reactive, ref } from 'vue';
 import {
   NButton,
   NPopconfirm,
+  NSpace,
+  NTag,
+  NText,
   useMessage,
   type DataTableColumns,
   type SelectOption,
 } from 'naive-ui';
+import { AddOutline, DownloadOutline, RefreshOutline } from '@vicons/ionicons5';
 import {
   financeApi,
   type ProfitSharingOrder,
@@ -14,10 +18,8 @@ import {
 } from '@/api/merchantFinance';
 import { errorMessage } from '@/api/client';
 import { downloadMerchantCsv } from '@/api/merchantExports';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import MoneyText from '@/components/MoneyText.vue';
-import { formatDateTime } from '@/utils/format';
+import AdminPage from '@/components/AdminPage.vue';
+import { activeStatus, financeStatus, formatDateTime, formatMoney } from '@/utils/format';
 
 const message = useMessage();
 
@@ -32,7 +34,7 @@ const form = reactive({
   receiver_type: 'personal',
   account: '',
   name: '',
-  ratePercent: '5.00',
+  ratePercent: null as number | null,
 });
 
 const orderLoading = ref(true);
@@ -69,7 +71,7 @@ function openCreate() {
   form.receiver_type = 'personal';
   form.account = '';
   form.name = '';
-  form.ratePercent = '5.00';
+  form.ratePercent = 5;
   receiverModalVisible.value = true;
 }
 
@@ -78,7 +80,7 @@ function openEdit(row: ProfitSharingReceiver) {
   form.receiver_type = row.receiver_type || 'personal';
   form.account = row.account || '';
   form.name = row.name || '';
-  form.ratePercent = (row.rate_bp / 100).toFixed(2);
+  form.ratePercent = Number(((row.rate_bp ?? 0) / 100).toFixed(2));
   receiverModalVisible.value = true;
 }
 
@@ -166,13 +168,13 @@ const receiverColumns: DataTableColumns<ProfitSharingReceiver> = [
     key: 'account',
     minWidth: 200,
     ellipsis: { tooltip: true },
-    render: (row) => h('span', { class: 'mono-cell' }, row.account || '-'),
+    render: (row) => h(NText, { class: 'mono' }, () => row.account || '-'),
   },
   { title: '名称', key: 'name', minWidth: 140, ellipsis: { tooltip: true } },
   {
     title: '比例',
     key: 'rate_bp',
-    width: 100,
+    width: 110,
     align: 'right',
     render: (row) => `${((row.rate_bp ?? 0) / 100).toFixed(2)}%`,
   },
@@ -180,7 +182,10 @@ const receiverColumns: DataTableColumns<ProfitSharingReceiver> = [
     title: '状态',
     key: 'status',
     width: 96,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'active' }),
+    render: (row) =>
+      h(NTag, { size: 'small', bordered: false, type: activeStatus(row.status).type }, () =>
+        activeStatus(row.status).text,
+      ),
   },
   {
     title: '操作',
@@ -189,23 +194,24 @@ const receiverColumns: DataTableColumns<ProfitSharingReceiver> = [
     fixed: 'right',
     render: (row) => {
       const enabled = row.status === 'active';
-      const actions = [
+      return h(NSpace, { size: 8, wrap: false }, () => [
         h(NButton, { text: true, type: 'primary', size: 'small', onClick: () => openEdit(row) }, () => '编辑'),
-        h(
-          NButton,
-          { text: true, type: 'info', size: 'small', onClick: () => void toggleReceiver(row) },
-          () => (enabled ? '停用' : '启用'),
+        h(NButton, { text: true, type: 'info', size: 'small', onClick: () => void toggleReceiver(row) }, () =>
+          enabled ? '停用' : '启用',
         ),
         h(
           NPopconfirm,
-          { onPositiveClick: () => void removeReceiver(row), positiveText: '删除', negativeText: '取消' },
+          {
+            onPositiveClick: () => void removeReceiver(row),
+            positiveText: '删除',
+            negativeText: '取消',
+          },
           {
             trigger: () => h(NButton, { text: true, type: 'error', size: 'small' }, () => '删除'),
             default: () => '删除后该接收方不再参与新的分账，确认删除？',
           },
         ),
-      ];
-      return h('div', { class: 'action-cell' }, actions);
+      ]);
     },
   },
 ];
@@ -214,22 +220,26 @@ const orderColumns: DataTableColumns<ProfitSharingOrder> = [
   {
     title: '订单号',
     key: 'trade_no',
-    minWidth: 210,
+    minWidth: 220,
     ellipsis: { tooltip: true },
-    render: (row) => h('span', { class: 'mono-cell' }, row.trade_no || row.out_trade_no || row.order_id || '-'),
+    render: (row) =>
+      h(NText, { class: 'mono' }, () => row.trade_no || row.out_trade_no || row.order_id || '-'),
   },
   {
     title: '分账金额',
     key: 'amount',
     width: 140,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: row.amount }),
+    render: (row) => h(NText, { class: 'amount' }, () => formatMoney(row.amount)),
   },
   {
     title: '状态',
     key: 'status',
     width: 110,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'finance' }),
+    render: (row) =>
+      h(NTag, { size: 'small', bordered: false, type: financeStatus(row.status).type }, () =>
+        financeStatus(row.status).text,
+      ),
   },
   {
     title: '时间',
@@ -302,18 +312,36 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="分账管理" subtitle="维护分账接收方，查看每笔订单的分账流水">
-      <template #actions>
-        <n-button size="small" :loading="receiverLoading" @click="handleRefresh">刷新</n-button>
-        <n-button size="small" type="primary" :loading="exporting" @click="handleExport">导出 CSV</n-button>
-        <n-button size="small" type="primary" @click="openCreate">新增接收方</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="分账管理" subtitle="维护分账接收方，查看每笔订单的分账流水">
+    <template #actions>
+      <n-space>
+        <n-button :loading="receiverLoading" @click="handleRefresh">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
+        <n-button type="primary" :loading="exporting" @click="handleExport">
+          <template #icon>
+            <n-icon :component="DownloadOutline" />
+          </template>
+          导出 CSV
+        </n-button>
+      </n-space>
+    </template>
 
-    <n-card :bordered="false" class="main-card">
+    <n-card size="small" :bordered="false">
       <n-tabs v-model:value="activeTab" type="line" animated>
         <n-tab-pane name="receivers" tab="我的接收方">
+          <n-alert type="info" :bordered="false" style="margin-bottom: 12px">
+            比例按订单金额计算、向下取整到分；平台手续费先扣，再按比例分账。
+          </n-alert>
+          <n-button type="primary" style="margin-bottom: 12px" @click="openCreate">
+            <template #icon>
+              <n-icon :component="AddOutline" />
+            </template>
+            新增接收方
+          </n-button>
           <n-data-table
             :columns="receiverColumns"
             :data="receivers"
@@ -321,7 +349,7 @@ onMounted(() => {
             :bordered="false"
             :row-key="receiverRowKey"
             :pagination="false"
-            :scroll-x="900"
+            :scroll-x="980"
             size="small"
           >
             <template #empty>
@@ -356,11 +384,11 @@ onMounted(() => {
       v-model:show="receiverModalVisible"
       preset="card"
       :title="editingId ? '编辑接收方' : '新增接收方'"
-      style="max-width: 480px"
+      style="width: 620px"
     >
-      <n-form label-placement="top">
+      <n-form label-placement="left" label-width="160">
         <n-form-item label="接收方类型">
-          <n-select v-model:value="form.receiver_type" :options="receiverTypeOptions" />
+          <n-select v-model:value="form.receiver_type" :options="receiverTypeOptions" style="width: 240px" />
         </n-form-item>
         <n-form-item label="账号">
           <n-input v-model:value="form.account" placeholder="支付宝账号 / 银行卡号 / 商户号" :maxlength="128" />
@@ -369,47 +397,27 @@ onMounted(() => {
           <n-input v-model:value="form.name" placeholder="接收方名称，用于对账展示" :maxlength="64" />
         </n-form-item>
         <n-form-item label="分账比例（%）">
-          <n-input v-model:value="form.ratePercent" placeholder="例如 5.00">
+          <n-input-number
+            v-model:value="form.ratePercent"
+            :precision="2"
+            :min="0.01"
+            :max="100"
+            placeholder="例如 5.00"
+            style="width: 200px"
+          >
             <template #suffix>%</template>
-          </n-input>
+          </n-input-number>
         </n-form-item>
       </n-form>
       <n-alert type="info" :bordered="false">
         比例按订单金额计算、向下取整到分；平台手续费先扣，再按比例分账。
       </n-alert>
       <template #footer>
-        <div class="modal-footer">
+        <n-space justify="end">
           <n-button @click="receiverModalVisible = false">取消</n-button>
           <n-button type="primary" :loading="receiverSaving" @click="saveReceiver">保存</n-button>
-        </div>
+        </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.main-card {
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-:deep(.mono-cell) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px;
-  color: #334155;
-}
-:deep(.action-cell) {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-@media (max-width: 768px) {
-  :deep(.action-cell) {
-    gap: 6px;
-  }
-}
-</style>

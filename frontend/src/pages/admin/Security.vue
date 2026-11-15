@@ -1,13 +1,22 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
-import { NQrCode, NTag, useMessage } from 'naive-ui';
+import { NTag, NText, useMessage } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
+import {
+  CheckmarkOutline,
+  CloseOutline,
+  CopyOutline,
+  KeyOutline,
+  RefreshOutline,
+  ReloadOutline,
+  SearchOutline,
+} from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { adminApi } from '@/api';
 import { securityApi } from '@/api/security';
 import type { LoginAttempt, TotpSetup, TotpStatus } from '@/api/security';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import { formatDateTime } from '@/utils/format';
+import { copyText, formatDateTime } from '@/utils/format';
 import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
 
 const message = useMessage();
@@ -29,20 +38,15 @@ const attemptsLoading = ref(false);
 const identifier = ref('');
 const success = ref<string | null>(null);
 
-const {
-  page,
-  pageSize,
-  total,
-  pagination,
-  onPage,
-  onPageSize,
-  resetPage,
-} = useServerPaging(loadAttempts);
+const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } =
+  useServerPaging(loadAttempts);
 
 const successOptions: SelectOption[] = [
   { label: '成功', value: 'true' },
   { label: '失败', value: 'false' },
 ];
+
+const failedCount = computed(() => attempts.value.filter((item) => item.success === false).length);
 
 async function loadTotp() {
   totpLoading.value = true;
@@ -166,120 +170,200 @@ function resetAttempts() {
   void loadAttempts();
 }
 
+async function copy(text: string) {
+  if (!text) return;
+  const ok = await copyText(text);
+  if (ok) message.success('已复制');
+  else message.warning('复制失败，请手动选择');
+}
+
+function reloadAll() {
+  void loadTotp();
+  void loadCaptcha();
+  void loadAttempts();
+}
+
 const attemptColumns = computed<DataTableColumns<LoginAttempt>>(() => [
   {
     title: '账号标识',
     key: 'identifier',
-    minWidth: 220,
+    minWidth: 240,
     ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.identifier || '-'),
+    render: (row) => h(NText, { code: true }, { default: () => row.identifier || '-' }),
   },
   {
     title: '客户端 IP',
     key: 'client_ip',
-    width: 160,
-    render: (row) => h('span', { class: 'mono' }, row.client_ip || '-'),
+    width: 180,
+    render: (row) => h(NText, { code: true }, { default: () => row.client_ip || '-' }),
   },
   {
     title: '结果',
     key: 'success',
-    width: 100,
+    width: 110,
     render: (row) =>
       h(
         NTag,
-        { size: 'small', round: true, type: row.success ? 'success' : 'error' },
+        { size: 'small', round: true, bordered: false, type: row.success ? 'success' : 'error' },
         { default: () => (row.success ? '成功' : '失败') },
       ),
   },
   {
     title: '时间',
     key: 'created_at',
-    width: 170,
+    width: 190,
     render: (row) => formatDateTime(row.created_at),
   },
 ]);
 
-onMounted(() => {
-  void loadTotp();
-  void loadCaptcha();
-  void loadAttempts();
-});
+onMounted(reloadAll);
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="安全设置" subtitle="管理员双重验证、登录图形验证码与登录记录">
-      <template #actions>
-        <n-button secondary :loading="totpLoading || captchaLoading || attemptsLoading" @click="loadTotp(); loadCaptcha(); loadAttempts()">
-          刷新
-        </n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="安全设置" subtitle="管理员双重验证、登录图形验证码与登录记录">
+    <template #actions>
+      <n-button :loading="totpLoading || captchaLoading || attemptsLoading" @click="reloadAll">
+        <template #icon><n-icon><RefreshOutline /></n-icon></template>
+        刷新
+      </n-button>
+    </template>
 
-    <n-card :bordered="false" title="双重验证（TOTP）" class="section">
+    <n-card size="small" :bordered="false" title="双重验证（TOTP）" style="margin-bottom: 16px">
       <template #header-extra>
-        <n-tag :type="totp?.enabled ? 'success' : 'default'" size="small" round>
+        <n-tag :type="totp?.enabled ? 'success' : 'default'" size="small" round :bordered="false">
           {{ totp?.enabled ? '已开启' : '未开启' }}
         </n-tag>
       </template>
+
       <n-spin :show="totpLoading">
         <template v-if="totp?.enabled">
-          <p class="line">已开启，开启时间：{{ formatDateTime(totp.enabled_at) }}。</p>
-          <p class="line muted">关闭后登录只校验密码，建议只在换绑设备时临时关闭。</p>
-          <n-space align="center" :size="10">
-            <n-input v-model:value="disableCode" placeholder="输入 6 位验证码" style="width: 200px" maxlength="6" />
-            <n-button type="error" secondary :loading="totpBusy" @click="disableTotp">关闭双重验证</n-button>
-          </n-space>
+          <n-descriptions :column="2" label-placement="left" bordered size="small">
+            <n-descriptions-item label="状态">
+              <n-tag size="small" round type="success" :bordered="false">已开启</n-tag>
+            </n-descriptions-item>
+            <n-descriptions-item label="开启时间">
+              {{ formatDateTime(totp.enabled_at) }}
+            </n-descriptions-item>
+          </n-descriptions>
+
+          <n-text depth="3" style="display: block; margin: 12px 0">
+            关闭后登录只校验密码，建议只在换绑设备时临时关闭。
+          </n-text>
+
+          <n-form label-placement="left" label-width="180">
+            <n-form-item label="验证码">
+              <n-space align="center" :size="10">
+                <n-input
+                  v-model:value="disableCode"
+                  placeholder="输入 6 位验证码"
+                  maxlength="6"
+                  style="width: 200px"
+                />
+                <n-button type="error" secondary :loading="totpBusy" @click="disableTotp">
+                  <template #icon><n-icon><CloseOutline /></n-icon></template>
+                  关闭双重验证
+                </n-button>
+              </n-space>
+            </n-form-item>
+          </n-form>
         </template>
+
         <template v-else>
-          <p class="line">用 Google Authenticator、1Password 或 Authy 扫码或手动输入密钥完成绑定。</p>
-          <n-space v-if="!setup" :size="10">
-            <n-button type="primary" @click="startSetup" :loading="totpBusy">开始绑定</n-button>
-          </n-space>
-          <template v-else>
-            <div class="totp-box">
-              <NQrCode :value="setup.otpauth_url" :size="180" />
-              <div class="totp-meta">
-                <div class="muted small">密钥（手动输入时用）</div>
-                <div class="mono secret">{{ setup.secret }}</div>
-                <div class="muted small">otpauth 地址</div>
-                <div class="mono url">{{ setup.otpauth_url }}</div>
-                <div class="muted small">密钥只显示这一次，关掉后只能重新绑定。</div>
-              </div>
-            </div>
-            <n-space align="center" :size="10" style="margin-top: 14px">
-              <n-input v-model:value="enableCode" placeholder="输入 App 上的 6 位验证码" style="width: 220px" maxlength="6" />
-              <n-button type="primary" :loading="totpBusy" @click="enableTotp">启用双重验证</n-button>
-              <n-button @click="setup = null">取消</n-button>
-            </n-space>
-          </template>
+          <n-text depth="3" style="display: block">
+            用 Google Authenticator、1Password 或 Authy 扫码或手动输入密钥完成绑定。
+          </n-text>
+
+          <n-button
+            v-if="!setup"
+            type="primary"
+            :loading="totpBusy"
+            style="margin-top: 12px"
+            @click="startSetup"
+          >
+            <template #icon><n-icon><KeyOutline /></n-icon></template>
+            开始绑定
+          </n-button>
+
+          <n-grid v-else cols="1 m:2" responsive="screen" :x-gap="20" :y-gap="16" style="margin-top: 12px">
+            <n-gi>
+              <n-space vertical align="center" :size="10" style="padding: 8px 0">
+                <n-qr-code :value="setup.otpauth_url" :size="180" />
+                <n-text depth="3">用验证器 App 扫码</n-text>
+              </n-space>
+            </n-gi>
+            <n-gi>
+              <n-descriptions :column="1" label-placement="left" bordered size="small">
+                <n-descriptions-item label="密钥">
+                  <n-space align="center" :size="8">
+                    <n-text code>{{ setup.secret }}</n-text>
+                    <n-button text type="primary" @click="copy(setup.secret)">
+                      <template #icon><n-icon><CopyOutline /></n-icon></template>
+                    </n-button>
+                  </n-space>
+                </n-descriptions-item>
+                <n-descriptions-item label="otpauth 地址">
+                  <n-space align="center" :size="8">
+                    <n-text code style="word-break: break-all">{{ setup.otpauth_url }}</n-text>
+                    <n-button text type="primary" @click="copy(setup.otpauth_url)">
+                      <template #icon><n-icon><CopyOutline /></n-icon></template>
+                    </n-button>
+                  </n-space>
+                </n-descriptions-item>
+                <n-descriptions-item label="提示">
+                  密钥只显示这一次，关掉后只能重新绑定。
+                </n-descriptions-item>
+              </n-descriptions>
+            </n-gi>
+          </n-grid>
+
+          <n-form v-if="setup" label-placement="left" label-width="180" style="margin-top: 16px">
+            <n-form-item label="验证码">
+              <n-space align="center" :size="10">
+                <n-input
+                  v-model:value="enableCode"
+                  placeholder="输入 App 上的 6 位验证码"
+                  maxlength="6"
+                  style="width: 220px"
+                />
+                <n-button type="primary" :loading="totpBusy" @click="enableTotp">
+                  <template #icon><n-icon><CheckmarkOutline /></n-icon></template>
+                  启用双重验证
+                </n-button>
+                <n-button :disabled="totpBusy" @click="setup = null">取消</n-button>
+              </n-space>
+            </n-form-item>
+          </n-form>
         </template>
       </n-spin>
     </n-card>
 
-    <n-card :bordered="false" title="登录图形验证码" class="section">
+    <n-card size="small" :bordered="false" title="登录图形验证码" style="margin-bottom: 16px">
       <n-spin :show="captchaLoading">
-        <div class="row">
-          <n-switch
-            :value="captchaRequired"
-            :loading="captchaSaving"
-            @update:value="(value: boolean) => saveCaptcha(value)"
-          >
-            <template #checked>开启</template>
-            <template #unchecked>关闭</template>
-          </n-switch>
-          <span class="line">
-            开启后管理员与商户登录都需要填写图形验证码，降低撞库成功率。
-          </span>
-        </div>
-        <p v-if="!captchaFound" class="muted small warn">
-          后端设置里还没有「security.captcha_required」这一项，保存会失败；把开关拨过去可以验证接口是否就绪。
-        </p>
+        <n-space vertical :size="8">
+          <n-space align="center" :size="12">
+            <n-switch
+              :value="captchaRequired"
+              :loading="captchaSaving"
+              @update:value="(value: boolean) => saveCaptcha(value)"
+            >
+              <template #checked>开启</template>
+              <template #unchecked>关闭</template>
+            </n-switch>
+            <n-text>开启后管理员与商户登录都需要填写图形验证码，降低撞库成功率。</n-text>
+          </n-space>
+          <n-alert v-if="!captchaFound" type="warning" :bordered="false">
+            后端设置里还没有「security.captcha_required」这一项，保存会失败；把开关拨过去可以验证接口是否就绪。
+          </n-alert>
+        </n-space>
       </n-spin>
     </n-card>
 
-    <n-card :bordered="false" title="登录记录" class="section">
-      <div class="toolbar">
+    <n-card size="small" :bordered="false" title="登录审计">
+      <template #header-extra>
+        <n-text depth="3">当前页失败 {{ failedCount }} 条</n-text>
+      </template>
+
+      <n-space align="center" :size="12" style="margin-bottom: 12px">
         <n-input
           v-model:value="identifier"
           placeholder="账号标识（管理员用户名 / 商户邮箱）"
@@ -287,11 +371,24 @@ onMounted(() => {
           style="width: 280px"
           @keyup.enter="searchAttempts"
         />
-        <n-select v-model:value="success" :options="successOptions" placeholder="全部结果" clearable style="width: 140px" />
-        <n-button type="primary" @click="searchAttempts">查询</n-button>
-        <n-button @click="resetAttempts">重置</n-button>
-        <span class="muted small">共 {{ total }} 条</span>
-      </div>
+        <n-select
+          v-model:value="success"
+          :options="successOptions"
+          placeholder="全部结果"
+          clearable
+          style="width: 160px"
+        />
+        <n-button type="primary" @click="searchAttempts">
+          <template #icon><n-icon><SearchOutline /></n-icon></template>
+          查询
+        </n-button>
+        <n-button @click="resetAttempts">
+          <template #icon><n-icon><ReloadOutline /></n-icon></template>
+          重置
+        </n-button>
+        <n-text depth="3">共 {{ total }} 条</n-text>
+      </n-space>
+
       <n-data-table
         :columns="attemptColumns"
         :data="attempts"
@@ -300,6 +397,7 @@ onMounted(() => {
         :row-key="(row: LoginAttempt) => row.id ?? `${row.identifier}-${row.created_at}`"
         :bordered="false"
         :single-line="false"
+        :scroll-x="900"
         size="small"
         remote
         @update:page="onPage"
@@ -310,55 +408,5 @@ onMounted(() => {
         </template>
       </n-data-table>
     </n-card>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.section {
-  margin-bottom: 16px;
-}
-.section:last-child {
-  margin-bottom: 0;
-}
-.line {
-  margin: 0 0 10px;
-  font-size: 13px;
-  color: #374151;
-}
-.small {
-  font-size: 12px;
-}
-.warn {
-  margin: 10px 0 0;
-}
-.totp-box {
-  display: flex;
-  gap: 20px;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  margin-top: 14px;
-}
-.totp-meta {
-  flex: 1;
-  min-width: 240px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.secret {
-  font-size: 15px;
-  word-break: break-all;
-  color: #0f766e;
-}
-.url {
-  font-size: 12px;
-  word-break: break-all;
-  color: #475569;
-}
-.row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-</style>

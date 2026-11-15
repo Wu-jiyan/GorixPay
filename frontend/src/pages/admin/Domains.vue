@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui';
+import type { Component } from 'vue';
+import { NButton, NIcon, NPopconfirm, NSpace, NTag, NText, useMessage } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
+import {
+  CheckmarkOutline,
+  CloseOutline,
+  RefreshOutline,
+  ReloadOutline,
+  SearchOutline,
+} from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { adminApi } from '@/api';
 import type { MerchantDomain } from '@/api';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
 import { formatDateTime } from '@/utils/format';
 import { httpStatus, itemsOf, numberOr, usePendingAction, useServerPaging } from './shared';
 
@@ -31,6 +38,19 @@ const statusOptions: SelectOption[] = [
   { label: '已通过', value: 'approved' },
   { label: '已驳回', value: 'rejected' },
 ];
+
+const domainStatusMap: Record<
+  string,
+  { text: string; type: 'default' | 'info' | 'success' | 'warning' | 'error' }
+> = {
+  pending: { text: '待审核', type: 'warning' },
+  approved: { text: '已通过', type: 'success' },
+  rejected: { text: '已驳回', type: 'error' },
+};
+
+function renderIcon(icon: Component) {
+  return () => h(NIcon, null, { default: () => h(icon) });
+}
 
 async function load() {
   loading.value = true;
@@ -106,80 +126,92 @@ async function submitReject() {
   }
 }
 
+function statusTagOf(value: string) {
+  const resolved = domainStatusMap[value] ?? { text: value || '-', type: 'default' as const };
+  return h(
+    NTag,
+    { size: 'small', round: true, bordered: false, type: resolved.type },
+    { default: () => resolved.text },
+  );
+}
+
 const columns = computed<DataTableColumns<MerchantDomain>>(() => {
   const pendingSet = actions.pending.value;
   return [
-  {
-    title: '商户 ID',
-    key: 'merchant_id',
-    width: 280,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.merchant_id || '-'),
-  },
-  {
-    title: '支付域名',
-    key: 'domain',
-    minWidth: 220,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.domain || '-'),
-  },
-  {
-    title: '状态',
-    key: 'status',
-    width: 100,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'finance' }),
-  },
-  {
-    title: '驳回原因',
-    key: 'rejection_reason',
-    minWidth: 160,
-    ellipsis: true,
-    render: (row) => row.rejection_reason || '-',
-  },
-  {
-    title: '提交时间',
-    key: 'created_at',
-    width: 170,
-    render: (row) => formatDateTime(row.created_at),
-  },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 150,
-    fixed: 'right',
-    render: (row) => {
-      if (row.status !== 'pending') return h('span', { class: 'muted' }, '已处理');
-      const approving = pendingSet.has(`approve:${row.id}`);
-      return h(NSpace, { size: 4, wrap: false }, {
-        default: () => [
-          h(
-            NPopconfirm,
-            { onPositiveClick: () => approve(row) },
-            {
-              trigger: () =>
-                h(
-                  NButton,
-                  { size: 'tiny', quaternary: true, type: 'primary', loading: approving, disabled: approving },
-                  { default: () => '通过' },
-                ),
-              default: () => '确认通过该支付域名？通过后下单可校验该域名。',
-            },
-          ),
-          h(
-            NButton,
-            {
-              size: 'tiny',
-              quaternary: true,
-              type: 'error',
-              disabled: approving,
-              onClick: () => openReject(row),
-            },
-            { default: () => '驳回' },
-          ),
-        ],
-      });
+    {
+      title: '商户 ID',
+      key: 'merchant_id',
+      width: 280,
+      ellipsis: true,
+      render: (row) => h(NText, { code: true }, { default: () => row.merchant_id || '-' }),
     },
-  },
+    {
+      title: '支付域名',
+      key: 'domain',
+      minWidth: 240,
+      ellipsis: true,
+      render: (row) => h(NText, { code: true }, { default: () => row.domain || '-' }),
+    },
+    { title: '状态', key: 'status', width: 110, render: (row) => statusTagOf(row.status) },
+    {
+      title: '驳回原因',
+      key: 'rejection_reason',
+      minWidth: 180,
+      ellipsis: true,
+      render: (row) => row.rejection_reason || '-',
+    },
+    {
+      title: '提交时间',
+      key: 'created_at',
+      width: 180,
+      render: (row) => formatDateTime(row.created_at),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 190,
+      fixed: 'right',
+      render: (row) => {
+        if (row.status !== 'pending') {
+          return h(NText, { depth: 3 }, { default: () => '已处理' });
+        }
+        const approving = pendingSet.has(`approve:${row.id}`);
+        return h(NSpace, { size: 4, wrap: false }, {
+          default: () => [
+            h(
+              NPopconfirm,
+              { onPositiveClick: () => approve(row) },
+              {
+                trigger: () =>
+                  h(
+                    NButton,
+                    {
+                      size: 'tiny',
+                      quaternary: true,
+                      type: 'primary',
+                      loading: approving,
+                      disabled: approving,
+                    },
+                    { icon: renderIcon(CheckmarkOutline), default: () => '通过' },
+                  ),
+                default: () => '确认通过该支付域名？通过后下单可校验该域名。',
+              },
+            ),
+            h(
+              NButton,
+              {
+                size: 'tiny',
+                quaternary: true,
+                type: 'error',
+                disabled: approving,
+                onClick: () => openReject(row),
+              },
+              { icon: renderIcon(CloseOutline), default: () => '驳回' },
+            ),
+          ],
+        });
+      },
+    },
   ];
 });
 
@@ -187,32 +219,39 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="域名审核" subtitle="商户提交的支付域名白名单审核，启用域名校验后生效">
-      <template #actions>
-        <n-button secondary :loading="loading" @click="load">刷新</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="域名审核" subtitle="商户提交的支付域名白名单审核，启用域名校验后生效">
+    <template #actions>
+      <n-button :loading="loading" @click="load">
+        <template #icon><n-icon><RefreshOutline /></n-icon></template>
+        刷新
+      </n-button>
+    </template>
 
-    <n-alert v-if="unavailable" type="warning" :bordered="false" style="margin-bottom: 16px">
-      域名审核接口未启用：后端 <span class="mono">/admin/domains</span> 尚未就绪（404），完成后本页自动可用。
+    <n-alert v-if="unavailable" type="warning" :bordered="false" :show-icon="true" style="margin-bottom: 16px">
+      域名审核接口未启用：后端 <n-text code>/admin/domains</n-text> 尚未就绪（404），完成后本页自动可用。
     </n-alert>
 
-    <div class="toolbar">
-      <n-select v-model:value="status" :options="statusOptions" placeholder="全部状态" clearable style="width: 150px" />
-      <n-button type="primary" @click="search">查询</n-button>
-      <n-button @click="resetFilters">重置</n-button>
-      <span class="muted" style="font-size: 12px">共 {{ total }} 条</span>
-    </div>
+    <n-card size="small" :bordered="false">
+      <n-space align="center" :size="12" style="margin-bottom: 12px">
+        <n-select
+          v-model:value="status"
+          :options="statusOptions"
+          placeholder="全部状态"
+          clearable
+          style="width: 160px"
+        />
+        <n-button type="primary" @click="search">
+          <template #icon><n-icon><SearchOutline /></n-icon></template>
+          查询
+        </n-button>
+        <n-button @click="resetFilters">
+          <template #icon><n-icon><ReloadOutline /></n-icon></template>
+          重置
+        </n-button>
+        <n-text depth="3">共 {{ total }} 条</n-text>
+      </n-space>
 
-    <n-card :bordered="false">
-      <n-empty v-if="unavailable" description="接口未启用" size="large">
-        <template #extra>
-          <n-button size="small" :loading="loading" @click="load">重新检测</n-button>
-        </template>
-      </n-empty>
       <n-data-table
-        v-else
         :columns="columns"
         :data="rows"
         :loading="loading"
@@ -220,52 +259,70 @@ onMounted(load);
         :row-key="(row: MerchantDomain) => row.id"
         :bordered="false"
         :single-line="false"
+        :scroll-x="1200"
         size="small"
         remote
         @update:page="onPage"
         @update:page-size="onPageSize"
       >
         <template #empty>
-          <n-empty description="暂无域名申请" size="small" />
+          <n-empty :description="unavailable ? '接口未启用' : '暂无域名申请'" size="small">
+            <template v-if="unavailable" #extra>
+              <n-button size="small" :loading="loading" @click="load">重新检测</n-button>
+            </template>
+          </n-empty>
         </template>
       </n-data-table>
     </n-card>
 
-    <n-modal v-model:show="showReject" preset="card" title="驳回支付域名" style="width: 500px; max-width: 94vw">
-      <n-descriptions v-if="rejectTarget" :column="1" label-placement="left" size="small" bordered>
+    <n-modal
+      v-model:show="showReject"
+      preset="card"
+      title="驳回支付域名"
+      style="width: 560px; max-width: 94vw"
+    >
+      <n-descriptions v-if="rejectTarget" :column="2" label-placement="left" bordered size="small">
         <n-descriptions-item label="域名">
-          <span class="mono">{{ rejectTarget.domain }}</span>
+          <n-text code>{{ rejectTarget.domain }}</n-text>
         </n-descriptions-item>
         <n-descriptions-item label="商户 ID">
-          <span class="mono">{{ rejectTarget.merchant_id || '-' }}</span>
+          <n-text code>{{ rejectTarget.merchant_id || '-' }}</n-text>
+        </n-descriptions-item>
+        <n-descriptions-item label="当前状态">
+          <n-tag
+            size="small"
+            round
+            :bordered="false"
+            :type="(domainStatusMap[rejectTarget.status] ?? { type: 'default' }).type"
+          >
+            {{ (domainStatusMap[rejectTarget.status] ?? { text: rejectTarget.status || '-' }).text }}
+          </n-tag>
+        </n-descriptions-item>
+        <n-descriptions-item label="提交时间">
+          {{ formatDateTime(rejectTarget.created_at) }}
         </n-descriptions-item>
       </n-descriptions>
-      <div class="field">
-        <div class="field-label">驳回原因</div>
-        <n-input
-          v-model:value="rejectionReason"
-          type="textarea"
-          :autosize="{ minRows: 3, maxRows: 6 }"
-          placeholder="请填写驳回原因，商户可见"
-        />
-      </div>
+
+      <n-form label-placement="left" label-width="180" style="margin-top: 16px">
+        <n-form-item label="驳回原因">
+          <n-input
+            v-model:value="rejectionReason"
+            type="textarea"
+            :autosize="{ minRows: 3, maxRows: 6 }"
+            placeholder="请填写驳回原因，商户可见"
+          />
+        </n-form-item>
+      </n-form>
+
       <template #footer>
         <n-space justify="end">
           <n-button @click="showReject = false">取消</n-button>
-          <n-button type="error" :loading="processing" @click="submitReject">确认驳回</n-button>
+          <n-button type="error" :loading="processing" @click="submitReject">
+            <template #icon><n-icon><CloseOutline /></n-icon></template>
+            确认驳回
+          </n-button>
         </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.field {
-  margin-top: 16px;
-}
-.field-label {
-  font-size: 13px;
-  color: #4b5563;
-  margin-bottom: 6px;
-}
-</style>

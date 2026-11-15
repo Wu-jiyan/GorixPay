@@ -2,12 +2,12 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import axios from 'axios';
 import { useMessage } from 'naive-ui';
+import { IdCardOutline, RefreshOutline } from '@vicons/ionicons5';
 import { merchantApi } from '@/api';
 import type { Certification } from '@/api/types';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import MoneyText from '@/components/MoneyText.vue';
-import { formatDateTime } from '@/utils/format';
+import AdminPage from '@/components/AdminPage.vue';
+import { formatDateTime, formatMoney } from '@/utils/format';
 
 const message = useMessage();
 
@@ -149,170 +149,130 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="实名认证" subtitle="提交个人或企业资料，审核通过后解锁完整收款能力">
-      <template #actions>
-        <n-button size="small" :loading="loading" @click="load">刷新状态</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="实名认证" subtitle="提交个人或企业资料，审核通过后解锁完整收款能力">
+    <template #actions>
+      <n-button :loading="loading" @click="load">
+        <template #icon>
+          <n-icon :component="RefreshOutline" />
+        </template>
+        刷新状态
+      </n-button>
+    </template>
 
     <n-spin :show="loading">
-      <n-alert type="default" :bordered="false" class="tips-alert" v-if="notEnabled">
+      <n-alert v-if="notEnabled" type="default" :bordered="false" style="margin-bottom: 16px">
         实名认证接口未启用：当前平台未开放实名认证能力，可稍后再试或联系平台运营。
       </n-alert>
 
-      <n-alert v-else :type="statusMeta.type" :bordered="false" class="status-alert" :title="statusMeta.title">
-        <div class="status-line">{{ statusMeta.desc }}</div>
-        <div class="status-tags">
-          <n-tag size="small" :bordered="false" :type="required ? 'warning' : 'default'">
-            {{ required ? '强制认证已开启' : '自愿认证' }}
-          </n-tag>
-          <n-tag v-if="feeCents > 0" size="small" :bordered="false" type="info">
-            认证费 <MoneyText :amount="feeCents" />
-          </n-tag>
-          <n-tag v-else size="small" :bordered="false" type="success">认证免费</n-tag>
-        </div>
+      <n-alert
+        v-else
+        :type="statusMeta.type"
+        :bordered="false"
+        :title="statusMeta.title"
+        style="margin-bottom: 16px"
+      >
+        <n-space vertical :size="8">
+          <span>{{ statusMeta.desc }}</span>
+          <n-space align="center">
+            <n-tag size="small" :bordered="false" :type="required ? 'warning' : 'default'">
+              {{ required ? '强制认证已开启' : '自愿认证' }}
+            </n-tag>
+            <n-tag v-if="feeCents > 0" size="small" :bordered="false" type="info">
+              认证费 {{ formatMoney(feeCents) }}
+            </n-tag>
+            <n-tag v-else size="small" :bordered="false" type="success">认证免费</n-tag>
+          </n-space>
+        </n-space>
       </n-alert>
 
-      <div v-if="status !== 'none'" class="detail-grid">
-        <n-card :bordered="false" class="panel-card" title="认证信息（脱敏）">
-          <n-descriptions :column="1" label-placement="left" size="small" bordered>
-            <n-descriptions-item label="认证类型">{{ certTypeText }}</n-descriptions-item>
-            <n-descriptions-item label="证件姓名">{{ info?.real_name_masked || '-' }}</n-descriptions-item>
-            <n-descriptions-item label="身份证号">{{ info?.id_no_masked || '-' }}</n-descriptions-item>
-            <n-descriptions-item v-if="info?.cert_type === 'corp'" label="企业名称">
-              {{ info?.corp_name || '-' }}
-            </n-descriptions-item>
-            <n-descriptions-item v-if="info?.cert_type === 'corp'" label="营业执照号">
-              {{ info?.corp_no || '-' }}
-            </n-descriptions-item>
-            <n-descriptions-item label="提交时间">{{ formatDateTime(info?.submitted_at) }}</n-descriptions-item>
-            <n-descriptions-item label="审核时间">{{ formatDateTime(info?.reviewed_at) }}</n-descriptions-item>
-            <n-descriptions-item label="认证费用">
-              <MoneyText :amount="feeCents" />
-            </n-descriptions-item>
-            <n-descriptions-item v-if="info?.rejection_reason" label="驳回原因">
-              <span class="reject-text">{{ info.rejection_reason }}</span>
-            </n-descriptions-item>
-          </n-descriptions>
-        </n-card>
+      <n-grid v-if="status !== 'none'" cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16">
+        <n-gi>
+          <n-card size="small" :bordered="false" title="认证信息（脱敏）">
+            <n-descriptions :column="1" label-placement="left" :label-width="120" size="small" bordered>
+              <n-descriptions-item label="认证类型">{{ certTypeText }}</n-descriptions-item>
+              <n-descriptions-item label="证件姓名">{{ info?.real_name_masked || '-' }}</n-descriptions-item>
+              <n-descriptions-item label="身份证号">{{ info?.id_no_masked || '-' }}</n-descriptions-item>
+              <n-descriptions-item v-if="info?.cert_type === 'corp'" label="企业名称">
+                {{ info?.corp_name || '-' }}
+              </n-descriptions-item>
+              <n-descriptions-item v-if="info?.cert_type === 'corp'" label="营业执照号">
+                {{ info?.corp_no || '-' }}
+              </n-descriptions-item>
+              <n-descriptions-item label="提交时间">{{ formatDateTime(info?.submitted_at) }}</n-descriptions-item>
+              <n-descriptions-item label="审核时间">{{ formatDateTime(info?.reviewed_at) }}</n-descriptions-item>
+              <n-descriptions-item label="认证费用">{{ formatMoney(feeCents) }}</n-descriptions-item>
+              <n-descriptions-item v-if="info?.rejection_reason" label="驳回原因">
+                <n-text type="error">{{ info.rejection_reason }}</n-text>
+              </n-descriptions-item>
+            </n-descriptions>
+          </n-card>
+        </n-gi>
 
-        <n-card :bordered="false" class="panel-card" title="说明">
-          <ul class="note-list">
-            <li>认证信息仅用于平台合规校验，平台按加密方式存储，仅展示脱敏结果。</li>
-            <li v-if="feeCents > 0">审核通过时会从可用余额扣除认证费，余额不足将无法通过审核。</li>
-            <li v-if="required">强制认证期间，未通过认证的商户在 V1 / V2 下单都会被拦截。</li>
-            <li>如资料有误或需要变更，请联系平台运营人工处理。</li>
-          </ul>
-        </n-card>
-      </div>
+        <n-gi>
+          <n-card size="small" :bordered="false" title="说明">
+            <n-list>
+              <n-list-item>认证信息仅用于平台合规校验，平台按加密方式存储，仅展示脱敏结果。</n-list-item>
+              <n-list-item v-if="feeCents > 0">审核通过时会从可用余额扣除认证费，余额不足将无法通过审核。</n-list-item>
+              <n-list-item v-if="required">强制认证期间，未通过认证的商户在 V1 / V2 下单都会被拦截。</n-list-item>
+              <n-list-item>如资料有误或需要变更，请联系平台运营人工处理。</n-list-item>
+            </n-list>
+          </n-card>
+        </n-gi>
+      </n-grid>
 
-      <n-card v-if="canSubmit && !notEnabled" :bordered="false" class="panel-card form-card" title="提交认证资料">
-        <n-form label-placement="top">
+      <n-card
+        v-if="canSubmit && !notEnabled"
+        size="small"
+        :bordered="false"
+        title="提交认证资料"
+        style="margin-top: 16px"
+      >
+        <n-form label-placement="left" label-width="160">
           <n-form-item label="认证类型">
             <n-radio-group v-model:value="form.cert_type">
               <n-radio-button value="person">个人认证</n-radio-button>
               <n-radio-button value="corp">企业认证</n-radio-button>
             </n-radio-group>
           </n-form-item>
-          <div class="form-row">
-            <n-form-item label="真实姓名" class="form-col">
-              <n-input v-model:value="form.real_name" placeholder="请输入证件上的真实姓名" :maxlength="30" />
-            </n-form-item>
-            <n-form-item label="身份证号" class="form-col">
-              <n-input v-model:value="form.id_no" placeholder="18 位身份证号，最后一位可为 X" :maxlength="18" />
-            </n-form-item>
-          </div>
-          <div v-if="isCorp" class="form-row">
-            <n-form-item label="企业名称" class="form-col">
-              <n-input v-model:value="form.corp_name" placeholder="请输入营业执照上的企业全称" :maxlength="128" />
-            </n-form-item>
-            <n-form-item label="营业执照号" class="form-col">
-              <n-input v-model:value="form.corp_no" placeholder="统一社会信用代码 / 注册号" :maxlength="64" />
-            </n-form-item>
-          </div>
-          <n-alert type="info" :bordered="false" class="form-alert">
+          <n-grid cols="1 m:2" responsive="screen" :x-gap="16">
+            <n-gi>
+              <n-form-item label="真实姓名">
+                <n-input v-model:value="form.real_name" placeholder="请输入证件上的真实姓名" :maxlength="30" />
+              </n-form-item>
+            </n-gi>
+            <n-gi>
+              <n-form-item label="身份证号">
+                <n-input v-model:value="form.id_no" placeholder="18 位身份证号，最后一位可为 X" :maxlength="18" />
+              </n-form-item>
+            </n-gi>
+            <n-gi v-if="isCorp">
+              <n-form-item label="企业名称">
+                <n-input v-model:value="form.corp_name" placeholder="请输入营业执照上的企业全称" :maxlength="128" />
+              </n-form-item>
+            </n-gi>
+            <n-gi v-if="isCorp">
+              <n-form-item label="营业执照号">
+                <n-input v-model:value="form.corp_no" placeholder="统一社会信用代码 / 注册号" :maxlength="64" />
+              </n-form-item>
+            </n-gi>
+          </n-grid>
+          <n-alert type="info" :bordered="false" style="margin: 4px 0 16px">
             提交后由平台运营审核，请确保姓名、身份证号与证件完全一致，否则会被驳回。
           </n-alert>
-          <n-button type="primary" :loading="saving" @click="handleSubmit">提交认证</n-button>
+          <n-form-item>
+            <n-button type="primary" :loading="saving" @click="handleSubmit">
+              <template #icon>
+                <n-icon :component="IdCardOutline" />
+              </template>
+              提交认证
+            </n-button>
+          </n-form-item>
         </n-form>
       </n-card>
 
-      <n-card v-if="status === 'approved'" :bordered="false" class="panel-card" title="后续操作">
-        <p class="note-text">
-          认证已通过。若需要变更认证主体，请联系平台运营先撤销当前认证，再重新提交。
-        </p>
+      <n-card v-if="status === 'approved'" size="small" :bordered="false" title="后续操作" style="margin-top: 16px">
+        <n-text depth="2">认证已通过。若需要变更认证主体，请联系平台运营先撤销当前认证，再重新提交。</n-text>
       </n-card>
     </n-spin>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.status-alert {
-  margin-bottom: 16px;
-}
-.tips-alert {
-  margin-bottom: 16px;
-}
-.status-line {
-  line-height: 1.8;
-}
-.status-tags {
-  margin-top: 10px;
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.detail-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-  margin-bottom: 16px;
-}
-.panel-card {
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-.form-card {
-  margin-top: 4px;
-}
-.form-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-.form-col {
-  min-width: 0;
-}
-.form-alert {
-  margin: 4px 0 16px;
-}
-.reject-text {
-  color: #dc2626;
-}
-.note-list {
-  margin: 0;
-  padding-left: 18px;
-  color: #64748b;
-  font-size: 13px;
-  line-height: 1.9;
-}
-.note-list li {
-  margin-bottom: 6px;
-}
-.note-text {
-  margin: 0;
-  font-size: 13px;
-  color: #64748b;
-  line-height: 1.8;
-}
-@media (max-width: 1000px) {
-  .detail-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .form-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-</style>

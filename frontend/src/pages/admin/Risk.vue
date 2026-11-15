@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, NTag, useMessage } from 'naive-ui';
+import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui';
 import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-ui';
+import {
+  AddOutline,
+  AlertCircleOutline,
+  RefreshOutline,
+  SearchOutline,
+  ShieldCheckmarkOutline,
+  TrashOutline,
+} from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { adminApi } from '@/api';
 import type { BlacklistEntry, RiskEvent } from '@/api';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
 import { formatDateTime } from '@/utils/format';
 import { httpStatus, itemsOf, numberOr, useServerPaging } from './shared';
 
@@ -111,6 +119,10 @@ function handleTab(value: string) {
   else void loadEvents();
 }
 
+function refreshCurrent() {
+  handleTab(tab.value);
+}
+
 function openCreate() {
   form.entry_type = 'ip';
   form.value = '';
@@ -169,7 +181,7 @@ const entryColumns = computed<DataTableColumns<BlacklistEntry>>(() => [
     key: 'entry_type',
     width: 100,
     render: (row) =>
-      h(NTag, { size: 'small', round: true, type: 'error' }, {
+      h(NTag, { size: 'small', round: true, bordered: false, type: 'error' }, {
         default: () => entryTypeLabels[row.entry_type] ?? row.entry_type ?? '-',
       }),
   },
@@ -177,10 +189,16 @@ const entryColumns = computed<DataTableColumns<BlacklistEntry>>(() => [
     title: '拦截值',
     key: 'value',
     minWidth: 240,
-    ellipsis: true,
+    ellipsis: { tooltip: true },
     render: (row) => h('span', { class: 'mono' }, row.value || '-'),
   },
-  { title: '备注', key: 'remark', minWidth: 180, ellipsis: true, render: (row) => row.remark || '-' },
+  {
+    title: '备注',
+    key: 'remark',
+    minWidth: 180,
+    ellipsis: { tooltip: true },
+    render: (row) => row.remark || '-',
+  },
   {
     title: '创建时间',
     key: 'created_at',
@@ -197,7 +215,11 @@ const entryColumns = computed<DataTableColumns<BlacklistEntry>>(() => [
         NPopconfirm,
         { onPositiveClick: () => removeEntry(row) },
         {
-          trigger: () => h(NButton, { size: 'tiny', quaternary: true, type: 'error' }, { default: () => '删除' }),
+          trigger: () =>
+            h(NButton, { text: true, size: 'small', type: 'error' }, {
+              icon: () => h(TrashOutline),
+              default: () => '删除',
+            }),
           default: () => '确认将该条目移出黑名单？',
         },
       ),
@@ -209,21 +231,21 @@ const eventColumns = computed<DataTableColumns<RiskEvent>>(() => [
     title: '规则',
     key: 'rule_code',
     width: 180,
-    ellipsis: true,
+    ellipsis: { tooltip: true },
     render: (row) => h('span', { class: 'mono' }, row.rule_code || '-'),
   },
   {
     title: '详情',
     key: 'detail',
     minWidth: 280,
-    ellipsis: true,
-    render: (row) => h('span', { title: row.detail || '-' }, row.detail || '-'),
+    ellipsis: { tooltip: true },
+    render: (row) => row.detail || '-',
   },
   {
     title: '商户 ID',
     key: 'merchant_id',
-    width: 260,
-    ellipsis: true,
+    width: 240,
+    ellipsis: { tooltip: true },
     render: (row) => h('span', { class: 'mono' }, row.merchant_id || '-'),
   },
   {
@@ -246,24 +268,35 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="风控与黑名单" subtitle="IP / 域名 / 关键词拦截名单与风控命中事件">
-      <template #actions>
-        <n-button
-          secondary
-          :loading="entriesLoading || eventsLoading"
-          @click="handleTab(tab)"
-        >
+  <admin-page title="风控与黑名单" subtitle="IP / 域名 / 关键词拦截名单与风控命中事件">
+    <template #actions>
+      <n-space>
+        <n-button :loading="entriesLoading || eventsLoading" @click="refreshCurrent">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
           刷新当前页签
         </n-button>
-        <n-button v-if="tab === 'blacklist'" type="primary" @click="openCreate">添加黑名单</n-button>
-      </template>
-    </PageHeader>
+        <n-button v-if="tab === 'blacklist'" type="primary" @click="openCreate">
+          <template #icon>
+            <n-icon :component="AddOutline" />
+          </template>
+          添加黑名单
+        </n-button>
+      </n-space>
+    </template>
 
-    <n-card :bordered="false">
+    <n-card size="small" :bordered="false">
       <n-tabs :value="tab" type="line" animated @update:value="handleTab">
-        <n-tab-pane name="blacklist" tab="黑名单">
-          <div class="toolbar">
+        <n-tab-pane name="blacklist">
+          <template #tab>
+            <n-space :size="6" align="center">
+              <n-icon :component="ShieldCheckmarkOutline" />
+              <span>黑名单</span>
+            </n-space>
+          </template>
+
+          <n-space :size="10" align="center" style="margin-bottom: 12px">
             <n-select
               v-model:value="entryTypeFilter"
               :options="entryTypeOptions"
@@ -273,7 +306,9 @@ onMounted(() => {
               @update:value="loadEntries"
             />
             <n-button @click="loadEntries">刷新</n-button>
-          </div>
+            <n-text depth="3" style="font-size: 12px">共 {{ entries.length }} 条</n-text>
+          </n-space>
+
           <n-empty v-if="entriesUnavailable" description="接口未启用" size="large">
             <template #extra>
               <n-button size="small" :loading="entriesLoading" @click="loadEntries">重新检测</n-button>
@@ -286,8 +321,7 @@ onMounted(() => {
             :loading="entriesLoading"
             :pagination="{ pageSize: 10 }"
             :row-key="(row: BlacklistEntry) => row.id"
-            :bordered="false"
-            :single-line="false"
+            :scroll-x="800"
             size="small"
           >
             <template #empty>
@@ -296,26 +330,42 @@ onMounted(() => {
           </n-data-table>
         </n-tab-pane>
 
-        <n-tab-pane name="events" tab="风控事件">
-          <div class="toolbar">
+        <n-tab-pane name="events">
+          <template #tab>
+            <n-space :size="6" align="center">
+              <n-icon :component="AlertCircleOutline" />
+              <span>风控事件</span>
+            </n-space>
+          </template>
+
+          <n-space :size="10" align="center" style="margin-bottom: 12px">
             <n-input
               v-model:value="merchantId"
               placeholder="商户 ID"
               clearable
               style="width: 250px"
               @keyup.enter="searchEvents"
-            />
+            >
+              <template #prefix>
+                <n-icon :component="SearchOutline" />
+              </template>
+            </n-input>
             <n-input
               v-model:value="ruleCode"
               placeholder="规则编码，例如 risk.ip_limit"
               clearable
-              style="width: 240px"
+              style="width: 260px"
               @keyup.enter="searchEvents"
-            />
+            >
+              <template #prefix>
+                <n-icon :component="SearchOutline" />
+              </template>
+            </n-input>
             <n-button type="primary" @click="searchEvents">查询</n-button>
             <n-button @click="resetEventFilters">重置</n-button>
-            <span class="muted" style="font-size: 12px">共 {{ eventsTotal }} 条</span>
-          </div>
+            <n-text depth="3" style="font-size: 12px">共 {{ eventsTotal }} 条</n-text>
+          </n-space>
+
           <n-empty v-if="eventsUnavailable" description="接口未启用" size="large">
             <template #extra>
               <n-button size="small" :loading="eventsLoading" @click="loadEvents">重新检测</n-button>
@@ -328,8 +378,7 @@ onMounted(() => {
             :loading="eventsLoading"
             :pagination="eventsPagination"
             :row-key="(row: RiskEvent) => row.id"
-            :bordered="false"
-            :single-line="false"
+            :scroll-x="1020"
             size="small"
             remote
             @update:page="onEventsPage"
@@ -343,7 +392,7 @@ onMounted(() => {
       </n-tabs>
     </n-card>
 
-    <n-modal v-model:show="showCreate" preset="card" title="添加黑名单" style="width: 520px; max-width: 94vw">
+    <n-modal v-model:show="showCreate" preset="card" title="添加黑名单" style="width: 560px; max-width: 94vw">
       <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="80">
         <n-form-item label="类型" path="entry_type">
           <n-select v-model:value="form.entry_type" :options="entryTypeOptions" />
@@ -365,5 +414,5 @@ onMounted(() => {
         </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>

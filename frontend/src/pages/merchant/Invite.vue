@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
 import axios from 'axios';
-import { useMessage, type DataTableColumns } from 'naive-ui';
+import { NText, useMessage, type DataTableColumns } from 'naive-ui';
+import { CopyOutline, LinkOutline, PeopleOutline, RefreshOutline, TrendingUpOutline } from '@vicons/ionicons5';
 import { merchantApi } from '@/api';
 import type { InviteInfo, InviteRecord, PageQuery } from '@/api/types';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import StatCard from '@/components/StatCard.vue';
-import MoneyText from '@/components/MoneyText.vue';
+import AdminPage from '@/components/AdminPage.vue';
 import { copyText, formatDateTime, formatMoney } from '@/utils/format';
 
 const message = useMessage();
@@ -22,36 +21,36 @@ const total = ref(0);
 const page = ref(1);
 const pageSize = ref(10);
 
-const ratePercent = computed(() => (((info.value?.rate_bp ?? 0) / 100).toFixed(2)));
+const ratePercent = computed(() => (info.value?.rate_bp ?? 0) / 100);
 const rowKey = (row: InviteRecord) => row.id;
 
 const columns: DataTableColumns<InviteRecord> = [
   {
     title: '被邀请商户',
     key: 'invitee_name',
-    minWidth: 160,
+    minWidth: 170,
     render: (row) => row.invitee_name || row.invitee_id || '-',
   },
   {
     title: '订单号',
     key: 'trade_no',
-    width: 190,
+    width: 200,
     ellipsis: { tooltip: true },
-    render: (row) => h('span', { class: 'mono-cell' }, row.trade_no),
+    render: (row) => h(NText, { class: 'mono' }, () => row.trade_no || '-'),
   },
   {
     title: '订单金额',
     key: 'order_amount',
     width: 130,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: row.order_amount }),
+    render: (row) => h(NText, { class: 'amount' }, () => formatMoney(row.order_amount)),
   },
   {
     title: '返佣金额',
     key: 'rebate_amount',
     width: 130,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: row.rebate_amount, color: '#059669' }),
+    render: (row) => h(NText, { class: 'amount', type: 'success' }, () => formatMoney(row.rebate_amount)),
   },
   {
     title: '返佣比例',
@@ -140,52 +139,107 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="邀请返佣" subtitle="邀请商户注册，被邀请商户每笔成功订单按比例返佣到可用余额">
-      <template #actions>
-        <n-button size="small" :loading="infoLoading" @click="loadInfo">刷新</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="邀请返佣" subtitle="邀请商户注册，被邀请商户每笔成功订单按比例返佣到可用余额">
+    <template #actions>
+      <n-button :loading="infoLoading" @click="loadInfo">
+        <template #icon>
+          <n-icon :component="RefreshOutline" />
+        </template>
+        刷新
+      </n-button>
+    </template>
 
-    <n-alert v-if="notEnabled" type="warning" :bordered="false" class="tips-alert">
+    <n-alert v-if="notEnabled" type="warning" :bordered="false" style="margin-bottom: 16px">
       邀请返佣接口未启用：当前平台未开放邀请返佣，可稍后再试或联系平台运营。
     </n-alert>
-    <n-alert v-else-if="info && !info.enabled" type="info" :bordered="false" class="tips-alert">
+    <n-alert v-else-if="info && !info.enabled" type="info" :bordered="false" style="margin-bottom: 16px">
       邀请返佣当前未开启：邀请码仍可分享，但平台开启返佣前不会产生收益。
     </n-alert>
 
-    <div class="stat-grid">
-      <StatCard label="邀请人数" :value="info?.invited_count ?? 0" hint="通过你的邀请码注册的商户" />
-      <StatCard label="返佣比例" :value="`${ratePercent}%`" hint="按被邀请商户订单金额计算" accent="#2563eb" />
-      <StatCard label="今日收益" :value="formatMoney(info?.today_income)" hint="今日支付的订单返佣" accent="#059669" />
-      <StatCard label="累计收益" :value="formatMoney(info?.total_income)" hint="历史返佣合计" accent="#7c3aed" />
-    </div>
+    <n-spin :show="infoLoading">
+      <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="16" :y-gap="16">
+        <n-gi>
+          <n-card size="small" :bordered="false">
+            <n-statistic label="邀请人数" :value="info?.invited_count ?? 0">
+              <template #prefix>
+                <n-icon :component="PeopleOutline" />
+              </template>
+            </n-statistic>
+            <n-text depth="3" style="font-size: 12px">通过你的邀请码注册的商户</n-text>
+          </n-card>
+        </n-gi>
+        <n-gi>
+          <n-card size="small" :bordered="false">
+            <n-statistic label="返佣比例" :value="`${ratePercent.toFixed(2)}%`">
+              <template #prefix>
+                <n-icon :component="TrendingUpOutline" />
+              </template>
+            </n-statistic>
+            <n-text depth="3" style="font-size: 12px">按被邀请商户订单金额计算</n-text>
+          </n-card>
+        </n-gi>
+        <n-gi>
+          <n-card size="small" :bordered="false">
+            <n-statistic label="今日收益" :value="formatMoney(info?.today_income)">
+              <template #prefix>
+                <n-icon :component="TrendingUpOutline" />
+              </template>
+            </n-statistic>
+            <n-text depth="3" style="font-size: 12px">今日支付的订单返佣</n-text>
+          </n-card>
+        </n-gi>
+        <n-gi>
+          <n-card size="small" :bordered="false">
+            <n-statistic label="累计收益" :value="formatMoney(info?.total_income)">
+              <template #prefix>
+                <n-icon :component="TrendingUpOutline" />
+              </template>
+            </n-statistic>
+            <n-text depth="3" style="font-size: 12px">历史返佣合计</n-text>
+          </n-card>
+        </n-gi>
+      </n-grid>
+    </n-spin>
 
-    <n-card :bordered="false" class="invite-card" title="邀请链接">
-      <n-spin :show="infoLoading">
-        <div class="invite-rows">
-          <div class="invite-row">
-            <span class="invite-label">邀请码</span>
-            <div class="invite-value">
-              <span class="mono invite-code">{{ info?.invite_code || '-' }}</span>
-              <n-button size="tiny" secondary @click="handleCopy(info?.invite_code ?? '', '邀请码')">复制</n-button>
-            </div>
-          </div>
-          <div class="invite-row">
-            <span class="invite-label">邀请链接</span>
-            <div class="invite-value">
-              <span class="invite-url">{{ info?.invite_url || '-' }}</span>
-              <n-button size="tiny" secondary @click="handleCopy(info?.invite_url ?? '', '邀请链接')">复制</n-button>
-            </div>
-          </div>
-        </div>
-        <p class="invite-tip">
-          把邀请链接发给朋友，对方注册时自动绑定邀请关系；被邀请商户订单支付成功后，按比例返佣到你的可用余额。
-        </p>
-      </n-spin>
+    <n-card size="small" :bordered="false" title="邀请链接" style="margin-top: 16px">
+      <n-form label-placement="left" label-width="160">
+        <n-form-item label="邀请码">
+          <n-input :value="info?.invite_code || ''" readonly placeholder="暂未生成邀请码">
+            <template #prefix>
+              <n-icon :component="LinkOutline" />
+            </template>
+            <template #suffix>
+              <n-button text type="primary" @click="handleCopy(info?.invite_code ?? '', '邀请码')">
+                <template #icon>
+                  <n-icon :component="CopyOutline" />
+                </template>
+                复制
+              </n-button>
+            </template>
+          </n-input>
+        </n-form-item>
+        <n-form-item label="邀请链接">
+          <n-input :value="info?.invite_url || ''" readonly placeholder="暂未生成邀请链接">
+            <template #prefix>
+              <n-icon :component="LinkOutline" />
+            </template>
+            <template #suffix>
+              <n-button text type="primary" @click="handleCopy(info?.invite_url ?? '', '邀请链接')">
+                <template #icon>
+                  <n-icon :component="CopyOutline" />
+                </template>
+                复制
+              </n-button>
+            </template>
+          </n-input>
+        </n-form-item>
+      </n-form>
+      <n-text depth="2" style="font-size: 12.5px">
+        把邀请链接发给朋友，对方注册时自动绑定邀请关系；被邀请商户订单支付成功后，按比例返佣到你的可用余额。
+      </n-text>
     </n-card>
 
-    <n-card :bordered="false" class="table-card" title="返佣记录">
+    <n-card size="small" :bordered="false" title="返佣记录" style="margin-top: 16px">
       <n-data-table
         remote
         :columns="columns"
@@ -204,86 +258,5 @@ onMounted(() => {
         </template>
       </n-data-table>
     </n-card>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.tips-alert {
-  margin-bottom: 16px;
-}
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-}
-.invite-card {
-  margin-top: 16px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-.invite-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.invite-row {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.invite-label {
-  width: 70px;
-  flex: none;
-  color: #94a3b8;
-  font-size: 12.5px;
-}
-.invite-value {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  flex: 1;
-}
-.invite-code {
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 1px;
-  color: #1d4ed8;
-}
-.invite-url {
-  font-size: 12.5px;
-  color: #334155;
-  word-break: break-all;
-}
-.invite-tip {
-  margin: 14px 0 0;
-  font-size: 12.5px;
-  color: #64748b;
-  line-height: 1.8;
-}
-.table-card {
-  margin-top: 16px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-:deep(.mono-cell) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px;
-  color: #334155;
-}
-@media (max-width: 1100px) {
-  .stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-@media (max-width: 768px) {
-  .stat-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .invite-label {
-    width: auto;
-  }
-}
-</style>

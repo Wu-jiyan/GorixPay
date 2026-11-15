@@ -236,8 +236,7 @@ sign_type=MD5
   min-height: 100vh;
 }
 .hero {
-  background: radial-gradient(1200px 500px at 15% -10%, #dbeafe 0%, transparent 60%),
-    linear-gradient(135deg, #f8fbff 0%, #eef4ff 55%, #f5f7fb 100%);
+  background: #f7f9fc;
   padding: 56px 20px 32px;
   border-bottom: 1px solid #e8eefc;
 }
@@ -440,7 +439,7 @@ sign_type=MD5
   position: relative;
   padding: 22px 18px;
   border-radius: 14px;
-  background: linear-gradient(180deg, #f8fbff, #fff);
+  background: #fff;
   border: 1px solid #e8eefc;
 }
 .flow-index {
@@ -487,7 +486,7 @@ sign_type=MD5
 }
 .cta-band {
   margin-top: 64px;
-  background: linear-gradient(135deg, #1e40af, #2563eb 55%, #06b6d4);
+  background: #1d2939;
   color: #fff;
 }
 .cta-inner {
@@ -540,7 +539,7 @@ sign_type=MD5
   place-items: center;
   color: #fff;
   font-weight: 700;
-  background: linear-gradient(135deg, #2563eb, #06b6d4);
+  background: #2563eb;
 }
 .brand-logo {
   width: 36px;

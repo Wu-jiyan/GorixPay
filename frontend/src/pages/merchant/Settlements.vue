@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
 import dayjs from 'dayjs';
-import { useMessage, type DataTableColumns } from 'naive-ui';
+import { NTag, NText, useMessage, type DataTableColumns } from 'naive-ui';
+import { AddOutline, RefreshOutline } from '@vicons/ionicons5';
 import { merchantApi } from '@/api';
 import type { PageQuery, Settlement } from '@/api/types';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import MoneyText from '@/components/MoneyText.vue';
-import { formatDateTime, formatMoney, yuanToCents } from '@/utils/format';
+import AdminPage from '@/components/AdminPage.vue';
+import { financeStatus, formatDateTime, formatMoney, yuanToCents } from '@/utils/format';
 
 const message = useMessage();
 
@@ -22,7 +21,7 @@ const availableBalance = ref(0);
 const balanceLoaded = ref(false);
 const modalVisible = ref(false);
 const submitting = ref(false);
-const form = reactive({ amountYuan: '', destination: '' });
+const form = reactive({ amountYuan: null as number | null, destination: '' });
 const generatedNo = ref('');
 
 const rowKey = (row: Settlement) => row.id;
@@ -31,22 +30,23 @@ const columns: DataTableColumns<Settlement> = [
   {
     title: '结算单号',
     key: 'settlement_no',
-    width: 190,
-    render: (row) => h('span', { class: 'mono-cell' }, row.settlement_no),
+    width: 200,
+    ellipsis: { tooltip: true },
+    render: (row) => h(NText, { class: 'mono' }, () => row.settlement_no || '-'),
   },
   {
     title: '商户结算单号',
     key: 'out_settlement_no',
-    width: 190,
+    width: 200,
     ellipsis: { tooltip: true },
-    render: (row) => h('span', { class: 'mono-cell muted-cell' }, row.out_settlement_no),
+    render: (row) => h(NText, { class: 'mono', depth: 3 }, () => row.out_settlement_no || '-'),
   },
   {
     title: '结算金额',
     key: 'amount',
-    width: 120,
+    width: 130,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: row.amount }),
+    render: (row) => h(NText, { class: 'amount' }, () => formatMoney(row.amount)),
   },
   { title: '币种', key: 'currency', width: 80 },
   { title: '收款账户', key: 'destination', minWidth: 180, ellipsis: { tooltip: true } },
@@ -54,7 +54,10 @@ const columns: DataTableColumns<Settlement> = [
     title: '状态',
     key: 'status',
     width: 110,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'finance' }),
+    render: (row) =>
+      h(NTag, { size: 'small', bordered: false, type: financeStatus(row.status).type }, () =>
+        financeStatus(row.status).text,
+      ),
   },
   {
     title: '申请时间',
@@ -103,7 +106,7 @@ async function loadBalance() {
 }
 
 async function openModal() {
-  form.amountYuan = '';
+  form.amountYuan = null;
   form.destination = '';
   generatedNo.value = generateOutSettlementNo();
   modalVisible.value = true;
@@ -111,7 +114,7 @@ async function openModal() {
 }
 
 async function submit() {
-  const cents = yuanToCents(form.amountYuan);
+  const cents = yuanToCents(form.amountYuan ?? 0);
   if (!Number.isFinite(cents) || cents <= 0) {
     message.error('请输入有效的结算金额');
     return;
@@ -162,15 +165,25 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="结算记录" subtitle="提交结算申请并跟踪审核、出款进度">
-      <template #actions>
-        <n-button size="small" :loading="loading" @click="load">刷新</n-button>
-        <n-button size="small" type="primary" @click="openModal">申请结算</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="结算记录" subtitle="提交结算申请并跟踪审核、出款进度">
+    <template #actions>
+      <n-space>
+        <n-button :loading="loading" @click="load">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
+        <n-button type="primary" @click="openModal">
+          <template #icon>
+            <n-icon :component="AddOutline" />
+          </template>
+          申请结算
+        </n-button>
+      </n-space>
+    </template>
 
-    <n-card :bordered="false" class="table-card">
+    <n-card size="small" :bordered="false">
       <n-data-table
         remote
         :columns="columns"
@@ -179,76 +192,61 @@ onMounted(() => {
         :pagination="pagination"
         :bordered="false"
         :row-key="rowKey"
-        :scroll-x="1100"
+        :scroll-x="1160"
         size="small"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
-      />
+      >
+        <template #empty>
+          <n-empty description="暂无结算记录" size="small" />
+        </template>
+      </n-data-table>
     </n-card>
 
-    <n-modal v-model:show="modalVisible" preset="card" title="申请结算" style="max-width: 480px">
-      <n-alert type="info" :bordered="false" class="settle-alert">
-        <template v-if="balanceLoaded">
-          可用余额 <strong>{{ formatMoney(availableBalance) }}</strong>。结算申请提交后进入平台审核，审核通过后按收款账户出款。
-        </template>
-        <template v-else>
-          暂时无法获取可用余额，最终可结算金额以平台审核结果为准。
-        </template>
-      </n-alert>
-      <n-form label-placement="top">
-        <n-form-item label="结算金额（元）">
-          <n-input v-model:value="form.amountYuan" placeholder="0.00">
-            <template #prefix>¥</template>
-          </n-input>
-        </n-form-item>
-        <n-form-item label="收款账户">
-          <n-input
-            v-model:value="form.destination"
-            type="textarea"
-            :autosize="{ minRows: 2, maxRows: 4 }"
-            placeholder="请输入收款账户信息，例如：招商银行 6225 **** 1234 张三"
-          />
-        </n-form-item>
-        <n-form-item label="币种">
-          <n-tag :bordered="false" type="default">CNY（固定）</n-tag>
-        </n-form-item>
-        <n-form-item label="商户结算单号（自动生成）">
-          <n-input :value="generatedNo" readonly class="mono-input" />
-        </n-form-item>
-      </n-form>
+    <n-modal v-model:show="modalVisible" preset="card" title="申请结算" style="width: 620px">
+      <n-space vertical :size="16">
+        <n-alert type="info" :bordered="false">
+          <template v-if="balanceLoaded">
+            可用余额 <n-text strong class="amount">{{ formatMoney(availableBalance) }}</n-text>
+            。结算申请提交后进入平台审核，审核通过后按收款账户出款。
+          </template>
+          <template v-else>暂时无法获取可用余额，最终可结算金额以平台审核结果为准。</template>
+        </n-alert>
+
+        <n-form label-placement="left" label-width="160">
+          <n-form-item label="结算金额（元）">
+            <n-input-number
+              v-model:value="form.amountYuan"
+              :precision="2"
+              :min="0.01"
+              placeholder="0.00"
+              style="width: 240px"
+            >
+              <template #prefix>¥</template>
+            </n-input-number>
+          </n-form-item>
+          <n-form-item label="收款账户">
+            <n-input
+              v-model:value="form.destination"
+              type="textarea"
+              :autosize="{ minRows: 2, maxRows: 4 }"
+              placeholder="请输入收款账户信息，例如：招商银行 6225 **** 1234 张三"
+            />
+          </n-form-item>
+          <n-form-item label="币种">
+            <n-tag :bordered="false" type="default">CNY（固定）</n-tag>
+          </n-form-item>
+          <n-form-item label="商户结算单号">
+            <n-input :value="generatedNo" readonly class="mono" />
+          </n-form-item>
+        </n-form>
+      </n-space>
       <template #footer>
-        <div class="modal-footer">
+        <n-space justify="end">
           <n-button @click="modalVisible = false">取消</n-button>
           <n-button type="primary" :loading="submitting" @click="submit">提交申请</n-button>
-        </div>
+        </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.table-card {
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-:deep(.mono-cell) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px;
-  color: #334155;
-}
-:deep(.muted-cell) {
-  color: #64748b;
-}
-:deep(.mono-input .n-input__input-el) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px;
-  color: #64748b;
-}
-.settle-alert {
-  margin-bottom: 16px;
-}
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-</style>

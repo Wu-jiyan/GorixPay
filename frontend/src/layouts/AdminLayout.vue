@@ -1,19 +1,60 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, h, ref, watch } from 'vue';
+import type { Component } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   NAvatar,
   NButton,
+  NBreadcrumb,
+  NBreadcrumbItem,
   NDropdown,
+  NIcon,
   NLayout,
   NLayoutContent,
   NLayoutHeader,
   NLayoutSider,
   NMenu,
   NSpace,
-  NTooltip,
+  NText,
   useMessage,
 } from 'naive-ui';
+import type { MenuOption } from 'naive-ui';
+import {
+  AlbumsOutline,
+  BagHandleOutline,
+  BuildOutline,
+  CashOutline,
+  ChatboxEllipsesOutline,
+  ChatbubbleEllipsesOutline,
+  ChevronDownOutline,
+  DocumentTextOutline,
+  ExtensionPuzzleOutline,
+  FlaskOutline,
+  GitCompareOutline,
+  GitNetworkOutline,
+  GlobeOutline,
+  IdCardOutline,
+  LibraryOutline,
+  LinkOutline,
+  LockClosedOutline,
+  MegaphoneOutline,
+  MenuOutline,
+  NotificationsOutline,
+  OptionsOutline,
+  PaperPlaneOutline,
+  PeopleOutline,
+  PricetagsOutline,
+  PrintOutline,
+  QrCodeOutline,
+  ReceiptOutline,
+  RepeatOutline,
+  ReturnDownBackOutline,
+  SettingsOutline,
+  ShieldCheckmarkOutline,
+  SpeedometerOutline,
+  StatsChartOutline,
+  WalletOutline,
+} from '@vicons/ionicons5';
 import { useAuthStore } from '@/stores/auth';
 import { siteLogo, siteName } from '@/stores/site';
 
@@ -22,48 +63,120 @@ const route = useRoute();
 const message = useMessage();
 const auth = useAuthStore();
 const collapsed = ref(false);
-// 站点 Logo 是后台填的 URL，加载失败时退回默认的「G」方块
+// 站点 Logo 是后台填的 URL，加载失败时退回站点名首字
 const logoBroken = ref(false);
 watch(siteLogo, () => {
   logoBroken.value = false;
 });
 
-const menuOptions = [
-  { label: '数据概览', key: '/admin' },
-  { label: '报表', key: '/admin/reports' },
-  { label: '商户管理', key: '/admin/merchants' },
-  { label: '用户组与费率', key: '/admin/groups' },
-  { label: '用户组购买', key: '/admin/group-purchases' },
-  { label: '实名审核', key: '/admin/certifications' },
-  { label: '域名审核', key: '/admin/domains' },
-  { label: '订单管理', key: '/admin/orders' },
-  { label: '支付渠道', key: '/admin/channels' },
-  { label: '测试支付', key: '/admin/test-payment' },
-  { label: '支付方式', key: '/admin/pay-types' },
-  { label: '按日轮询', key: '/admin/pay-rolls' },
-  { label: '公众号配置', key: '/admin/wechat-mp' },
-  { label: '插件管理', key: '/admin/plugins' },
-  { label: '退款管理', key: '/admin/refunds' },
-  { label: '投诉管理', key: '/admin/complaints' },
-  { label: '结算管理', key: '/admin/settlements' },
-  { label: '结算规则', key: '/admin/settle-rules' },
-  { label: '分账', key: '/admin/profit-sharing' },
-  { label: '代付管理', key: '/admin/transfers' },
-  { label: '返佣记录', key: '/admin/invites' },
-  { label: '邀请码', key: '/admin/invite-codes' },
-  { label: '风控与黑名单', key: '/admin/risk' },
-  { label: '资金账本', key: '/admin/ledger' },
-  { label: '消息队列', key: '/admin/outbox' },
-  { label: '通知通道', key: '/admin/notification-channels' },
-  { label: '设备与打印', key: '/admin/devices' },
-  { label: '公告管理', key: '/admin/announcements' },
-  { label: '安全设置', key: '/admin/security' },
-  { label: '系统设置', key: '/admin/settings' },
-  { label: '审计日志', key: '/admin/audit' },
-  { label: '数据清理', key: '/admin/maintenance' },
+const renderIcon = (icon: Component) => () => h(NIcon, null, { default: () => h(icon) });
+
+// 菜单按业务分七组：平铺 32 项时用户找不到东西，分组后每组 2-8 项。
+const groups: Array<{ key: string; label: string; icon: Component; items: Array<[string, string, Component]> }> = [
+  {
+    key: 'overview',
+    label: '概览',
+    icon: SpeedometerOutline,
+    items: [
+      ['/admin', '数据总览', SpeedometerOutline],
+      ['/admin/reports', '报表', StatsChartOutline],
+    ],
+  },
+  {
+    key: 'merchant',
+    label: '商户',
+    icon: PeopleOutline,
+    items: [
+      ['/admin/merchants', '商户管理', PeopleOutline],
+      ['/admin/groups', '用户组与费率', PricetagsOutline],
+      ['/admin/group-purchases', '用户组购买', BagHandleOutline],
+      ['/admin/certifications', '实名审核', IdCardOutline],
+      ['/admin/domains', '域名审核', GlobeOutline],
+    ],
+  },
+  {
+    key: 'trade',
+    label: '交易',
+    icon: ReceiptOutline,
+    items: [
+      ['/admin/orders', '订单管理', ReceiptOutline],
+      ['/admin/refunds', '退款管理', ReturnDownBackOutline],
+      ['/admin/complaints', '投诉管理', ChatboxEllipsesOutline],
+      ['/admin/channels', '支付渠道', GitNetworkOutline],
+      ['/admin/pay-types', '支付方式', WalletOutline],
+      ['/admin/pay-rolls', '按日轮询', RepeatOutline],
+      ['/admin/test-payment', '测试支付', FlaskOutline],
+      ['/admin/plugins', '插件管理', ExtensionPuzzleOutline],
+    ],
+  },
+  {
+    key: 'fund',
+    label: '资金',
+    icon: CashOutline,
+    items: [
+      ['/admin/settlements', '结算管理', CashOutline],
+      ['/admin/settle-rules', '结算规则', OptionsOutline],
+      ['/admin/profit-sharing', '分账', GitCompareOutline],
+      ['/admin/transfers', '代付管理', PaperPlaneOutline],
+      ['/admin/ledger', '资金账本', LibraryOutline],
+      ['/admin/invites', '返佣记录', LinkOutline],
+      ['/admin/invite-codes', '邀请码', QrCodeOutline],
+    ],
+  },
+  {
+    key: 'risk',
+    label: '风控',
+    icon: ShieldCheckmarkOutline,
+    items: [
+      ['/admin/risk', '风控与黑名单', ShieldCheckmarkOutline],
+      ['/admin/security', '安全设置', LockClosedOutline],
+    ],
+  },
+  {
+    key: 'message',
+    label: '消息',
+    icon: NotificationsOutline,
+    items: [
+      ['/admin/wechat-mp', '公众号配置', ChatbubbleEllipsesOutline],
+      ['/admin/notification-channels', '通知通道', NotificationsOutline],
+      ['/admin/devices', '设备与打印', PrintOutline],
+      ['/admin/outbox', '消息队列', AlbumsOutline],
+      ['/admin/announcements', '公告管理', MegaphoneOutline],
+    ],
+  },
+  {
+    key: 'system',
+    label: '系统',
+    icon: SettingsOutline,
+    items: [
+      ['/admin/audit', '审计日志', DocumentTextOutline],
+      ['/admin/maintenance', '数据清理', BuildOutline],
+      ['/admin/settings', '系统设置', SettingsOutline],
+    ],
+  },
 ];
 
+const menuOptions: MenuOption[] = groups.map((group) => ({
+  type: 'group',
+  key: group.key,
+  label: group.label,
+  children: group.items.map(([key, label, icon]) => ({ key, label, icon: renderIcon(icon) })),
+}));
+
+// 路径 → 面包屑（分组名 + 页面名），菜单是唯一事实来源
+const routeIndex = computed(() => {
+  const index = new Map<string, { group: string; label: string }>();
+  for (const group of groups) {
+    for (const [key, label] of group.items) {
+      index.set(key, { group: group.label, label });
+    }
+  }
+  return index;
+});
+
 const activeKey = computed(() => (route.path === '/admin/' ? '/admin' : route.path));
+const current = computed(() => routeIndex.value.get(activeKey.value));
+const headerTitle = computed(() => current.value?.label ?? (route.meta.title as string | undefined) ?? '运营后台');
 
 const userOptions = [
   { label: '返回官网', key: 'home' },
@@ -86,14 +199,15 @@ async function handleUserSelect(key: string) {
     <n-layout-sider
       bordered
       collapse-mode="width"
-      :collapsed-width="0"
-      :width="220"
+      :collapsed-width="64"
+      :width="228"
       :collapsed="collapsed"
+      :native-scrollbar="false"
       show-trigger="bar"
       @collapse="collapsed = true"
       @expand="collapsed = false"
     >
-      <div class="brand">
+      <div class="brand" :class="{ 'brand-collapsed': collapsed }">
         <img
           v-if="siteLogo && !logoBroken"
           :src="siteLogo"
@@ -101,10 +215,10 @@ async function handleUserSelect(key: string) {
           class="brand-logo"
           @error="logoBroken = true"
         />
-        <div v-else class="brand-mark">G</div>
+        <div v-else class="brand-logo brand-logo-text">{{ (siteName || 'G').slice(0, 1) }}</div>
         <div v-if="!collapsed" class="brand-text">
-          <strong>{{ siteName }}</strong>
-          <span>运营后台</span>
+          <n-text strong>{{ siteName }}</n-text>
+          <n-text depth="3" class="brand-sub">运营后台</n-text>
         </div>
       </div>
       <n-menu
@@ -112,26 +226,38 @@ async function handleUserSelect(key: string) {
         :options="menuOptions"
         :collapsed="collapsed"
         :collapsed-width="64"
-        :collapsed-icon-size="18"
+        :collapsed-icon-size="20"
+        :indent="18"
+        :root-indent="18"
         @update:value="(key: string) => router.push(key)"
       />
     </n-layout-sider>
+
     <n-layout>
       <n-layout-header bordered class="topbar">
-        <n-space align="center">
-          <n-button text @click="collapsed = !collapsed">☰</n-button>
-          <div class="topbar-title">{{ route.meta.title ?? '运营后台' }}</div>
+        <n-space align="center" :size="12">
+          <n-button quaternary circle size="small" @click="collapsed = !collapsed">
+            <template #icon>
+              <n-icon :component="MenuOutline" />
+            </template>
+          </n-button>
+          <n-breadcrumb>
+            <n-breadcrumb-item>运营后台</n-breadcrumb-item>
+            <n-breadcrumb-item v-if="current?.group">{{ current.group }}</n-breadcrumb-item>
+            <n-breadcrumb-item>{{ headerTitle }}</n-breadcrumb-item>
+          </n-breadcrumb>
         </n-space>
+
         <n-dropdown :options="userOptions" trigger="click" @select="handleUserSelect">
-          <n-space align="center" style="cursor: pointer">
-            <n-avatar round size="small" color="#2563eb">
-              {{ auth.displayName.slice(0, 1) }}
-            </n-avatar>
-            <span class="topbar-user">{{ auth.displayName }}</span>
+          <n-space align="center" :size="8" style="cursor: pointer">
+            <n-avatar round size="small">{{ auth.displayName.slice(0, 1) }}</n-avatar>
+            <n-text depth="2">{{ auth.displayName }}</n-text>
+            <n-icon :component="ChevronDownOutline" size="14" />
           </n-space>
         </n-dropdown>
       </n-layout-header>
-      <n-layout-content class="content" content-style="min-height: calc(100vh - 56px);">
+
+      <n-layout-content class="content" content-style="padding: 20px 24px 40px; min-height: calc(100vh - 57px);">
         <router-view />
       </n-layout-content>
     </n-layout>
@@ -146,60 +272,45 @@ async function handleUserSelect(key: string) {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 18px 18px 12px;
+  padding: 16px 18px 12px;
 }
-.brand-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #2563eb, #06b6d4);
-  color: #fff;
-  font-weight: 700;
-  display: grid;
-  place-items: center;
-  flex: none;
+.brand-collapsed {
+  justify-content: center;
+  padding: 16px 0 12px;
 }
 .brand-logo {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
   object-fit: contain;
   background: #fff;
   flex: none;
 }
+.brand-logo-text {
+  display: grid;
+  place-items: center;
+  background: #18a058;
+  color: #fff;
+  font-weight: 600;
+  font-size: 16px;
+}
 .brand-text {
   display: flex;
   flex-direction: column;
-  line-height: 1.2;
+  line-height: 1.35;
   min-width: 0;
 }
-.brand-text strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 140px;
-}
-.brand-text span {
-  font-size: 11px;
-  color: #94a3b8;
+.brand-sub {
+  font-size: 12px;
 }
 .topbar {
-  height: 56px;
+  height: 57px;
   padding: 0 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #fff;
-}
-.topbar-title {
-  font-weight: 600;
-  font-size: 15px;
-}
-.topbar-user {
-  font-size: 13px;
-  color: #475569;
 }
 .content {
-  background: #f5f7fb;
+  background: var(--n-color-embedded, #f5f7fa);
 }
 </style>

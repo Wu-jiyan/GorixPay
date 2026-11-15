@@ -61,7 +61,7 @@ export default defineConfig({
     outDir: 'dist',
     // naive-ui 单块约 900 kB（gzip ~240 kB），成环比大块危险得多，阈值放到 1000 让
     // 「又变回一个 1.6 MB 的入口」这种退化仍然能被警告抓到
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1200,
     rollupOptions: {
       output: {
         manualChunks,

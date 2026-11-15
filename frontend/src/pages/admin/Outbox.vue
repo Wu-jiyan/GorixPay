@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
-import { NTag, useMessage } from 'naive-ui';
+import { NButton, NGridItem, NTag, useMessage } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
+import { CopyOutline, RefreshOutline, SyncOutline } from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { adminApi } from '@/api';
 import { errorMessage } from '@/api/client';
-import StatCard from '@/components/StatCard.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import { fieldDateTime, fieldText, previewJson, useServerPaging } from './shared';
+import { copyText, formatDateTime } from '@/utils/format';
+import {
+  fieldDateTime,
+  fieldText,
+  pick,
+  previewJson,
+  prettyJson,
+  useServerPaging,
+} from './shared';
 
 type Row = Record<string, unknown>;
 
@@ -18,6 +26,9 @@ const requeueing = ref(false);
 const status = ref<string | null>(null);
 const stats = ref<Record<string, number>>({});
 const statsLoading = ref(false);
+
+const showDetail = ref(false);
+const detailRow = ref<Row | null>(null);
 
 const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } = useServerPaging(load);
 
@@ -38,20 +49,11 @@ const statLabels: Record<string, string> = {
   delivered: '已投递',
 };
 
-const statAccent: Record<string, string> = {
-  pending: '#b45309',
-  processing: '#2563eb',
-  completed: '#0f766e',
-  dead: '#b91c1c',
-  total: '#334155',
-};
-
 const statCards = computed(() =>
   Object.entries(stats.value).map(([key, value]) => ({
     key,
     label: statLabels[key] ?? key,
     value: typeof value === 'number' ? value : Number(value) || 0,
-    accent: statAccent[key] ?? '#334155',
   })),
 );
 
@@ -111,31 +113,61 @@ async function refreshAll() {
   await Promise.all([load(), loadStats()]);
 }
 
-function outboxStatusTag(row: Row) {
-  const status = fieldText(row, 'status', 'Status');
-  const map: Record<string, { text: string; type: 'default' | 'success' | 'warning' | 'error' | 'info' }> = {
-    pending: { text: '待发送', type: 'warning' },
-    processing: { text: '处理中', type: 'info' },
-    completed: { text: '已完成', type: 'success' },
-    dead: { text: '死信', type: 'error' },
-  };
-  const resolved = map[status] ?? { text: status, type: 'default' as const };
-  return h(NTag, { size: 'small', round: true, type: resolved.type }, { default: () => resolved.text });
+const outboxStatusMap: Record<string, { text: string; type: 'default' | 'success' | 'warning' | 'error' | 'info' }> = {
+  pending: { text: '待发送', type: 'warning' },
+  processing: { text: '处理中', type: 'info' },
+  completed: { text: '已完成', type: 'success' },
+  dead: { text: '死信', type: 'error' },
+};
+
+function statusMeta(row: Row | null) {
+  const current = fieldText(row, 'status', 'Status');
+  return outboxStatusMap[current] ?? { text: current, type: 'default' as const };
 }
+
+function outboxStatusTag(row: Row) {
+  const resolved = statusMeta(row);
+  return h(NTag, { size: 'small', round: true, bordered: false, type: resolved.type }, {
+    default: () => resolved.text,
+  });
+}
+
+function openDetail(row: Row) {
+  detailRow.value = row;
+  showDetail.value = true;
+}
+
+function payloadOf(row: Row | null): string {
+  if (row === null) return '-';
+  return prettyJson(pick(row, 'payload', 'Payload'));
+}
+
+async function copyPayload() {
+  const ok = await copyText(payloadOf(detailRow.value));
+  if (ok) message.success('载荷已复制');
+  else message.warning('复制失败，请手动选择文本');
+}
+
+const detailPayload = computed(() => payloadOf(detailRow.value));
+const detailStatus = computed(() => statusMeta(detailRow.value));
+const detailCreatedAt = computed(() => {
+  const value = pick(detailRow.value, 'created_at', 'CreatedAt');
+  return typeof value === 'string' ? formatDateTime(value) : '-';
+});
 
 const columns = computed<DataTableColumns<Row>>(() => [
   {
     title: '消息 ID',
     key: 'id',
     width: 250,
-    ellipsis: true,
+    ellipsis: { tooltip: true },
     render: (row) => h('span', { class: 'mono' }, fieldText(row, 'id', 'ID')),
   },
   {
     title: 'Topic',
     key: 'topic',
-    width: 190,
-    ellipsis: true,
+    width: 180,
+    ellipsis: { tooltip: true },
     render: (row) => fieldText(row, 'topic', 'Topic'),
   },
   {
@@ -161,20 +193,20 @@ const columns = computed<DataTableColumns<Row>>(() => [
     title: '最近错误',
     key: 'last_error',
     minWidth: 220,
-    ellipsis: true,
+    ellipsis: { tooltip: true },
     render: (row) => {
       const text = fieldText(row, 'last_error', 'LastError');
-      return text === '-' ? text : h('span', { title: text, style: 'color: #b91c1c' }, previewJson(text, 80));
+      return text === '-' ? text : h('span', { style: 'color: #b91c1c' }, previewJson(text, 80));
     },
   },
   {
     title: '载荷',
     key: 'payload',
     minWidth: 200,
-    ellipsis: true,
+    ellipsis: { tooltip: true },
     render: (row) => {
-      const text = fieldText(row, 'payload', 'Payload');
-      return text === '-' ? text : h('span', { title: text, class: 'muted' }, previewJson(text, 60));
+      const value = pick(row, 'payload', 'Payload');
+      return value === undefined ? '-' : h('span', { class: 'muted' }, previewJson(value, 60));
     },
   },
   {
@@ -182,6 +214,16 @@ const columns = computed<DataTableColumns<Row>>(() => [
     key: 'created_at',
     width: 170,
     render: (row) => fieldDateTime(row, 'created_at', 'CreatedAt'),
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 90,
+    fixed: 'right',
+    render: (row) =>
+      h(NButton, { text: true, size: 'small', type: 'primary', onClick: () => openDetail(row) }, {
+        default: () => '详情',
+      }),
   },
 ]);
 
@@ -192,44 +234,61 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="消息队列" subtitle="商户通知 Outbox：投递状态、重试与死信重投">
-      <template #actions>
-        <n-button secondary :loading="loading || statsLoading" @click="refreshAll">刷新</n-button>
+  <admin-page title="消息队列" subtitle="商户通知 Outbox：投递状态、重试与死信重投">
+    <template #actions>
+      <n-space>
+        <n-button :loading="loading || statsLoading" @click="refreshAll">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
         <n-popconfirm @positive-click="requeueDead">
           <template #trigger>
-            <n-button type="warning" :loading="requeueing">重投死信</n-button>
+            <n-button type="warning" :loading="requeueing">
+              <template #icon>
+                <n-icon :component="SyncOutline" />
+              </template>
+              重投死信
+            </n-button>
           </template>
           确认把所有 dead 状态的消息重新入队？
         </n-popconfirm>
-      </template>
-    </PageHeader>
+      </n-space>
+    </template>
 
     <n-spin :show="statsLoading">
-      <n-empty v-if="statCards.length === 0" description="暂无队列统计" />
-      <n-grid v-else cols="2 s:3 m:5" responsive="screen" :x-gap="16" :y-gap="16">
-        <n-gi v-for="card in statCards" :key="card.key">
-          <StatCard :label="card.label" :value="card.value" :accent="card.accent" />
-        </n-gi>
+      <n-empty v-if="statCards.length === 0" description="暂无队列统计" style="margin-bottom: 16px" />
+      <n-grid v-else cols="2 s:3 m:5" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 16px">
+        <n-grid-item v-for="card in statCards" :key="card.key">
+          <n-card size="small" :bordered="false">
+            <n-statistic :label="card.label" :value="card.value" />
+          </n-card>
+        </n-grid-item>
       </n-grid>
     </n-spin>
 
-    <div class="toolbar" style="margin-top: 16px">
-      <n-select v-model:value="status" :options="statusOptions" placeholder="全部状态" clearable style="width: 160px" />
-      <n-button type="primary" @click="search">查询</n-button>
-      <n-button @click="resetFilters">重置</n-button>
-      <span class="muted mono" style="font-size: 12px">共 {{ total }} 条</span>
-    </div>
+    <n-card size="small" :bordered="false">
+      <n-space :size="10" align="center" style="margin-bottom: 12px">
+        <n-select
+          v-model:value="status"
+          :options="statusOptions"
+          placeholder="全部状态"
+          clearable
+          style="width: 160px"
+        />
+        <n-button type="primary" @click="search">查询</n-button>
+        <n-button @click="resetFilters">重置</n-button>
+        <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
+      </n-space>
 
-    <n-card :bordered="false">
       <n-data-table
         :columns="columns"
         :data="rows"
         :loading="loading"
         :pagination="pagination"
         :row-key="(row: Row) => String(row.id ?? row.ID ?? '')"
-        :bordered="false"
-        :single-line="false"
+        :scroll-x="1500"
         size="small"
         remote
         @update:page="onPage"
@@ -240,11 +299,52 @@ onMounted(() => {
         </template>
       </n-data-table>
     </n-card>
-  </div>
-</template>
 
-<style scoped>
-:deep(.stat-card .stat-value) {
-  word-break: keep-all;
-}
-</style>
+    <n-drawer v-model:show="showDetail" :width="640" placement="right">
+      <n-drawer-content title="消息详情" closable>
+        <n-descriptions :column="2" bordered label-placement="left" size="small">
+          <n-descriptions-item label="消息 ID">
+            <span class="mono">{{ fieldText(detailRow, 'id', 'ID') }}</span>
+          </n-descriptions-item>
+          <n-descriptions-item label="Topic">
+            {{ fieldText(detailRow, 'topic', 'Topic') }}
+          </n-descriptions-item>
+          <n-descriptions-item label="状态">
+            <n-tag size="small" round :bordered="false" :type="detailStatus.type">{{ detailStatus.text }}</n-tag>
+          </n-descriptions-item>
+          <n-descriptions-item label="重试次数">
+            {{ fieldText(detailRow, 'attempts', 'Attempts') }}
+          </n-descriptions-item>
+          <n-descriptions-item label="下次可投递">
+            {{ fieldDateTime(detailRow, 'available_at', 'AvailableAt') }}
+          </n-descriptions-item>
+          <n-descriptions-item label="创建时间">
+            {{ detailCreatedAt }}
+          </n-descriptions-item>
+          <n-descriptions-item label="最近错误" :span="2">
+            <span style="color: #b91c1c">{{ fieldText(detailRow, 'last_error', 'LastError') }}</span>
+          </n-descriptions-item>
+        </n-descriptions>
+
+        <n-divider title-placement="left">
+          载荷
+        </n-divider>
+        <n-space justify="end" style="margin-bottom: 8px">
+          <n-button text type="primary" size="small" @click="copyPayload">
+            <template #icon>
+              <n-icon :component="CopyOutline" />
+            </template>
+            复制
+          </n-button>
+        </n-space>
+        <n-code :code="detailPayload" language="json" word-wrap />
+
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="showDetail = false">关闭</n-button>
+          </n-space>
+        </template>
+      </n-drawer-content>
+    </n-drawer>
+  </admin-page>
+</template>

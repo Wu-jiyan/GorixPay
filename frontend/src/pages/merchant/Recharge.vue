@@ -1,15 +1,13 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
 import axios from 'axios';
-import { useMessage, type DataTableColumns } from 'naive-ui';
+import { NTag, NText, useMessage, type DataTableColumns } from 'naive-ui';
+import { CardOutline, CopyOutline, LockClosedOutline, OpenOutline, RefreshOutline, WalletOutline } from '@vicons/ionicons5';
 import { merchantApi } from '@/api';
 import type { DepositInfo, Order } from '@/api/types';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import StatCard from '@/components/StatCard.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import MoneyText from '@/components/MoneyText.vue';
-import { copyText, formatDateTime, formatMoney, yuanToCents } from '@/utils/format';
+import AdminPage from '@/components/AdminPage.vue';
+import { copyText, formatDateTime, formatMoney, orderStatus, yuanToCents } from '@/utils/format';
 
 interface FundingResult {
   trade_no: string;
@@ -22,7 +20,7 @@ const message = useMessage();
 const activeTab = ref<'recharge' | 'deposit'>('recharge');
 
 const rechargeNotEnabled = ref(false);
-const rechargeAmount = ref('');
+const rechargeAmount = ref<number | null>(null);
 const rechargeSubmitting = ref(false);
 const rechargeResult = ref<FundingResult | null>(null);
 const rechargeLoading = ref(true);
@@ -34,7 +32,7 @@ const rechargePageSize = ref(10);
 const depositNotEnabled = ref(false);
 const depositInfo = ref<DepositInfo | null>(null);
 const depositLoading = ref(true);
-const depositAmount = ref('');
+const depositAmount = ref<number | null>(null);
 const depositSubmitting = ref(false);
 const depositResult = ref<FundingResult | null>(null);
 const depositOrdersLoading = ref(true);
@@ -61,22 +59,26 @@ const orderColumns: DataTableColumns<Order> = [
   {
     title: '订单号',
     key: 'trade_no',
-    width: 195,
-    render: (row) => h('span', { class: 'mono-cell' }, row.trade_no),
+    width: 200,
+    ellipsis: { tooltip: true },
+    render: (row) => h(NText, { class: 'mono' }, () => row.trade_no || '-'),
   },
-  { title: '商品名称', key: 'name', minWidth: 150, ellipsis: { tooltip: true } },
+  { title: '商品名称', key: 'name', minWidth: 160, ellipsis: { tooltip: true } },
   {
     title: '金额',
     key: 'amount',
-    width: 120,
+    width: 130,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: row.amount }),
+    render: (row) => h(NText, { class: 'amount' }, () => formatMoney(row.amount)),
   },
   {
     title: '状态',
     key: 'status',
     width: 100,
-    render: (row) => h(StatusTag, { status: row.status }),
+    render: (row) =>
+      h(NTag, { size: 'small', bordered: false, type: orderStatus(row.status).type }, () =>
+        orderStatus(row.status).text,
+      ),
   },
   {
     title: '创建时间',
@@ -160,7 +162,7 @@ async function loadDepositOrders() {
 }
 
 async function submitRecharge() {
-  const cents = yuanToCents(rechargeAmount.value);
+  const cents = yuanToCents(rechargeAmount.value ?? 0);
   if (!Number.isFinite(cents) || cents <= 0) {
     message.error('请输入有效的充值金额');
     return;
@@ -169,7 +171,7 @@ async function submitRecharge() {
   try {
     const res = await merchantApi.recharge(cents);
     rechargeResult.value = res;
-    rechargeAmount.value = '';
+    rechargeAmount.value = null;
     message.success('充值订单已创建，请在收银台完成支付');
     rechargePage.value = 1;
     await loadRechargeOrders();
@@ -186,7 +188,7 @@ async function submitRecharge() {
 }
 
 async function submitDeposit() {
-  const cents = yuanToCents(depositAmount.value);
+  const cents = yuanToCents(depositAmount.value ?? 0);
   if (!Number.isFinite(cents) || cents <= 0) {
     message.error('请输入有效的保证金金额');
     return;
@@ -195,7 +197,7 @@ async function submitDeposit() {
   try {
     const res = await merchantApi.rechargeDeposit(cents);
     depositResult.value = res;
-    depositAmount.value = '';
+    depositAmount.value = null;
     message.success('保证金订单已创建，请在收银台完成支付');
     depositPage.value = 1;
     await Promise.all([loadDepositOrders(), loadDepositInfo()]);
@@ -252,292 +254,270 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="余额充值" subtitle="充值可用余额或缴纳保证金，支付成功后自动入账">
-      <template #actions>
-        <n-button size="small" :loading="rechargeLoading || depositLoading" @click="refreshAll">
-          刷新
-        </n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="余额充值" subtitle="充值可用余额或缴纳保证金，支付成功后自动入账">
+    <template #actions>
+      <n-button :loading="rechargeLoading || depositLoading" @click="refreshAll">
+        <template #icon>
+          <n-icon :component="RefreshOutline" />
+        </template>
+        刷新
+      </n-button>
+    </template>
 
-    <n-tabs v-model:value="activeTab" type="line" animated>
-      <n-tab-pane name="recharge" tab="余额充值">
-        <n-alert v-if="rechargeNotEnabled" type="warning" :bordered="false" class="tips-alert">
-          充值接口未启用：当前平台未开放自助充值，可稍后再试或联系平台运营。
-        </n-alert>
+    <n-card size="small" :bordered="false">
+      <n-tabs v-model:value="activeTab" type="line" animated>
+        <n-tab-pane name="recharge" tab="余额充值">
+          <n-alert v-if="rechargeNotEnabled" type="warning" :bordered="false" style="margin-bottom: 16px">
+            充值接口未启用：当前平台未开放自助充值，可稍后再试或联系平台运营。
+          </n-alert>
 
-        <div v-if="!rechargeNotEnabled" class="funding-grid">
-          <n-card :bordered="false" class="panel-card" title="充值金额">
-            <n-form label-placement="top">
-              <n-form-item label="充值金额（元）">
-                <n-input v-model:value="rechargeAmount" placeholder="请输入充值金额，最低 0.01 元">
-                  <template #prefix>¥</template>
-                </n-input>
-              </n-form-item>
-              <div class="quick-row">
-                <n-button
-                  v-for="item in quickAmounts"
-                  :key="item"
-                  size="small"
-                  quaternary
-                  @click="rechargeAmount = String(item)"
-                >
-                  ¥{{ item }}
-                </n-button>
-              </div>
-            </n-form>
-            <div class="submit-row">
-              <n-button
-                type="primary"
-                :loading="rechargeSubmitting"
-                :disabled="rechargeNotEnabled"
-                @click="submitRecharge"
+          <template v-if="!rechargeNotEnabled">
+            <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16">
+              <n-gi>
+                <n-card size="small" :bordered="false" title="充值金额">
+                  <n-form label-placement="left" label-width="160">
+                    <n-form-item label="充值金额（元）">
+                      <n-input-number
+                        v-model:value="rechargeAmount"
+                        :precision="2"
+                        :min="0.01"
+                        placeholder="请输入充值金额，最低 0.01 元"
+                        style="width: 100%"
+                      >
+                        <template #prefix>¥</template>
+                      </n-input-number>
+                    </n-form-item>
+                    <n-form-item label="快捷金额">
+                      <n-space>
+                        <n-button
+                          v-for="item in quickAmounts"
+                          :key="item"
+                          size="small"
+                          secondary
+                          @click="rechargeAmount = item"
+                        >
+                          ¥{{ item }}
+                        </n-button>
+                      </n-space>
+                    </n-form-item>
+                    <n-form-item>
+                      <n-button type="primary" :loading="rechargeSubmitting" @click="submitRecharge">
+                        <template #icon>
+                          <n-icon :component="CardOutline" />
+                        </template>
+                        创建充值订单
+                      </n-button>
+                    </n-form-item>
+                  </n-form>
+
+                  <n-space v-if="rechargeResult" vertical :size="12">
+                    <n-alert type="success" :bordered="false" title="充值订单已创建">
+                      订单号 <n-text class="mono">{{ rechargeResult.trade_no }}</n-text>，金额
+                      {{ formatMoney(rechargeResult.amount) }}，请在收银台完成支付。
+                    </n-alert>
+                    <n-input :value="rechargeResult.cashier_url" readonly>
+                      <template #suffix>
+                        <n-button text type="primary" @click="handleCopy(rechargeResult.cashier_url)">
+                          <template #icon>
+                            <n-icon :component="CopyOutline" />
+                          </template>
+                          复制
+                        </n-button>
+                      </template>
+                    </n-input>
+                    <n-space>
+                      <n-button
+                        type="primary"
+                        tag="a"
+                        :href="rechargeResult.cashier_url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <template #icon>
+                          <n-icon :component="OpenOutline" />
+                        </template>
+                        打开收银台支付
+                      </n-button>
+                      <n-button secondary @click="handleCopy(rechargeResult.cashier_url)">复制支付链接</n-button>
+                    </n-space>
+                  </n-space>
+                </n-card>
+              </n-gi>
+
+              <n-gi>
+                <n-card size="small" :bordered="false" title="充值说明">
+                  <n-list>
+                    <n-list-item>充值订单通过平台收银台支付，支付成功后可立即用于结算、代付或认证费用。</n-list-item>
+                    <n-list-item>充值金额以订单创建时的金额为准，创建后不可修改。</n-list-item>
+                    <n-list-item>未支付的充值订单可以关闭或等待超时，不会产生扣款。</n-list-item>
+                    <n-list-item>充值订单不支持退款，如需调整请联系平台运营。</n-list-item>
+                  </n-list>
+                </n-card>
+              </n-gi>
+            </n-grid>
+
+            <n-card size="small" :bordered="false" title="充值订单" style="margin-top: 16px">
+              <n-data-table
+                remote
+                :columns="orderColumns"
+                :data="rechargeOrders"
+                :loading="rechargeLoading"
+                :pagination="rechargePagination"
+                :bordered="false"
+                :row-key="rowKey"
+                :scroll-x="940"
+                size="small"
+                @update:page="handleRechargePageChange"
+                @update:page-size="handleRechargePageSizeChange"
               >
-                创建充值订单
-              </n-button>
-            </div>
+                <template #empty>
+                  <n-empty description="暂无充值订单" size="small" />
+                </template>
+              </n-data-table>
+            </n-card>
+          </template>
+        </n-tab-pane>
 
-            <div v-if="rechargeResult" class="result-box">
-              <n-alert type="success" :bordered="false" title="充值订单已创建">
-                订单号 <span class="mono-cell">{{ rechargeResult.trade_no }}</span>，金额
-                {{ formatMoney(rechargeResult.amount) }}，请在收银台完成支付。
-              </n-alert>
-              <div class="result-actions">
-                <n-button
-                  type="primary"
-                  tag="a"
-                  :href="rechargeResult.cashier_url"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  打开收银台支付
-                </n-button>
-                <n-button secondary @click="handleCopy(rechargeResult.cashier_url)">复制支付链接</n-button>
-              </div>
-              <pre class="url-text">{{ rechargeResult.cashier_url }}</pre>
-            </div>
-          </n-card>
-
-          <n-card :bordered="false" class="panel-card" title="充值说明">
-            <ul class="note-list">
-              <li>充值订单通过平台收银台支付，支付成功后可立即用于结算、代付或认证费用。</li>
-              <li>充值金额以订单创建时的金额为准，创建后不可修改。</li>
-              <li>未支付的充值订单可以关闭或等待超时，不会产生扣款。</li>
-              <li>充值订单不支持退款，如需调整请联系平台运营。</li>
-            </ul>
-          </n-card>
-        </div>
-
-        <n-card v-if="!rechargeNotEnabled" :bordered="false" class="table-card" title="充值订单">
-          <n-data-table
-            remote
-            :columns="orderColumns"
-            :data="rechargeOrders"
-            :loading="rechargeLoading"
-            :pagination="rechargePagination"
+        <n-tab-pane name="deposit" tab="保证金">
+          <n-alert v-if="depositNotEnabled" type="warning" :bordered="false" style="margin-bottom: 16px">
+            保证金接口未启用：当前平台未开放保证金功能，可稍后再试或联系平台运营。
+          </n-alert>
+          <n-alert
+            v-else-if="depositInfo && depositInfo.enabled === false"
+            type="info"
             :bordered="false"
-            :row-key="rowKey"
-            :scroll-x="900"
-            size="small"
-            @update:page="handleRechargePageChange"
-            @update:page-size="handleRechargePageSizeChange"
+            style="margin-bottom: 16px"
           >
-            <template #empty>
-              <n-empty description="暂无充值订单" size="small" />
-            </template>
-          </n-data-table>
-        </n-card>
-      </n-tab-pane>
+            保证金缴纳当前未开启，如需缴纳请联系平台运营。
+          </n-alert>
 
-      <n-tab-pane name="deposit" tab="保证金">
-        <n-alert v-if="depositNotEnabled" type="warning" :bordered="false" class="tips-alert">
-          保证金接口未启用：当前平台未开放保证金功能，可稍后再试或联系平台运营。
-        </n-alert>
-        <n-alert
-          v-else-if="depositInfo && depositInfo.enabled === false"
-          type="info"
-          :bordered="false"
-          class="tips-alert"
-        >
-          保证金缴纳当前未开启，如需缴纳请联系平台运营。
-        </n-alert>
+          <template v-if="!depositNotEnabled">
+            <n-spin :show="depositLoading">
+              <n-grid cols="1 s:2" responsive="screen" :x-gap="16" :y-gap="16">
+                <n-gi>
+                  <n-card size="small" :bordered="false">
+                    <n-statistic label="保证金余额" :value="formatMoney(depositInfo?.deposit_balance)">
+                      <template #prefix>
+                        <n-icon :component="WalletOutline" />
+                      </template>
+                    </n-statistic>
+                    <n-text depth="3" style="font-size: 12px">已入账的保证金合计</n-text>
+                  </n-card>
+                </n-gi>
+                <n-gi>
+                  <n-card size="small" :bordered="false">
+                    <n-statistic label="保证金要求" :value="formatMoney(depositInfo?.required_cents)">
+                      <template #prefix>
+                        <n-icon :component="LockClosedOutline" />
+                      </template>
+                    </n-statistic>
+                    <n-text depth="3" style="font-size: 12px">
+                      {{ depositShortfall > 0 ? `还需缴纳 ${formatMoney(depositShortfall)}` : '已满足保证金要求' }}
+                    </n-text>
+                  </n-card>
+                </n-gi>
+              </n-grid>
+            </n-spin>
 
-        <n-spin v-if="!depositNotEnabled" :show="depositLoading">
-          <div class="stat-grid">
-            <StatCard
-              label="保证金余额"
-              :value="formatMoney(depositInfo?.deposit_balance)"
-              hint="已入账的保证金合计"
-              accent="#2563eb"
-            />
-            <StatCard
-              label="保证金要求"
-              :value="formatMoney(depositInfo?.required_cents)"
-              :hint="depositShortfall > 0 ? `还需缴纳 ${formatMoney(depositShortfall)}` : '已满足保证金要求'"
-              :accent="depositShortfall > 0 ? '#dc2626' : '#059669'"
-            />
-          </div>
-        </n-spin>
+            <n-alert
+              v-if="depositShortfall > 0"
+              type="warning"
+              :bordered="false"
+              style="margin-top: 16px"
+            >
+              保证金不足：当前还需缴纳 {{ formatMoney(depositShortfall) }}，未满足要求可能影响结算与代付。
+            </n-alert>
 
-        <n-alert v-if="!depositNotEnabled && depositShortfall > 0" type="warning" :bordered="false" class="tips-alert deposit-tip">
-          保证金不足：当前还需缴纳 {{ formatMoney(depositShortfall) }}，未满足要求可能影响结算与代付。
-        </n-alert>
+            <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16" style="margin-top: 16px">
+              <n-gi>
+                <n-card size="small" :bordered="false" title="缴纳保证金">
+                  <n-form label-placement="left" label-width="160">
+                    <n-form-item label="缴纳金额（元）">
+                      <n-input-number
+                        v-model:value="depositAmount"
+                        :precision="2"
+                        :min="0.01"
+                        placeholder="请输入缴纳金额"
+                        style="width: 100%"
+                      >
+                        <template #prefix>¥</template>
+                      </n-input-number>
+                    </n-form-item>
+                    <n-form-item>
+                      <n-button type="primary" :loading="depositSubmitting" :disabled="depositDisabled" @click="submitDeposit">
+                        创建保证金订单
+                      </n-button>
+                    </n-form-item>
+                  </n-form>
 
-        <div v-if="!depositNotEnabled" class="funding-grid">
-          <n-card :bordered="false" class="panel-card" title="缴纳保证金">
-            <n-form label-placement="top">
-              <n-form-item label="缴纳金额（元）">
-                <n-input v-model:value="depositAmount" placeholder="请输入缴纳金额">
-                  <template #prefix>¥</template>
-                </n-input>
-              </n-form-item>
-            </n-form>
-            <div class="submit-row">
-              <n-button
-                type="primary"
-                :loading="depositSubmitting"
-                :disabled="depositDisabled"
-                @click="submitDeposit"
+                  <n-space v-if="depositResult" vertical :size="12">
+                    <n-alert type="success" :bordered="false" title="保证金订单已创建">
+                      订单号 <n-text class="mono">{{ depositResult.trade_no }}</n-text>，金额
+                      {{ formatMoney(depositResult.amount) }}，请在收银台完成支付。
+                    </n-alert>
+                    <n-input :value="depositResult.cashier_url" readonly>
+                      <template #suffix>
+                        <n-button text type="primary" @click="handleCopy(depositResult.cashier_url)">
+                          <template #icon>
+                            <n-icon :component="CopyOutline" />
+                          </template>
+                          复制
+                        </n-button>
+                      </template>
+                    </n-input>
+                    <n-space>
+                      <n-button
+                        type="primary"
+                        tag="a"
+                        :href="depositResult.cashier_url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <template #icon>
+                          <n-icon :component="OpenOutline" />
+                        </template>
+                        打开收银台支付
+                      </n-button>
+                      <n-button secondary @click="handleCopy(depositResult.cashier_url)">复制支付链接</n-button>
+                    </n-space>
+                  </n-space>
+                </n-card>
+              </n-gi>
+
+              <n-gi>
+                <n-card size="small" :bordered="false" title="保证金说明">
+                  <n-list>
+                    <n-list-item>保证金独立记账，不计入可用余额，用于风险保障。</n-list-item>
+                    <n-list-item>保证金订单同样走收银台支付，支付成功后由平台入账。</n-list-item>
+                    <n-list-item>保证金要求由平台统一配置，页面展示的金额为当前要求下限。</n-list-item>
+                    <n-list-item>保证金订单不支持退款，如需调整请联系平台运营。</n-list-item>
+                  </n-list>
+                </n-card>
+              </n-gi>
+            </n-grid>
+
+            <n-card size="small" :bordered="false" title="保证金订单" style="margin-top: 16px">
+              <n-data-table
+                remote
+                :columns="orderColumns"
+                :data="depositOrders"
+                :loading="depositOrdersLoading"
+                :pagination="depositPagination"
+                :bordered="false"
+                :row-key="rowKey"
+                :scroll-x="940"
+                size="small"
+                @update:page="handleDepositPageChange"
+                @update:page-size="handleDepositPageSizeChange"
               >
-                创建保证金订单
-              </n-button>
-            </div>
-
-            <div v-if="depositResult" class="result-box">
-              <n-alert type="success" :bordered="false" title="保证金订单已创建">
-                订单号 <span class="mono-cell">{{ depositResult.trade_no }}</span>，金额
-                {{ formatMoney(depositResult.amount) }}，请在收银台完成支付。
-              </n-alert>
-              <div class="result-actions">
-                <n-button
-                  type="primary"
-                  tag="a"
-                  :href="depositResult.cashier_url"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  打开收银台支付
-                </n-button>
-                <n-button secondary @click="handleCopy(depositResult.cashier_url)">复制支付链接</n-button>
-              </div>
-              <pre class="url-text">{{ depositResult.cashier_url }}</pre>
-            </div>
-          </n-card>
-
-          <n-card :bordered="false" class="panel-card" title="保证金说明">
-            <ul class="note-list">
-              <li>保证金独立记账，不计入可用余额，用于风险保障。</li>
-              <li>保证金订单同样走收银台支付，支付成功后由平台入账。</li>
-              <li>保证金要求由平台统一配置，页面展示的金额为当前要求下限。</li>
-              <li>保证金订单不支持退款，如需调整请联系平台运营。</li>
-            </ul>
-          </n-card>
-        </div>
-
-        <n-card v-if="!depositNotEnabled" :bordered="false" class="table-card" title="保证金订单">
-          <n-data-table
-            remote
-            :columns="orderColumns"
-            :data="depositOrders"
-            :loading="depositOrdersLoading"
-            :pagination="depositPagination"
-            :bordered="false"
-            :row-key="rowKey"
-            :scroll-x="900"
-            size="small"
-            @update:page="handleDepositPageChange"
-            @update:page-size="handleDepositPageSizeChange"
-          >
-            <template #empty>
-              <n-empty description="暂无保证金订单" size="small" />
-            </template>
-          </n-data-table>
-        </n-card>
-      </n-tab-pane>
-    </n-tabs>
-  </div>
+                <template #empty>
+                  <n-empty description="暂无保证金订单" size="small" />
+                </template>
+              </n-data-table>
+            </n-card>
+          </template>
+        </n-tab-pane>
+      </n-tabs>
+    </n-card>
+  </admin-page>
 </template>
-
-<style scoped>
-.tips-alert {
-  margin-bottom: 16px;
-}
-.deposit-tip {
-  margin-top: 16px;
-}
-.funding-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-.panel-card {
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-.quick-row {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: -8px;
-}
-.submit-row {
-  margin-top: 16px;
-}
-.result-box {
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px dashed #e2e8f0;
-}
-.result-actions {
-  margin-top: 12px;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.url-text {
-  margin: 12px 0 0;
-  padding: 10px 12px;
-  background: #f1f5f9;
-  border-radius: 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11.5px;
-  color: #334155;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-.note-list {
-  margin: 0;
-  padding-left: 18px;
-  color: #64748b;
-  font-size: 13px;
-  line-height: 1.9;
-}
-.note-list li {
-  margin-bottom: 6px;
-}
-.table-card {
-  margin-top: 16px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-:deep(.mono-cell) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px;
-  color: #334155;
-}
-@media (max-width: 1000px) {
-  .funding-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-@media (max-width: 768px) {
-  .stat-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-</style>

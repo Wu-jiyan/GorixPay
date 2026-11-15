@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
-import { useMessage } from 'naive-ui';
+import { NText, useMessage } from 'naive-ui';
 import type { DataTableColumns } from 'naive-ui';
+import { LinkOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { adminApi } from '@/api';
 import type { InviteRecord } from '@/api';
 import { errorMessage } from '@/api/client';
-import MoneyText from '@/components/MoneyText.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import { formatDateTime } from '@/utils/format';
+import { formatDateTime, formatMoney } from '@/utils/format';
 import { httpStatus, itemsOf, numberOr, useServerPaging } from './shared';
 
 const message = useMessage();
@@ -60,48 +60,56 @@ function rateText(rateBp?: number): string {
   return `${(rateBp / 100).toFixed(2)}%`;
 }
 
+function monoNode(value: string) {
+  return h('span', { class: 'mono' }, value || '-');
+}
+
+function moneyNode(amount: number | null, type?: 'success' | 'error') {
+  return h(NText, { class: 'amount', type }, { default: () => formatMoney(amount) });
+}
+
 const columns = computed<DataTableColumns<InviteRecord>>(() => [
   {
     title: '邀请人 ID',
     key: 'inviter_id',
-    width: 260,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.inviter_id || '-'),
+    width: 250,
+    ellipsis: { tooltip: true },
+    render: (row) => monoNode(row.inviter_id),
   },
   {
     title: '被邀请人 ID',
     key: 'invitee_id',
-    width: 260,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.invitee_id || '-'),
+    width: 250,
+    ellipsis: { tooltip: true },
+    render: (row) => monoNode(row.invitee_id),
   },
   {
     title: '被邀请人',
     key: 'invitee_name',
     minWidth: 140,
-    ellipsis: true,
+    ellipsis: { tooltip: true },
     render: (row) => row.invitee_name || '-',
   },
   {
     title: '订单号',
     key: 'trade_no',
     width: 200,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, row.trade_no || '-'),
+    ellipsis: { tooltip: true },
+    render: (row) => monoNode(row.trade_no),
   },
   {
     title: '订单金额',
     key: 'order_amount',
-    width: 130,
+    width: 140,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: row.order_amount }),
+    render: (row) => moneyNode(typeof row.order_amount === 'number' ? row.order_amount : null),
   },
   {
     title: '返佣金额',
     key: 'rebate_amount',
-    width: 130,
+    width: 140,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: row.rebate_amount, color: '#0f766e' }),
+    render: (row) => moneyNode(typeof row.rebate_amount === 'number' ? row.rebate_amount : null, 'success'),
   },
   {
     title: '返佣比例',
@@ -122,31 +130,45 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="返佣记录" subtitle="邀请返佣明细：按订单金额与万分比比例计算">
-      <template #actions>
-        <n-button secondary :loading="loading" @click="load">刷新</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="返佣记录" subtitle="邀请返佣明细：按订单金额与万分比比例计算">
+    <template #actions>
+      <n-button :loading="loading" @click="load">
+        <template #icon>
+          <n-icon :component="RefreshOutline" />
+        </template>
+        刷新
+      </n-button>
+    </template>
 
     <n-alert v-if="unavailable" type="warning" :bordered="false" style="margin-bottom: 16px">
       返佣接口未启用：后端 <span class="mono">/admin/invites</span> 尚未就绪（404），完成后本页自动可用。
     </n-alert>
 
-    <div class="toolbar">
-      <n-input
-        v-model:value="inviterId"
-        placeholder="邀请人商户 ID"
-        clearable
-        style="width: 280px"
-        @keyup.enter="search"
-      />
-      <n-button type="primary" @click="search">查询</n-button>
-      <n-button @click="resetFilters">重置</n-button>
-      <span class="muted" style="font-size: 12px">共 {{ total }} 条</span>
-    </div>
+    <n-card size="small" :bordered="false">
+      <template #header>
+        <n-space :size="6" align="center">
+          <n-icon :component="LinkOutline" />
+          <span>邀请返佣明细</span>
+        </n-space>
+      </template>
 
-    <n-card :bordered="false">
+      <n-space :size="10" align="center" style="margin-bottom: 12px">
+        <n-input
+          v-model:value="inviterId"
+          placeholder="邀请人商户 ID"
+          clearable
+          style="width: 280px"
+          @keyup.enter="search"
+        >
+          <template #prefix>
+            <n-icon :component="SearchOutline" />
+          </template>
+        </n-input>
+        <n-button type="primary" @click="search">查询</n-button>
+        <n-button @click="resetFilters">重置</n-button>
+        <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
+      </n-space>
+
       <n-empty v-if="unavailable" description="接口未启用" size="large">
         <template #extra>
           <n-button size="small" :loading="loading" @click="load">重新检测</n-button>
@@ -159,8 +181,7 @@ onMounted(load);
         :loading="loading"
         :pagination="pagination"
         :row-key="(row: InviteRecord) => row.id"
-        :bordered="false"
-        :single-line="false"
+        :scroll-x="1560"
         size="small"
         remote
         @update:page="onPage"
@@ -171,5 +192,5 @@ onMounted(load);
         </template>
       </n-data-table>
     </n-card>
-  </div>
+  </admin-page>
 </template>

@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
-import { useMessage } from 'naive-ui';
+import { NGridItem, NText, useMessage } from 'naive-ui';
 import type { DataTableColumns } from 'naive-ui';
+import { DownloadOutline, PeopleOutline, RefreshOutline, SearchOutline, StatsChartOutline } from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { exportCsvUrl, reportsApi } from '@/api/reports';
 import type { ExportQuery, ReportQuery, ReportRow } from '@/api/reports';
 import { errorMessage } from '@/api/client';
-import MoneyText from '@/components/MoneyText.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import { formatDateTime } from '@/utils/format';
+import { formatDateTime, formatMoney } from '@/utils/format';
 import { asRow, fieldNumber, itemsOf, numberOr, pick, textOf, toISOString, useServerPaging } from './shared';
 
 const message = useMessage();
@@ -115,6 +115,11 @@ function resetMerchantFilters() {
   void loadMerchants();
 }
 
+function reloadAll() {
+  void loadBuyers();
+  void loadMerchants();
+}
+
 function exportBuyers() {
   window.open(exportCsvUrl('buyers', exportQuery(buyerKeyword.value, buyerRange.value)), '_blank');
 }
@@ -128,14 +133,41 @@ function dateCell(row: ReportRow, ...keys: string[]): string {
   return typeof value === 'string' ? formatDateTime(value) : '-';
 }
 
+function sumOf(rows: ReportRow[], ...keys: string[]): number {
+  return rows.reduce((total, row) => total + (fieldNumber(row, ...keys) ?? 0), 0);
+}
+
+const buyerPageAmount = computed(() => sumOf(buyers.value, 'total_amount', 'amount', 'paid_amount', 'sum_amount'));
+const merchantPageAmount = computed(() => sumOf(merchants.value, 'paid_amount', 'total_amount', 'payment_amount'));
+const merchantPageRefund = computed(() => sumOf(merchants.value, 'refund_amount', 'refunded_amount', 'refunds'));
+const merchantPageFee = computed(() => sumOf(merchants.value, 'fee_amount', 'fee_cents', 'fee'));
+
+// 卡片数字全部来自「已返回的数据」：条数用后端 total，金额只汇总当前页，避免让人误读成全站合计
+const statCards = computed(() => [
+  { key: 'buyers', label: '买家记录', value: String(buyerTotal.value) },
+  { key: 'merchants', label: '商户记录', value: String(merchantTotal.value) },
+  { key: 'buyer-amount', label: '本页买家支付', value: formatMoney(buyerPageAmount.value) },
+  { key: 'merchant-amount', label: '本页商户支付', value: formatMoney(merchantPageAmount.value) },
+  { key: 'merchant-refund', label: '本页退款金额', value: formatMoney(merchantPageRefund.value) },
+  { key: 'merchant-fee', label: '本页手续费估算', value: formatMoney(merchantPageFee.value) },
+]);
+
+function moneyNode(amount: number | null, type?: 'default' | 'success' | 'error' | 'warning') {
+  return h(NText, { class: 'amount', type }, { default: () => formatMoney(amount) });
+}
+
+function monoNode(value: string) {
+  return h('span', { class: 'mono' }, value || '-');
+}
+
 const buyerColumns = computed<DataTableColumns<ReportRow>>(() => [
   {
     title: '买家',
     key: 'buyer',
     minWidth: 220,
-    ellipsis: true,
+    ellipsis: { tooltip: true },
     render: (row) =>
-      h('span', { class: 'mono' }, textOf(pick(row, 'buyer', 'buyer_id', 'payer', 'payer_id', 'account', 'client_ip'))),
+      monoNode(textOf(pick(row, 'buyer', 'buyer_id', 'payer', 'payer_id', 'account', 'client_ip'))),
   },
   {
     title: '笔数',
@@ -147,9 +179,9 @@ const buyerColumns = computed<DataTableColumns<ReportRow>>(() => [
   {
     title: '金额',
     key: 'total_amount',
-    width: 130,
+    width: 140,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: fieldNumber(row, 'total_amount', 'amount', 'paid_amount', 'sum_amount') }),
+    render: (row) => moneyNode(fieldNumber(row, 'total_amount', 'amount', 'paid_amount', 'sum_amount')),
   },
   {
     title: '首次支付',
@@ -170,14 +202,14 @@ const merchantColumns = computed<DataTableColumns<ReportRow>>(() => [
     title: '商户 ID',
     key: 'merchant_id',
     width: 260,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'mono' }, textOf(pick(row, 'merchant_id', 'id'))),
+    ellipsis: { tooltip: true },
+    render: (row) => monoNode(textOf(pick(row, 'merchant_id', 'id'))),
   },
   {
     title: '商户名称',
     key: 'display_name',
-    minWidth: 150,
-    ellipsis: true,
+    minWidth: 160,
+    ellipsis: { tooltip: true },
     render: (row) => textOf(pick(row, 'display_name', 'merchant_name', 'name')),
   },
   {
@@ -190,23 +222,23 @@ const merchantColumns = computed<DataTableColumns<ReportRow>>(() => [
   {
     title: '支付金额',
     key: 'paid_amount',
-    width: 140,
+    width: 150,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: fieldNumber(row, 'paid_amount', 'total_amount', 'payment_amount') }),
+    render: (row) => moneyNode(fieldNumber(row, 'paid_amount', 'total_amount', 'payment_amount')),
   },
   {
     title: '退款金额',
     key: 'refund_amount',
-    width: 140,
+    width: 150,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: fieldNumber(row, 'refund_amount', 'refunded_amount', 'refunds'), color: '#b91c1c' }),
+    render: (row) => moneyNode(fieldNumber(row, 'refund_amount', 'refunded_amount', 'refunds'), 'error'),
   },
   {
     title: '手续费估算',
     key: 'fee_amount',
-    width: 140,
+    width: 150,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: fieldNumber(row, 'fee_amount', 'fee_cents', 'fee'), color: '#0f766e' }),
+    render: (row) => moneyNode(fieldNumber(row, 'fee_amount', 'fee_cents', 'fee'), 'success'),
   },
 ]);
 
@@ -217,111 +249,142 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="报表" subtitle="按买家与商户维度聚合的笔数、金额与手续费估算，可导出 CSV">
-      <template #actions>
-        <n-button secondary :loading="buyersLoading || merchantsLoading" @click="loadBuyers(); loadMerchants()">
-          刷新
-        </n-button>
-      </template>
-    </PageHeader>
-
-    <n-card :bordered="false" title="买家统计" class="section">
-      <template #header-extra>
-        <n-button size="small" type="primary" secondary @click="exportBuyers">导出 CSV</n-button>
-      </template>
-      <div class="toolbar">
-        <n-input
-          v-model:value="buyerKeyword"
-          placeholder="买家标识 / 付款方账号"
-          clearable
-          style="width: 240px"
-          @keyup.enter="searchBuyers"
-        />
-        <n-date-picker
-          v-model:value="buyerRange"
-          type="daterange"
-          clearable
-          start-placeholder="开始日期"
-          end-placeholder="结束日期"
-          style="width: 260px"
-        />
-        <n-button type="primary" @click="searchBuyers">查询</n-button>
-        <n-button @click="resetBuyerFilters">重置</n-button>
-        <span class="muted small">共 {{ buyerTotal }} 条</span>
-      </div>
-      <n-data-table
-        :columns="buyerColumns"
-        :data="buyers"
-        :loading="buyersLoading"
-        :pagination="buyerPagination"
-        :row-key="(row: ReportRow) => String(row.__rowKey ?? '')"
-        :bordered="false"
-        :single-line="false"
-        size="small"
-        remote
-        @update:page="onBuyerPage"
-        @update:page-size="onBuyerPageSize"
-      >
-        <template #empty>
-          <n-empty description="暂无买家统计数据" size="small" />
+  <admin-page title="报表" subtitle="按买家与商户维度聚合的笔数、金额与手续费估算，可导出 CSV">
+    <template #actions>
+      <n-button :loading="buyersLoading || merchantsLoading" @click="reloadAll">
+        <template #icon>
+          <n-icon :component="RefreshOutline" />
         </template>
-      </n-data-table>
-    </n-card>
+        刷新
+      </n-button>
+    </template>
 
-    <n-card :bordered="false" title="商户统计" class="section">
-      <template #header-extra>
-        <n-button size="small" type="primary" secondary @click="exportMerchants">导出 CSV</n-button>
-      </template>
-      <div class="toolbar">
-        <n-input
-          v-model:value="merchantKeyword"
-          placeholder="商户 ID / 名称"
-          clearable
-          style="width: 240px"
-          @keyup.enter="searchMerchants"
-        />
-        <n-date-picker
-          v-model:value="merchantRange"
-          type="daterange"
-          clearable
-          start-placeholder="开始日期"
-          end-placeholder="结束日期"
-          style="width: 260px"
-        />
-        <n-button type="primary" @click="searchMerchants">查询</n-button>
-        <n-button @click="resetMerchantFilters">重置</n-button>
-        <span class="muted small">共 {{ merchantTotal }} 条</span>
-      </div>
-      <n-data-table
-        :columns="merchantColumns"
-        :data="merchants"
-        :loading="merchantsLoading"
-        :pagination="merchantPagination"
-        :row-key="(row: ReportRow) => String(row.__rowKey ?? '')"
-        :bordered="false"
-        :single-line="false"
-        size="small"
-        remote
-        @update:page="onMerchantPage"
-        @update:page-size="onMerchantPageSize"
-      >
-        <template #empty>
-          <n-empty description="暂无商户统计数据" size="small" />
-        </template>
-      </n-data-table>
+    <n-grid cols="2 s:3 m:6" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 16px">
+      <n-grid-item v-for="card in statCards" :key="card.key">
+        <n-card size="small" :bordered="false">
+          <n-statistic :label="card.label" :value="card.value" />
+        </n-card>
+      </n-grid-item>
+    </n-grid>
+
+    <n-card size="small" :bordered="false">
+      <n-tabs type="line" animated>
+        <n-tab-pane name="buyers">
+          <template #tab>
+            <n-space :size="6" align="center">
+              <n-icon :component="PeopleOutline" />
+              <span>买家统计</span>
+            </n-space>
+          </template>
+
+          <n-space :size="10" align="center" style="margin-bottom: 12px">
+            <n-input
+              v-model:value="buyerKeyword"
+              placeholder="买家标识 / 付款方账号"
+              clearable
+              style="width: 240px"
+              @keyup.enter="searchBuyers"
+            >
+              <template #prefix>
+                <n-icon :component="SearchOutline" />
+              </template>
+            </n-input>
+            <n-date-picker
+              v-model:value="buyerRange"
+              type="daterange"
+              clearable
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              style="width: 280px"
+            />
+            <n-button type="primary" @click="searchBuyers">查询</n-button>
+            <n-button @click="resetBuyerFilters">重置</n-button>
+            <n-divider vertical />
+            <n-button @click="exportBuyers">
+              <template #icon>
+                <n-icon :component="DownloadOutline" />
+              </template>
+              导出 CSV
+            </n-button>
+            <n-text depth="3" style="font-size: 12px">共 {{ buyerTotal }} 条</n-text>
+          </n-space>
+
+          <n-data-table
+            :columns="buyerColumns"
+            :data="buyers"
+            :loading="buyersLoading"
+            :pagination="buyerPagination"
+            :row-key="(row: ReportRow) => String(row.__rowKey ?? '')"
+            :scroll-x="900"
+            size="small"
+            remote
+            @update:page="onBuyerPage"
+            @update:page-size="onBuyerPageSize"
+          >
+            <template #empty>
+              <n-empty description="暂无买家统计数据" size="small" />
+            </template>
+          </n-data-table>
+        </n-tab-pane>
+
+        <n-tab-pane name="merchants">
+          <template #tab>
+            <n-space :size="6" align="center">
+              <n-icon :component="StatsChartOutline" />
+              <span>商户统计</span>
+            </n-space>
+          </template>
+
+          <n-space :size="10" align="center" style="margin-bottom: 12px">
+            <n-input
+              v-model:value="merchantKeyword"
+              placeholder="商户 ID / 名称"
+              clearable
+              style="width: 240px"
+              @keyup.enter="searchMerchants"
+            >
+              <template #prefix>
+                <n-icon :component="SearchOutline" />
+              </template>
+            </n-input>
+            <n-date-picker
+              v-model:value="merchantRange"
+              type="daterange"
+              clearable
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              style="width: 280px"
+            />
+            <n-button type="primary" @click="searchMerchants">查询</n-button>
+            <n-button @click="resetMerchantFilters">重置</n-button>
+            <n-divider vertical />
+            <n-button @click="exportMerchants">
+              <template #icon>
+                <n-icon :component="DownloadOutline" />
+              </template>
+              导出 CSV
+            </n-button>
+            <n-text depth="3" style="font-size: 12px">共 {{ merchantTotal }} 条</n-text>
+          </n-space>
+
+          <n-data-table
+            :columns="merchantColumns"
+            :data="merchants"
+            :loading="merchantsLoading"
+            :pagination="merchantPagination"
+            :row-key="(row: ReportRow) => String(row.__rowKey ?? '')"
+            :scroll-x="1080"
+            size="small"
+            remote
+            @update:page="onMerchantPage"
+            @update:page-size="onMerchantPageSize"
+          >
+            <template #empty>
+              <n-empty description="暂无商户统计数据" size="small" />
+            </template>
+          </n-data-table>
+        </n-tab-pane>
+      </n-tabs>
     </n-card>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.section {
-  margin-bottom: 16px;
-}
-.section:last-child {
-  margin-bottom: 0;
-}
-.small {
-  font-size: 12px;
-}
-</style>

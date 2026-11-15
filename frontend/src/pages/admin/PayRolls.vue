@@ -1,33 +1,50 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, useMessage } from 'naive-ui';
-import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-ui';
+import {
+  NButton,
+  NInputNumber,
+  NPopconfirm,
+  NSpace,
+  NSwitch,
+  NTag,
+  NText,
+  useMessage,
+} from 'naive-ui';
+import type { DataTableColumns } from 'naive-ui';
+import { CalendarOutline, RefreshOutline } from '@vicons/ionicons5';
 import dayjs from 'dayjs';
+import AdminPage from '@/components/AdminPage.vue';
 import { adminApi } from '@/api';
 import type { Channel } from '@/api';
 import { payRollsApi } from '@/api/payTypes';
 import type { PayRoll } from '@/api/payTypes';
+import type { PageQuery } from '@/api/types';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
+import { activeStatus } from '@/utils/format';
+import { asRow, itemsOf } from './shared';
 
-interface RollForm {
+/** 后端 pay-rolls 支持 from / to 日期过滤，但 PageQuery 类型里没有这两个字段 */
+type RollQuery = PageQuery & { from?: string; to?: string };
+
+interface RollRow {
   channel_id: string;
-  roll_date: number | null;
+  name: string;
+  channel_status: string;
+  roll_id: string;
+  configured: boolean;
   weight: number | null;
   status: string;
 }
 
 const message = useMessage();
 
-const rows = ref<PayRoll[]>([]);
+const day = ref<number>(dayjs().valueOf());
 const channels = ref<Channel[]>([]);
+const rolls = ref<PayRoll[]>([]);
 const loading = ref(false);
-const submitting = ref(false);
-const showForm = ref(false);
-const editingId = ref<string | null>(null);
-const formRef = ref<FormInst | null>(null);
+const savingId = ref('');
+const pendingStatusId = ref('');
+const weights = ref<Record<string, number | null>>({});
 
 const showGenerate = ref(false);
 const generating = ref(false);
@@ -36,45 +53,83 @@ const generateForm = reactive<{ channel_ids: string[]; range: [number, number] |
   range: null,
 });
 
-const form = reactive<RollForm>({
-  channel_id: '',
-  roll_date: null,
-  weight: 1,
-  status: 'active',
+const dayText = computed(() => dayjs(day.value).format('YYYY-MM-DD'));
+
+const rows = computed<RollRow[]>(() => {
+  const byChannel = new Map<string, PayRoll>();
+  rolls.value.forEach((roll) => byChannel.set(roll.channel_id, roll));
+  const list: RollRow[] = channels.value.map((channel) => {
+    const roll = byChannel.get(channel.id);
+    byChannel.delete(channel.id);
+    return {
+      channel_id: channel.id,
+      name: channel.name || channel.id,
+      channel_status: channel.status || '',
+      roll_id: roll?.id ?? '',
+      configured: Boolean(roll),
+      weight: typeof roll?.weight === 'number' ? roll.weight : null,
+      status: roll?.status ?? '',
+    };
+  });
+  // 通道已被删除但当天还留着轮询行：照样列出来，避免脏数据看不到
+  byChannel.forEach((roll, channelId) => {
+    list.push({
+      channel_id: channelId,
+      name: '(已删除的渠道)',
+      channel_status: '',
+      roll_id: roll.id,
+      configured: true,
+      weight: typeof roll.weight === 'number' ? roll.weight : null,
+      status: roll.status || '',
+    });
+  });
+  return list;
 });
 
-const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } = useServerPaging(load);
+const configuredCount = computed(() => rows.value.filter((row) => row.configured).length);
 
-const statusOptions: SelectOption[] = [
-  { label: '启用', value: 'active' },
-  { label: '禁用', value: 'disabled' },
-];
-
-const channelOptions = computed<SelectOption[]>(() =>
-  channels.value.map((item) => ({ label: item.name ? `${item.name}（${item.plugin_code}）` : item.id, value: item.id })),
+const totalWeight = computed(() =>
+  rows.value.reduce((sum, row) => {
+    if (!row.configured) return sum;
+    const draft = weights.value[row.channel_id];
+    return sum + (typeof draft === 'number' ? draft : 0);
+  }, 0),
 );
 
-const channelName = computed(() => {
-  const map = new Map<string, string>();
-  channels.value.forEach((item) => map.set(item.id, item.name || item.id));
-  return map;
-});
+function shareOf(row: RollRow): number {
+  const draft = weights.value[row.channel_id];
+  if (!row.configured || typeof draft !== 'number' || totalWeight.value <= 0) return 0;
+  return Math.round((draft / totalWeight.value) * 1000) / 10;
+}
 
-const rules: FormRules = {
-  channel_id: { required: true, message: '请选择支付渠道', trigger: ['change', 'blur'] },
-  roll_date: { required: true, type: 'number', message: '请选择轮询日期', trigger: ['change', 'blur'] },
-  weight: { required: true, type: 'number', message: '请输入权重', trigger: ['change', 'blur'] },
-};
+function isDirty(row: RollRow): boolean {
+  return weights.value[row.channel_id] !== row.weight;
+}
 
-const isEditing = computed(() => editingId.value !== null);
+function syncWeights() {
+  const next: Record<string, number | null> = {};
+  for (const row of rows.value) next[row.channel_id] = row.weight;
+  weights.value = next;
+}
+
+/** 保存成功后只回写这一行，避免把其它行的未保存草稿冲掉 */
+function applyRoll(roll: PayRoll) {
+  rolls.value = [...rolls.value.filter((item) => item.id !== roll.id), roll];
+  weights.value = { ...weights.value, [roll.channel_id]: roll.weight };
+}
+
+function dropRoll(rollId: string, channelId: string) {
+  rolls.value = rolls.value.filter((item) => item.id !== rollId);
+  weights.value = { ...weights.value, [channelId]: null };
+}
 
 async function load() {
   loading.value = true;
   try {
-    const data = await payRollsApi.list({ page: page.value, page_size: pageSize.value });
-    const items = itemsOf<PayRoll>(data);
-    rows.value = items;
-    total.value = numberOr(asRow(data).total, items.length);
+    const query: RollQuery = { page: 1, page_size: 200, from: dayText.value, to: dayText.value };
+    const data = await payRollsApi.list(query);
+    rolls.value = itemsOf<PayRoll>(data);
+    syncWeights();
   } catch (error) {
     message.error(errorMessage(error));
   } finally {
@@ -85,76 +140,15 @@ async function load() {
 async function loadChannels() {
   try {
     channels.value = itemsOf<Channel>(await adminApi.channels());
-  } catch {
+    syncWeights();
+  } catch (error) {
     channels.value = [];
-  }
-}
-
-function openCreate() {
-  editingId.value = null;
-  form.channel_id = channels.value[0]?.id ?? '';
-  form.roll_date = null;
-  form.weight = 1;
-  form.status = 'active';
-  showForm.value = true;
-}
-
-function openEdit(row: PayRoll) {
-  editingId.value = row.id;
-  form.channel_id = row.channel_id || '';
-  const parsed = dayjs(row.roll_date);
-  form.roll_date = parsed.isValid() ? parsed.valueOf() : null;
-  form.weight = typeof row.weight === 'number' ? row.weight : 1;
-  form.status = row.status || 'active';
-  showForm.value = true;
-}
-
-async function submit() {
-  try {
-    await formRef.value?.validate();
-  } catch {
-    return;
-  }
-  if (form.roll_date === null) {
-    message.warning('请选择轮询日期');
-    return;
-  }
-  submitting.value = true;
-  try {
-    const payload = {
-      channel_id: form.channel_id,
-      roll_date: dayjs(form.roll_date).format('YYYY-MM-DD'),
-      weight: form.weight ?? 1,
-      status: form.status,
-    };
-    if (editingId.value) {
-      await payRollsApi.update(editingId.value, payload);
-      message.success('轮询配置已更新');
-      showForm.value = false;
-      await load();
-    } else {
-      await payRollsApi.create(payload);
-      message.success('轮询配置已创建');
-      showForm.value = false;
-      // 新建后回到第一页，避免新记录在别的页看不到
-      resetPage();
-      await load();
-    }
-  } catch (error) {
-    message.error(errorMessage(error));
-  } finally {
-    submitting.value = false;
-  }
-}
-
-async function remove(row: PayRoll) {
-  try {
-    await payRollsApi.remove(row.id);
-    message.success('轮询配置已删除');
-    await load();
-  } catch (error) {
     message.error(errorMessage(error));
   }
+}
+
+function reloadDay() {
+  void load();
 }
 
 function openGenerate() {
@@ -191,7 +185,6 @@ async function runGenerate() {
     });
     message.success(`批量生成完成，本次生成 ${countOf(result)} 条轮询配置`);
     showGenerate.value = false;
-    resetPage();
     await load();
   } catch (error) {
     message.error(errorMessage(error));
@@ -200,34 +193,169 @@ async function runGenerate() {
   }
 }
 
-const columns = computed<DataTableColumns<PayRoll>>(() => [
+async function saveWeight(row: RollRow) {
+  const weight = weights.value[row.channel_id];
+  if (typeof weight !== 'number' || !Number.isFinite(weight)) {
+    message.warning('请输入权重');
+    return;
+  }
+  savingId.value = row.channel_id;
+  try {
+    if (row.configured) {
+      const updated = await payRollsApi.update(row.roll_id, {
+        channel_id: row.channel_id,
+        roll_date: dayText.value,
+        weight,
+        status: row.status || 'active',
+      });
+      message.success('权重已保存');
+      applyRoll(updated);
+    } else {
+      const created = await payRollsApi.create({
+        channel_id: row.channel_id,
+        roll_date: dayText.value,
+        weight,
+        status: 'active',
+      });
+      message.success('已为当天新增轮询配置');
+      applyRoll(created);
+    }
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    savingId.value = '';
+  }
+}
+
+async function toggleStatus(row: RollRow) {
+  const next = row.status === 'active' ? 'disabled' : 'active';
+  pendingStatusId.value = row.channel_id;
+  try {
+    const updated = await payRollsApi.update(row.roll_id, {
+      channel_id: row.channel_id,
+      roll_date: dayText.value,
+      weight: row.weight ?? 1,
+      status: next,
+    });
+    message.success(next === 'active' ? '已启用' : '已停用');
+    applyRoll(updated);
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    pendingStatusId.value = '';
+  }
+}
+
+async function remove(row: RollRow) {
+  try {
+    await payRollsApi.remove(row.roll_id);
+    message.success('轮询配置已删除');
+    dropRoll(row.roll_id, row.channel_id);
+  } catch (error) {
+    message.error(errorMessage(error));
+  }
+}
+
+const channelOptions = computed(() =>
+  channels.value.map((item) => ({
+    label: item.name ? `${item.name}（${item.plugin_code}）` : item.id,
+    value: item.id,
+  })),
+);
+
+const columns = computed<DataTableColumns<RollRow>>(() => [
   {
     title: '支付渠道',
     key: 'channel_id',
     minWidth: 260,
-    ellipsis: true,
+    render: (row) =>
+      h('div', [
+        h('div', row.name),
+        h(
+          NText,
+          { depth: 3, code: true, style: 'font-size: 12px' },
+          { default: () => row.channel_id },
+        ),
+      ]),
+  },
+  {
+    title: '渠道状态',
+    key: 'channel_status',
+    width: 110,
     render: (row) => {
-      const name = channelName.value.get(row.channel_id);
-      if (!name) return h('span', { class: 'mono' }, row.channel_id || '-');
-      return h('div', [
-        h('div', name),
-        h('div', { class: 'mono', style: 'font-size: 12px; color: #94a3b8' }, row.channel_id),
-      ]);
+      const meta = activeStatus(row.channel_status);
+      return h(
+        NTag,
+        { size: 'small', round: true, type: meta.type, bordered: false },
+        { default: () => meta.text },
+      );
     },
   },
-  { title: '轮询日期', key: 'roll_date', width: 140, render: (row) => row.roll_date || '-' },
   {
-    title: '权重',
+    title: '当日权重',
     key: 'weight',
-    width: 100,
-    align: 'right',
-    render: (row) => (typeof row.weight === 'number' ? row.weight : '-'),
+    width: 150,
+    render: (row) =>
+      h(NInputNumber, {
+        value: weights.value[row.channel_id],
+        min: 0,
+        max: 10000,
+        step: 1,
+        placeholder: '未配置',
+        size: 'small',
+        style: 'width: 110px',
+        'onUpdate:value': (value: number | null) => {
+          weights.value[row.channel_id] = value;
+        },
+      }),
   },
   {
-    title: '状态',
+    title: '权重占比',
+    key: 'share',
+    width: 110,
+    align: 'right',
+    render: (row) =>
+      h(
+        NText,
+        { depth: row.configured ? 1 : 3 },
+        { default: () => (row.configured ? `${shareOf(row)}%` : '-') },
+      ),
+  },
+  {
+    title: '轮询状态',
     key: 'status',
-    width: 90,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'active' }),
+    width: 120,
+    render: (row) => {
+      if (!row.configured) {
+        return h(
+          NTag,
+          { size: 'small', round: true, type: 'warning', bordered: false },
+          { default: () => '未配置' },
+        );
+      }
+      return h(
+        NPopconfirm,
+        {
+          positiveText: '确定',
+          negativeText: '取消',
+          onPositiveClick: () => toggleStatus(row),
+        },
+        {
+          trigger: () =>
+            h(
+              NSwitch,
+              {
+                value: row.status === 'active',
+                size: 'small',
+                loading: pendingStatusId.value === row.channel_id,
+              },
+              { checked: () => '启用', unchecked: () => '停用' },
+            ),
+          default: () =>
+            row.status === 'active' ? '确认停用该渠道当天的轮询？' : '确认启用该渠道当天的轮询？',
+        },
+      );
+    },
   },
   {
     title: '操作',
@@ -237,57 +365,95 @@ const columns = computed<DataTableColumns<PayRoll>>(() => [
     render: (row) =>
       h(
         NSpace,
-        { size: 4, wrap: false },
+        { size: 12, wrap: false },
         {
           default: () => [
             h(
               NButton,
-              { size: 'tiny', quaternary: true, type: 'info', onClick: () => openEdit(row) },
-              { default: () => '编辑' },
-            ),
-            h(
-              NPopconfirm,
-              { onPositiveClick: () => remove(row) },
               {
-                trigger: () => h(NButton, { size: 'tiny', quaternary: true, type: 'error' }, { default: () => '删除' }),
-                default: () => '确认删除该轮询配置？',
+                text: true,
+                size: 'small',
+                type: row.configured ? 'primary' : 'success',
+                disabled: row.configured && !isDirty(row),
+                loading: savingId.value === row.channel_id,
+                onClick: () => saveWeight(row),
               },
+              { default: () => (row.configured ? '保存' : '新增配置') },
             ),
-          ],
+            row.configured
+              ? h(
+                  NPopconfirm,
+                  { positiveText: '确定', negativeText: '取消', onPositiveClick: () => remove(row) },
+                  {
+                    trigger: () =>
+                      h(
+                        NButton,
+                        { text: true, size: 'small', type: 'error' },
+                        { default: () => '删除' },
+                      ),
+                    default: () => '确认删除该轮询配置？',
+                  },
+                )
+              : null,
+          ].filter(Boolean),
         },
       ),
   },
 ]);
 
 onMounted(() => {
-  void load();
   void loadChannels();
+  void load();
 });
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="按日轮询" subtitle="按日期给渠道分配权重，收银台据此轮询可用通道">
-      <template #actions>
-        <n-button secondary :loading="loading" @click="load">刷新</n-button>
-        <n-button secondary type="primary" @click="openGenerate">批量生成</n-button>
-        <n-button type="primary" @click="openCreate">新建轮询</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="按日轮询" subtitle="按日期给渠道分配权重，收银台据此轮询可用通道">
+    <template #actions>
+      <n-space>
+        <n-button :loading="loading" @click="load">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
+        <n-button secondary type="primary" @click="openGenerate">
+          <template #icon>
+            <n-icon :component="CalendarOutline" />
+          </template>
+          批量生成
+        </n-button>
+      </n-space>
+    </template>
 
-    <n-card :bordered="false">
+    <n-alert type="info" :bordered="false" style="margin-bottom: 16px">
+      收银台按当天的权重在渠道之间轮询：当天没配置的渠道沿用自身权重，配置了但停用的同样按未配置处理。
+    </n-alert>
+
+    <n-card size="small" :bordered="false">
+      <template #header>
+        <n-space align="center">
+          <n-date-picker
+            v-model:value="day"
+            type="date"
+            :clearable="false"
+            style="width: 160px"
+            @update:value="reloadDay"
+          />
+          <n-text depth="3" style="font-size: 12px">
+            当日已配置 {{ configuredCount }} 个渠道，权重合计 {{ totalWeight }}
+          </n-text>
+        </n-space>
+      </template>
+
       <n-data-table
         :columns="columns"
         :data="rows"
         :loading="loading"
-        :pagination="pagination"
-        :row-key="(row: PayRoll) => row.id"
-        :bordered="false"
-        :single-line="false"
+        :pagination="{ pageSize: 20 }"
+        :row-key="(row: RollRow) => row.channel_id"
+        :scroll-x="1100"
         size="small"
-        remote
-        @update:page="onPage"
-        @update:page-size="onPageSize"
       >
         <template #empty>
           <n-empty description="暂无轮询配置" size="small" />
@@ -295,41 +461,7 @@ onMounted(() => {
       </n-data-table>
     </n-card>
 
-    <n-modal
-      v-model:show="showForm"
-      preset="card"
-      :title="isEditing ? '编辑轮询配置' : '新建轮询配置'"
-      style="width: 580px; max-width: 94vw"
-    >
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="110">
-        <n-form-item label="支付渠道" path="channel_id">
-          <n-select
-            v-model:value="form.channel_id"
-            :options="channelOptions"
-            filterable
-            placeholder="选择渠道；渠道列表为空时可直接填 ID"
-            tag
-          />
-        </n-form-item>
-        <n-form-item label="轮询日期" path="roll_date">
-          <n-date-picker v-model:value="form.roll_date" type="date" clearable style="width: 200px" />
-        </n-form-item>
-        <n-form-item label="权重" path="weight">
-          <n-input-number v-model:value="form.weight" :min="1" :step="1" style="width: 160px" />
-        </n-form-item>
-        <n-form-item label="状态">
-          <n-select v-model:value="form.status" :options="statusOptions" />
-        </n-form-item>
-      </n-form>
-      <template #footer>
-        <n-space justify="end">
-          <n-button @click="showForm = false">取消</n-button>
-          <n-button type="primary" :loading="submitting" @click="submit">保存</n-button>
-        </n-space>
-      </template>
-    </n-modal>
-
-    <n-modal v-model:show="showGenerate" preset="card" title="批量生成轮询" style="width: 580px; max-width: 94vw">
+    <n-modal v-model:show="showGenerate" preset="card" title="批量生成轮询" style="width: 640px">
       <n-form label-placement="left" label-width="110">
         <n-form-item label="支付渠道">
           <n-select
@@ -354,5 +486,5 @@ onMounted(() => {
         </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>

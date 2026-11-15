@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
 import dayjs from 'dayjs';
-import { NButton, useMessage, type DataTableColumns, type SelectOption } from 'naive-ui';
+import { NButton, NSpace, NTag, NText, useMessage, type DataTableColumns, type SelectOption } from 'naive-ui';
+import { DownloadOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5';
 import { merchantApi } from '@/api';
 import type { Order, PageQuery } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import { downloadMerchantCsv, type MerchantExportQuery } from '@/api/merchantExports';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import MoneyText from '@/components/MoneyText.vue';
-import { centsToYuan, formatDateTime, formatMoney, paymentTypeText, yuanToCents } from '@/utils/format';
+import AdminPage from '@/components/AdminPage.vue';
+import { centsToYuan, formatDateTime, formatMoney, orderStatus, paymentTypeText, yuanToCents } from '@/utils/format';
 
 const message = useMessage();
 
@@ -34,7 +33,7 @@ const refundVisible = ref(false);
 const refundSubmitting = ref(false);
 const refundTarget = ref<Order | null>(null);
 const refundRemaining = ref(0);
-const refundForm = reactive({ amountYuan: '', reason: '' });
+const refundForm = reactive({ amountYuan: null as number | null, reason: '' });
 
 const statusOptions: SelectOption[] = [
   { label: '待支付', value: 'pending' },
@@ -68,7 +67,7 @@ async function openRefund(row: Order) {
   refundTarget.value = row;
   refundForm.reason = '';
   refundRemaining.value = row.amount;
-  refundForm.amountYuan = centsToYuan(row.amount);
+  refundForm.amountYuan = Number(centsToYuan(row.amount));
   try {
     const res = await merchantApi.refunds({ page: 1, page_size: 100 });
     const refunded = res.items
@@ -76,7 +75,7 @@ async function openRefund(row: Order) {
       .reduce((sum, item) => sum + item.amount, 0);
     const remaining = Math.max(0, row.amount - refunded);
     refundRemaining.value = remaining;
-    refundForm.amountYuan = centsToYuan(remaining);
+    refundForm.amountYuan = Number(centsToYuan(remaining));
     if (remaining <= 0) {
       message.warning('该订单剩余可退金额为 0，无法再次申请退款');
       return;
@@ -97,7 +96,7 @@ function refundFromDetail() {
 async function submitRefund() {
   const target = refundTarget.value;
   if (!target) return;
-  const cents = yuanToCents(refundForm.amountYuan);
+  const cents = yuanToCents(refundForm.amountYuan ?? 0);
   if (!Number.isFinite(cents) || cents <= 0) {
     message.error('请输入有效的退款金额');
     return;
@@ -132,35 +131,39 @@ const columns: DataTableColumns<Order> = [
   {
     title: '订单号',
     key: 'trade_no',
-    width: 190,
-    render: (row) => h('span', { class: 'mono-cell' }, row.trade_no),
+    width: 200,
+    ellipsis: { tooltip: true },
+    render: (row) => h(NText, { class: 'mono' }, () => row.trade_no || '-'),
   },
   {
     title: '商户订单号',
     key: 'out_trade_no',
-    width: 180,
+    width: 190,
     ellipsis: { tooltip: true },
-    render: (row) => h('span', { class: 'mono-cell muted-cell' }, row.out_trade_no),
+    render: (row) => h(NText, { class: 'mono', depth: 3 }, () => row.out_trade_no || '-'),
   },
-  { title: '商品名称', key: 'name', minWidth: 140, ellipsis: { tooltip: true } },
+  { title: '商品名称', key: 'name', minWidth: 150, ellipsis: { tooltip: true } },
   {
     title: '金额',
     key: 'amount',
-    width: 120,
+    width: 130,
     align: 'right',
-    render: (row) => h(MoneyText, { amount: row.amount }),
+    render: (row) => h(NText, { class: 'amount' }, () => formatMoney(row.amount)),
   },
   {
     title: '支付方式',
     key: 'payment_type',
-    width: 100,
+    width: 110,
     render: (row) => paymentTypeText(row.payment_type),
   },
   {
     title: '状态',
     key: 'status',
-    width: 96,
-    render: (row) => h(StatusTag, { status: row.status }),
+    width: 100,
+    render: (row) =>
+      h(NTag, { size: 'small', bordered: false, type: orderStatus(row.status).type }, () =>
+        orderStatus(row.status).text,
+      ),
   },
   {
     title: '创建时间',
@@ -171,27 +174,23 @@ const columns: DataTableColumns<Order> = [
   {
     title: '操作',
     key: 'actions',
-    width: 140,
+    width: 150,
     fixed: 'right',
-    render: (row) => {
-      const actions = [
+    render: (row) =>
+      h(NSpace, { size: 8, wrap: false }, () => [
         h(
           NButton,
-          { text: true, type: 'primary', size: 'small', onClick: () => openDetail(row) },
+          { size: 'small', text: true, type: 'primary', onClick: () => openDetail(row) },
           () => '详情',
         ),
-      ];
-      if (row.status === 'paid') {
-        actions.push(
-          h(
-            NButton,
-            { text: true, type: 'warning', size: 'small', onClick: () => void openRefund(row) },
-            () => '申请退款',
-          ),
-        );
-      }
-      return h('div', { class: 'action-cell' }, actions);
-    },
+        row.status === 'paid'
+          ? h(
+              NButton,
+              { size: 'small', text: true, type: 'warning', onClick: () => void openRefund(row) },
+              () => '申请退款',
+            )
+          : null,
+      ]),
   },
 ];
 
@@ -290,48 +289,79 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="我的订单" subtitle="按状态、支付方式、时间范围筛选订单，已支付订单可直接申请退款">
-      <template #actions>
-        <n-button size="small" :loading="loading" @click="load">刷新</n-button>
-        <n-button size="small" type="primary" :loading="exporting" @click="handleExport">导出 CSV</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="我的订单" subtitle="按状态、支付方式、时间范围筛选订单，已支付订单可直接申请退款">
+    <template #actions>
+      <n-space>
+        <n-button :loading="loading" @click="load">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
+        <n-button type="primary" :loading="exporting" @click="handleExport">
+          <template #icon>
+            <n-icon :component="DownloadOutline" />
+          </template>
+          导出 CSV
+        </n-button>
+      </n-space>
+    </template>
 
-    <n-card :bordered="false" class="table-card">
-      <div class="toolbar">
-        <n-select
-          v-model:value="filters.status"
-          :options="statusOptions"
-          placeholder="订单状态"
-          clearable
-          style="width: 140px"
-        />
-        <n-select
-          v-model:value="filters.payment_type"
-          :options="paymentTypeOptions"
-          placeholder="支付方式"
-          clearable
-          style="width: 150px"
-        />
-        <n-input
-          v-model:value="filters.keyword"
-          placeholder="订单号 / 商品名称"
-          clearable
-          style="width: 220px"
-          @keyup.enter="handleSearch"
-        />
-        <n-date-picker
-          v-model:value="filters.range"
-          type="daterange"
-          clearable
-          start-placeholder="开始日期"
-          end-placeholder="结束日期"
-          style="width: 260px"
-        />
-        <n-button type="primary" @click="handleSearch">查询</n-button>
-        <n-button quaternary @click="handleReset">重置</n-button>
-      </div>
+    <n-card size="small" :bordered="false">
+      <n-form inline :show-feedback="false">
+        <n-form-item label="关键字">
+          <n-input
+            v-model:value="filters.keyword"
+            placeholder="订单号 / 商品名称"
+            clearable
+            style="width: 220px"
+            @keyup.enter="handleSearch"
+          >
+            <template #prefix>
+              <n-icon :component="SearchOutline" />
+            </template>
+          </n-input>
+        </n-form-item>
+        <n-form-item label="状态">
+          <n-select
+            v-model:value="filters.status"
+            :options="statusOptions"
+            placeholder="全部状态"
+            clearable
+            style="width: 150px"
+          />
+        </n-form-item>
+        <n-form-item label="支付方式">
+          <n-select
+            v-model:value="filters.payment_type"
+            :options="paymentTypeOptions"
+            placeholder="全部方式"
+            clearable
+            style="width: 150px"
+          />
+        </n-form-item>
+        <n-form-item label="创建时间">
+          <n-date-picker
+            v-model:value="filters.range"
+            type="daterange"
+            clearable
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            style="width: 260px"
+          />
+        </n-form-item>
+        <n-form-item>
+          <n-space>
+            <n-button type="primary" :loading="loading" @click="handleSearch">
+              <template #icon>
+                <n-icon :component="SearchOutline" />
+              </template>
+              查询
+            </n-button>
+            <n-button @click="handleReset">重置</n-button>
+          </n-space>
+        </n-form-item>
+      </n-form>
 
       <n-data-table
         remote
@@ -341,134 +371,121 @@ onMounted(() => {
         :pagination="pagination"
         :bordered="false"
         :row-key="rowKey"
-        :scroll-x="1180"
+        :scroll-x="1220"
         size="small"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
-      />
+      >
+        <template #empty>
+          <n-empty description="没有符合条件的订单" size="small" />
+        </template>
+      </n-data-table>
     </n-card>
 
-    <n-drawer v-model:show="detailVisible" :width="460" placement="right">
+    <n-drawer v-model:show="detailVisible" :width="560" placement="right">
       <n-drawer-content title="订单详情" closable>
-        <n-descriptions v-if="detailOrder" :column="1" label-placement="left" bordered size="small">
+        <n-descriptions
+          v-if="detailOrder"
+          :column="2"
+          bordered
+          size="small"
+          label-placement="left"
+          :label-width="110"
+        >
           <n-descriptions-item label="平台订单号">
-            <span class="mono-cell">{{ detailOrder.trade_no }}</span>
+            <n-text class="mono" style="word-break: break-all">{{ detailOrder.trade_no }}</n-text>
           </n-descriptions-item>
           <n-descriptions-item label="商户订单号">
-            <span class="mono-cell">{{ detailOrder.out_trade_no }}</span>
+            <n-text class="mono" style="word-break: break-all">{{ detailOrder.out_trade_no }}</n-text>
           </n-descriptions-item>
           <n-descriptions-item label="商品名称">{{ detailOrder.name }}</n-descriptions-item>
-          <n-descriptions-item label="订单金额">{{ formatMoney(detailOrder.amount) }}</n-descriptions-item>
+          <n-descriptions-item label="订单金额">
+            <n-text class="amount">{{ formatMoney(detailOrder.amount) }}</n-text>
+          </n-descriptions-item>
           <n-descriptions-item label="币种">{{ detailOrder.currency }}</n-descriptions-item>
           <n-descriptions-item label="支付方式">{{ paymentTypeText(detailOrder.payment_type) }}</n-descriptions-item>
           <n-descriptions-item label="订单状态">
-            <StatusTag :status="detailOrder.status" />
+            <n-tag size="small" :bordered="false" :type="orderStatus(detailOrder.status).type">
+              {{ orderStatus(detailOrder.status).text }}
+            </n-tag>
           </n-descriptions-item>
           <n-descriptions-item label="渠道单号">
-            <span class="mono-cell">{{ detailOrder.channel_trade_no || '-' }}</span>
+            <n-text class="mono" style="word-break: break-all">{{ detailOrder.channel_trade_no || '-' }}</n-text>
           </n-descriptions-item>
-          <n-descriptions-item label="异步通知地址">
-            <span class="break-all">{{ detailOrder.notify_url || '-' }}</span>
+          <n-descriptions-item label="异步通知地址" :span="2">
+            <n-text type="info" style="word-break: break-all">{{ detailOrder.notify_url || '-' }}</n-text>
           </n-descriptions-item>
-          <n-descriptions-item label="同步跳转地址">
-            <span class="break-all">{{ detailOrder.return_url || '-' }}</span>
+          <n-descriptions-item label="同步跳转地址" :span="2">
+            <n-text type="info" style="word-break: break-all">{{ detailOrder.return_url || '-' }}</n-text>
           </n-descriptions-item>
-          <n-descriptions-item label="附加参数">{{ detailOrder.attach || '-' }}</n-descriptions-item>
-          <n-descriptions-item label="客户端 IP">{{ detailOrder.client_ip || '-' }}</n-descriptions-item>
+          <n-descriptions-item label="附加参数" :span="2">{{ detailOrder.attach || '-' }}</n-descriptions-item>
+          <n-descriptions-item label="客户端 IP">
+            <n-text class="mono">{{ detailOrder.client_ip || '-' }}</n-text>
+          </n-descriptions-item>
           <n-descriptions-item label="创建时间">{{ formatDateTime(detailOrder.created_at) }}</n-descriptions-item>
           <n-descriptions-item label="支付时间">{{ formatDateTime(detailOrder.paid_at) }}</n-descriptions-item>
           <n-descriptions-item label="过期时间">{{ formatDateTime(detailOrder.expires_at) }}</n-descriptions-item>
         </n-descriptions>
+        <n-empty v-else description="暂无订单数据" />
         <template #footer>
-          <n-button
-            v-if="detailOrder?.status === 'paid'"
-            type="warning"
-            secondary
-            @click="refundFromDetail"
-          >
-            申请退款
-          </n-button>
+          <n-space>
+            <n-button
+              v-if="detailOrder?.status === 'paid'"
+              type="warning"
+              secondary
+              @click="refundFromDetail"
+            >
+              申请退款
+            </n-button>
+            <n-button @click="detailVisible = false">关闭</n-button>
+          </n-space>
         </template>
       </n-drawer-content>
     </n-drawer>
 
-    <n-modal v-model:show="refundVisible" preset="card" title="申请退款" style="max-width: 460px">
-      <n-alert type="info" :bordered="false" class="refund-alert">
-        退款将进入平台审核流程，审核通过后按原路退回。剩余可退金额
-        <strong>{{ formatMoney(refundRemaining) }}</strong>。
-      </n-alert>
-      <n-form label-placement="top" class="refund-form">
-        <n-form-item label="退款金额（元）">
-          <n-input v-model:value="refundForm.amountYuan" placeholder="0.00">
-            <template #prefix>¥</template>
-          </n-input>
-        </n-form-item>
-        <n-form-item label="退款原因">
-          <n-input
-            v-model:value="refundForm.reason"
-            type="textarea"
-            :autosize="{ minRows: 2, maxRows: 4 }"
-            placeholder="请填写退款原因，便于平台审核"
-          />
-        </n-form-item>
-      </n-form>
-      <div class="refund-meta">
-        <span>订单号：<span class="mono-cell">{{ refundTarget?.trade_no }}</span></span>
-        <span>实付金额：{{ formatMoney(refundTarget?.amount) }}</span>
-      </div>
+    <n-modal v-model:show="refundVisible" preset="card" title="申请退款" style="width: 620px">
+      <n-space vertical :size="16">
+        <n-alert type="info" :bordered="false">
+          退款将进入平台审核流程，审核通过后按原路退回。剩余可退金额
+          <n-text strong class="amount">{{ formatMoney(refundRemaining) }}</n-text>。
+        </n-alert>
+        <n-form label-placement="left" label-width="160">
+          <n-form-item label="退款金额（元）">
+            <n-input-number
+              v-model:value="refundForm.amountYuan"
+              :precision="2"
+              :min="0.01"
+              :max="refundRemaining / 100"
+              placeholder="0.00"
+              style="width: 220px"
+            >
+              <template #prefix>¥</template>
+            </n-input-number>
+          </n-form-item>
+          <n-form-item label="退款原因">
+            <n-input
+              v-model:value="refundForm.reason"
+              type="textarea"
+              :autosize="{ minRows: 2, maxRows: 4 }"
+              placeholder="请填写退款原因，便于平台审核"
+            />
+          </n-form-item>
+        </n-form>
+        <n-descriptions :column="1" label-placement="left" :label-width="110" size="small">
+          <n-descriptions-item label="订单号">
+            <n-text class="mono" style="word-break: break-all">{{ refundTarget?.trade_no || '-' }}</n-text>
+          </n-descriptions-item>
+          <n-descriptions-item label="实付金额">
+            <n-text class="amount">{{ formatMoney(refundTarget?.amount) }}</n-text>
+          </n-descriptions-item>
+        </n-descriptions>
+      </n-space>
       <template #footer>
-        <div class="modal-footer">
+        <n-space justify="end">
           <n-button @click="refundVisible = false">取消</n-button>
           <n-button type="primary" :loading="refundSubmitting" @click="submitRefund">提交退款申请</n-button>
-        </div>
+        </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.table-card {
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-:deep(.mono-cell) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px;
-  color: #334155;
-}
-:deep(.muted-cell) {
-  color: #64748b;
-}
-:deep(.action-cell) {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-:deep(.break-all) {
-  word-break: break-all;
-}
-.refund-alert {
-  margin-bottom: 16px;
-}
-.refund-form {
-  margin-bottom: 4px;
-}
-.refund-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12.5px;
-  color: #64748b;
-}
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-@media (max-width: 768px) {
-  .toolbar :deep(.n-select),
-  .toolbar :deep(.n-input),
-  .toolbar :deep(.n-date-picker) {
-    width: 100% !important;
-  }
-}
-</style>

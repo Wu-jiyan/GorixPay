@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { h, onMounted, ref } from 'vue';
 import axios from 'axios';
-import { NButton, NPopconfirm, useMessage, type DataTableColumns } from 'naive-ui';
+import { NButton, NPopconfirm, NTag, NText, useMessage, type DataTableColumns } from 'naive-ui';
+import { AddOutline, GlobeOutline, RefreshOutline } from '@vicons/ionicons5';
 import { merchantApi } from '@/api';
 import type { MerchantDomain } from '@/api/types';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import { formatDateTime } from '@/utils/format';
+import AdminPage from '@/components/AdminPage.vue';
+import { financeStatus, formatDateTime } from '@/utils/format';
 
 const message = useMessage();
 
@@ -88,14 +88,17 @@ const columns: DataTableColumns<MerchantDomain> = [
   {
     title: '域名',
     key: 'domain',
-    minWidth: 200,
-    render: (row) => h('span', { class: 'mono-cell' }, row.domain),
+    minWidth: 220,
+    render: (row) => h(NText, { class: 'mono' }, () => row.domain || '-'),
   },
   {
     title: '状态',
     key: 'status',
     width: 110,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'finance' }),
+    render: (row) =>
+      h(NTag, { size: 'small', bordered: false, type: financeStatus(row.status).type }, () =>
+        financeStatus(row.status).text,
+      ),
   },
   {
     title: '提交时间',
@@ -112,18 +115,18 @@ const columns: DataTableColumns<MerchantDomain> = [
   {
     title: '驳回原因',
     key: 'rejection_reason',
-    minWidth: 160,
+    minWidth: 170,
     ellipsis: { tooltip: true },
     render: (row) => row.rejection_reason || '-',
   },
   {
     title: '操作',
     key: 'actions',
-    width: 100,
+    width: 110,
     fixed: 'right',
     render: (row) => {
       if (row.status === 'rejected') {
-        return h('span', { class: 'muted-text' }, '不可删除');
+        return h(NText, { depth: 3 }, () => '不可删除');
       }
       return h(
         NPopconfirm,
@@ -143,24 +146,34 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="支付域名" subtitle="添加下单使用的 notify_url / return_url 域名，平台审核通过后生效">
-      <template #actions>
-        <n-button size="small" :loading="loading" @click="load">刷新</n-button>
-        <n-button size="small" type="primary" :disabled="notEnabled" @click="openModal">添加域名</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="支付域名" subtitle="添加下单使用的 notify_url / return_url 域名，平台审核通过后生效">
+    <template #actions>
+      <n-space>
+        <n-button :loading="loading" @click="load">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
+        <n-button type="primary" :disabled="notEnabled" @click="openModal">
+          <template #icon>
+            <n-icon :component="AddOutline" />
+          </template>
+          添加域名
+        </n-button>
+      </n-space>
+    </template>
 
-    <n-alert v-if="notEnabled" type="warning" :bordered="false" class="tips-alert">
+    <n-alert v-if="notEnabled" type="warning" :bordered="false" style="margin-bottom: 16px">
       支付域名接口未启用：当前平台未开放域名白名单功能，可稍后再试或联系平台运营。
     </n-alert>
 
-    <n-alert v-else type="info" :bordered="false" class="tips-alert">
+    <n-alert v-else type="info" :bordered="false" style="margin-bottom: 16px">
       平台开启域名白名单后，只有审核通过的域名（或匹配的通配符域名）才能作为 notify_url / return_url 下单。
-      支持填写 <span class="mono-cell">example.com</span> 或 <span class="mono-cell">*.example.com</span>。
+      支持填写 <n-text class="mono" code>example.com</n-text> 或 <n-text class="mono" code>*.example.com</n-text>。
     </n-alert>
 
-    <n-card :bordered="false" class="table-card">
+    <n-card size="small" :bordered="false">
       <n-data-table
         :columns="columns"
         :data="items"
@@ -168,7 +181,7 @@ onMounted(() => {
         :bordered="false"
         :row-key="rowKey"
         :pagination="false"
-        :scroll-x="900"
+        :scroll-x="940"
         size="small"
       >
         <template #empty>
@@ -177,49 +190,31 @@ onMounted(() => {
       </n-data-table>
     </n-card>
 
-    <n-modal v-model:show="modalVisible" preset="card" title="添加支付域名" style="max-width: 460px">
-      <n-form label-placement="top">
+    <n-modal v-model:show="modalVisible" preset="card" title="添加支付域名" style="width: 620px">
+      <n-form label-placement="left" label-width="160">
         <n-form-item label="域名">
           <n-input
             v-model:value="domainInput"
             placeholder="example.com 或 *.example.com"
             :maxlength="191"
+            class="mono"
             @keyup.enter="handleAdd"
-          />
+          >
+            <template #prefix>
+              <n-icon :component="GlobeOutline" />
+            </template>
+          </n-input>
         </n-form-item>
       </n-form>
       <n-alert type="info" :bordered="false">
         通配符域名只匹配一级子域。提交后需要平台运营审核，审核通过前下单会被拦截。
       </n-alert>
       <template #footer>
-        <div class="modal-footer">
+        <n-space justify="end">
           <n-button @click="modalVisible = false">取消</n-button>
           <n-button type="primary" :loading="submitting" @click="handleAdd">提交审核</n-button>
-        </div>
+        </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.tips-alert {
-  margin-bottom: 16px;
-}
-.table-card {
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-:deep(.mono-cell) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px;
-  color: #334155;
-}
-:deep(.muted-text) {
-  color: #94a3b8;
-  font-size: 12.5px;
-}
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-</style>

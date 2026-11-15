@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, NTag, useMessage } from 'naive-ui';
+import { NButton, NIcon, NPopconfirm, NSpace, NTag, NText, useMessage } from 'naive-ui';
 import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-ui';
+import {
+  AddOutline,
+  CheckmarkCircleOutline,
+  PeopleOutline,
+  RefreshOutline,
+  SearchOutline,
+} from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { adminApi } from '@/api';
 import { groupsApi } from '@/api/groups';
 import type { MerchantGroup } from '@/api/groups';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
-import StatusTag from '@/components/StatusTag.vue';
-import { formatDateTime, paymentTypeText } from '@/utils/format';
+import { activeStatus, formatDateTime, paymentTypeText } from '@/utils/format';
 import { asRow, httpStatus, itemsOf, numberOr, stringList, textOf, usePendingAction, useServerPaging } from './shared';
 
 interface GroupForm {
@@ -87,6 +93,9 @@ const rules: FormRules = {
 
 const isEditing = computed(() => editingId.value !== null);
 
+/** 录入的是百分比，落库是万分比：0.60% → 60bp */
+const rateBpPreview = computed(() => Math.round(numberOr(form.rate_percent, 0) * 100));
+
 function groupOptionOf(group: MerchantGroup): SelectOption {
   return { label: `${group.name || group.id}（${(numberOr(group.rate_bp, 0) / 100).toFixed(2)}%）`, value: group.id };
 }
@@ -124,39 +133,66 @@ const currentGroupText = computed(() => {
   return groupNameById.value.get(merchant.groupId) ?? merchant.groupId;
 });
 
+function groupLabelOf(groupId: string | null): string {
+  if (!groupId) return '未分组';
+  return groupNameById.value.get(groupId) ?? groupId;
+}
+
+function selectMerchant(row: MerchantOption) {
+  assignMerchantId.value = row.id;
+  // 选中后把目标组预置成它当前的组，用户仍可改
+  if (row.groupId) assignGroupId.value = row.groupId;
+  assignResult.value = '';
+}
+
+function merchantRowProps(row: MerchantOption) {
+  return {
+    style: `cursor: pointer;${row.id === assignMerchantId.value ? ' background: rgba(24, 160, 88, 0.08);' : ''}`,
+    onClick: () => selectMerchant(row),
+  };
+}
+
 const merchantColumns = computed<DataTableColumns<MerchantOption>>(() => [
+  {
+    title: '选择',
+    key: 'selected',
+    width: 60,
+    align: 'center',
+    render: (row) =>
+      row.id === assignMerchantId.value
+        ? h(NIcon, { component: CheckmarkCircleOutline, size: 18, color: '#18a058' })
+        : h('span', { class: 'muted' }, '—'),
+  },
   {
     title: '商户',
     key: 'name',
+    minWidth: 200,
+    ellipsis: { tooltip: true },
+    render: (row) =>
+      h('div', null, [
+        h('div', row.name || row.id),
+        h('div', { class: 'mono muted', style: 'font-size: 12px' }, row.id),
+      ]),
+  },
+  {
+    title: '邮箱',
+    key: 'email',
     minWidth: 180,
-    ellipsis: true,
-    render: (row) => h('div', [
-      h('div', row.name || row.id),
-      h('div', { class: 'mono', style: 'font-size: 12px; color: #94a3b8' }, row.id),
-    ]),
+    ellipsis: { tooltip: true },
+    render: (row) => row.email || '-',
   },
   {
     title: '所属组',
     key: 'groupId',
-    width: 160,
+    width: 170,
     render: (row) =>
       row.groupId
-        ? h('span', groupNameById.value.get(row.groupId) ?? row.groupId)
+        ? h(NTag, { size: 'small', round: true, bordered: false, type: 'success' }, {
+            default: () => groupLabelOf(row.groupId),
+          })
         : h('span', { class: 'muted' }, '未分组'),
   },
 ]);
-
-function merchantRowProps(row: MerchantOption) {
-  return {
-    style: `cursor: pointer;${row.id === assignMerchantId.value ? ' background: #eff6ff;' : ''}`,
-    onClick: () => {
-      assignMerchantId.value = row.id;
-      // 选中后把目标组预置成它当前的组，用户仍可改
-      if (row.groupId) assignGroupId.value = row.groupId;
-      assignResult.value = '';
-    },
-  };
-}
 
 async function load() {
   loading.value = true;
@@ -343,74 +379,79 @@ function rateText(rateBp?: number): string {
 function payTypeCell(row: MerchantGroup) {
   const list = stringList(row.pay_types);
   if (list.length === 0) return h('span', { class: 'muted' }, '全部');
-  return h(
-    'div',
-    { class: 'tag-cell' },
-    list.map((item) =>
-      h(NTag, { size: 'small', round: true, bordered: false }, { default: () => paymentTypeText(item) }),
-    ),
-  );
+  return h(NSpace, { size: 4, wrap: true }, {
+    default: () =>
+      list.map((item) =>
+        h(NTag, { size: 'small', round: true, bordered: false }, { default: () => paymentTypeText(item) }),
+      ),
+  });
 }
 
 const columns = computed<DataTableColumns<MerchantGroup>>(() => {
   const pendingSet = actions.pending.value;
   return [
-  { title: '名称', key: 'name', minWidth: 160, ellipsis: true, render: (row) => row.name || '-' },
-  {
-    title: '费率',
-    key: 'rate_bp',
-    width: 100,
-    align: 'right',
-    render: (row) => rateText(row.rate_bp),
-  },
-  { title: '可用支付方式', key: 'pay_types', minWidth: 240, render: (row) => payTypeCell(row) },
-  {
-    title: '结算模式',
-    key: 'settle_mode',
-    width: 110,
-    render: (row) => settleModeLabels[row.settle_mode || ''] ?? row.settle_mode ?? '-',
-  },
-  {
-    title: '商户数',
-    key: 'merchant_count',
-    width: 90,
-    align: 'right',
-    render: (row) => (typeof row.merchant_count === 'number' ? row.merchant_count : '-'),
-  },
-  {
-    title: '状态',
-    key: 'status',
-    width: 90,
-    render: (row) => h(StatusTag, { status: row.status, kind: 'active' }),
-  },
-  {
-    title: '创建时间',
-    key: 'created_at',
-    width: 170,
-    render: (row) => formatDateTime(row.created_at),
-  },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 260,
-    fixed: 'right',
-    render: (row) => {
-      const toggling = pendingSet.has(`toggle:${row.id}`);
-      const removing = pendingSet.has(`remove:${row.id}`);
-      const busy = toggling || removing;
-      return h(
-        NSpace,
-        { size: 4, wrap: false },
-        {
+    {
+      title: '名称',
+      key: 'name',
+      minWidth: 160,
+      ellipsis: { tooltip: true },
+      render: (row) => row.name || '-',
+    },
+    {
+      title: '费率',
+      key: 'rate_bp',
+      width: 100,
+      align: 'right',
+      render: (row) => h(NText, { class: 'amount' }, { default: () => rateText(row.rate_bp) }),
+    },
+    { title: '可用支付方式', key: 'pay_types', minWidth: 240, render: (row) => payTypeCell(row) },
+    {
+      title: '结算模式',
+      key: 'settle_mode',
+      width: 110,
+      render: (row) => settleModeLabels[row.settle_mode || ''] ?? row.settle_mode ?? '-',
+    },
+    {
+      title: '商户数',
+      key: 'merchant_count',
+      width: 90,
+      align: 'right',
+      render: (row) => (typeof row.merchant_count === 'number' ? row.merchant_count : '-'),
+    },
+    {
+      title: '状态',
+      key: 'status',
+      width: 90,
+      render: (row) =>
+        h(NTag, { size: 'small', round: true, bordered: false, type: activeStatus(row.status).type }, {
+          default: () => activeStatus(row.status).text,
+        }),
+    },
+    {
+      title: '创建时间',
+      key: 'created_at',
+      width: 170,
+      render: (row) => formatDateTime(row.created_at),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 250,
+      fixed: 'right',
+      render: (row) => {
+        const toggling = pendingSet.has(`toggle:${row.id}`);
+        const removing = pendingSet.has(`remove:${row.id}`);
+        const busy = toggling || removing;
+        return h(NSpace, { size: 12, wrap: false, align: 'center' }, {
           default: () => [
             h(
               NButton,
-              { size: 'tiny', quaternary: true, type: 'info', onClick: () => openEdit(row) },
+              { text: true, size: 'small', type: 'primary', onClick: () => openEdit(row) },
               { default: () => '编辑' },
             ),
             h(
               NButton,
-              { size: 'tiny', quaternary: true, onClick: () => openAssign(row) },
+              { text: true, size: 'small', onClick: () => openAssign(row) },
               { default: () => '商户归组' },
             ),
             h(
@@ -421,8 +462,8 @@ const columns = computed<DataTableColumns<MerchantGroup>>(() => {
                   h(
                     NButton,
                     {
-                      size: 'tiny',
-                      quaternary: true,
+                      text: true,
+                      size: 'small',
                       type: row.status === 'active' ? 'warning' : 'primary',
                       loading: toggling,
                       disabled: busy,
@@ -439,17 +480,16 @@ const columns = computed<DataTableColumns<MerchantGroup>>(() => {
                 trigger: () =>
                   h(
                     NButton,
-                    { size: 'tiny', quaternary: true, type: 'error', loading: removing, disabled: busy },
+                    { text: true, size: 'small', type: 'error', loading: removing, disabled: busy },
                     { default: () => '删除' },
                   ),
                 default: () => '确认删除该用户组？删除后不可恢复。',
               },
             ),
           ],
-        },
-      );
+        });
+      },
     },
-  },
   ];
 });
 
@@ -457,23 +497,32 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="用户组与费率" subtitle="按用户组设置商户费率、可用支付方式与结算模式">
-      <template #actions>
-        <n-button secondary :loading="loading" @click="load">刷新</n-button>
-        <n-button type="primary" @click="openCreate">新建用户组</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="用户组与费率" subtitle="按用户组设置商户费率、可用支付方式与结算模式">
+    <template #actions>
+      <n-space>
+        <n-button :loading="loading" @click="load">
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          刷新
+        </n-button>
+        <n-button type="primary" @click="openCreate">
+          <template #icon>
+            <n-icon :component="AddOutline" />
+          </template>
+          新建用户组
+        </n-button>
+      </n-space>
+    </template>
 
-    <n-card :bordered="false">
+    <n-card size="small" :bordered="false">
       <n-data-table
         :columns="columns"
         :data="rows"
         :loading="loading"
         :pagination="pagination"
         :row-key="(row: MerchantGroup) => row.id"
-        :bordered="false"
-        :single-line="false"
+        :scroll-x="1350"
         size="small"
         remote
         @update:page="onPage"
@@ -491,12 +540,12 @@ onMounted(load);
       :title="isEditing ? '编辑用户组' : '新建用户组'"
       style="width: 640px; max-width: 94vw"
     >
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="130">
+      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="120">
         <n-form-item label="用户组名称" path="name">
           <n-input v-model:value="form.name" placeholder="例如：普通商户 / 大客户" />
         </n-form-item>
         <n-form-item label="费率" path="rate_percent">
-          <div class="rate-row">
+          <n-space align="center" :size="10">
             <n-input-number
               v-model:value="form.rate_percent"
               :min="0"
@@ -505,9 +554,10 @@ onMounted(load);
               :precision="2"
               style="width: 180px"
             />
-            <span class="muted">%</span>
-            <span class="muted small">后端按万分比存储，填 0.60 表示 60bp</span>
-          </div>
+            <n-text depth="3" style="font-size: 12px">
+              按百分比填（100 = 1%），保存为万分比 {{ rateBpPreview }}bp
+            </n-text>
+          </n-space>
         </n-form-item>
         <n-form-item label="可用支付方式">
           <n-select
@@ -521,7 +571,7 @@ onMounted(load);
           <n-select v-model:value="form.settle_mode" :options="settleModeOptions" />
         </n-form-item>
         <n-form-item label="买断价（元）">
-          <div class="rate-row">
+          <n-space align="center" :size="10">
             <n-input-number
               v-model:value="form.price_yuan"
               :min="0"
@@ -529,8 +579,10 @@ onMounted(load);
               :precision="2"
               style="width: 180px"
             />
-            <span class="muted small">0 表示不单独售卖；保存走 PATCH /admin/groups/:id/price</span>
-          </div>
+            <n-text depth="3" style="font-size: 12px">
+              0 表示不单独售卖；保存走 PATCH /admin/groups/:id/price
+            </n-text>
+          </n-space>
         </n-form-item>
       </n-form>
       <template #footer>
@@ -541,45 +593,50 @@ onMounted(load);
       </template>
     </n-modal>
 
-    <n-modal v-model:show="showAssign" preset="card" title="商户归组" style="width: 720px; max-width: 94vw">
+    <n-modal v-model:show="showAssign" preset="card" title="商户归组" style="width: 780px; max-width: 94vw">
       <n-alert type="info" :bordered="false" style="margin-bottom: 14px">
         归组后该商户的费率、可用支付方式与结算模式按用户组生效，会覆盖商户原有设置。
       </n-alert>
-      <div class="assign-toolbar">
+
+      <n-space :size="10" align="center" style="margin-bottom: 10px">
         <n-input
           v-model:value="merchantKeyword"
           placeholder="按商户名称 / ID / 邮箱过滤"
           clearable
           size="small"
-          style="width: 260px"
-        />
-        <span class="muted small">共 {{ filteredMerchants.length }} 个商户</span>
-      </div>
+          style="width: 280px"
+        >
+          <template #prefix>
+            <n-icon :component="SearchOutline" />
+          </template>
+        </n-input>
+        <n-text depth="3" style="font-size: 12px">共 {{ filteredMerchants.length }} 个商户</n-text>
+      </n-space>
+
       <n-data-table
         :columns="merchantColumns"
         :data="filteredMerchants"
         :loading="assignLoading"
         :row-props="merchantRowProps"
-        :max-height="260"
+        :max-height="280"
         :pagination="false"
-        :bordered="false"
-        :single-line="false"
-        size="small"
         :row-key="(row: MerchantOption) => row.id"
+        :scroll-x="700"
+        size="small"
       >
         <template #empty>
           <n-empty description="没有匹配到商户" size="small" />
         </template>
       </n-data-table>
 
-      <n-form label-placement="left" label-width="110" style="margin-top: 16px">
+      <n-form label-placement="left" label-width="110" style="margin-top: 16px" :show-feedback="false">
         <n-form-item label="当前所属组">
-          <n-space align="center">
-            <n-tag v-if="assignMerchantId" size="small" :type="currentGroupText === '未分组' ? 'default' : 'success'" round>
+          <n-space align="center" :size="8">
+            <n-tag v-if="assignMerchantId" size="small" round :bordered="false" :type="currentGroupText === '未分组' ? 'default' : 'success'">
               {{ currentGroupText }}
             </n-tag>
-            <span v-else class="muted small">先在上表点一个商户</span>
-            <span v-if="assignMerchantId" class="mono small muted">{{ assignMerchantId }}</span>
+            <n-text v-else depth="3" style="font-size: 12px">先在上表点一个商户</n-text>
+            <span v-if="assignMerchantId" class="mono muted" style="font-size: 12px">{{ assignMerchantId }}</span>
           </n-space>
         </n-form-item>
         <n-form-item label="目标用户组">
@@ -587,55 +644,43 @@ onMounted(load);
             v-model:value="assignGroupId"
             :options="assignGroupOptions"
             placeholder="选择要归入的用户组"
+            style="width: 320px"
           />
         </n-form-item>
       </n-form>
-      <p v-if="assignResult" class="muted small">{{ assignResult }}</p>
+
+      <n-text v-if="assignResult" depth="3" style="font-size: 12px">{{ assignResult }}</n-text>
+
       <template #footer>
-        <n-space justify="end">
-          <n-button @click="showAssign = false">取消</n-button>
-          <n-button
-            type="error"
-            secondary
-            :loading="assignSubmitting"
-            :disabled="assignMerchantId === ''"
-            @click="submitAssign(true)"
-          >
-            移出用户组
-          </n-button>
-          <n-button
-            type="primary"
-            :loading="assignSubmitting"
-            :disabled="assignMerchantId === '' || assignGroupId === null"
-            @click="submitAssign(false)"
-          >
-            确认归组
-          </n-button>
+        <n-space justify="space-between" align="center">
+          <n-space :size="6" align="center">
+            <n-icon :component="PeopleOutline" />
+            <n-text depth="3" style="font-size: 12px">
+              {{ assignMerchantId ? `已选商户 ${assignMerchantId}` : '未选择商户' }}
+            </n-text>
+          </n-space>
+          <n-space>
+            <n-button @click="showAssign = false">取消</n-button>
+            <n-button
+              type="error"
+              secondary
+              :loading="assignSubmitting"
+              :disabled="assignMerchantId === ''"
+              @click="submitAssign(true)"
+            >
+              移出用户组
+            </n-button>
+            <n-button
+              type="primary"
+              :loading="assignSubmitting"
+              :disabled="assignMerchantId === '' || assignGroupId === null"
+              @click="submitAssign(false)"
+            >
+              确认归组
+            </n-button>
+          </n-space>
         </n-space>
       </template>
     </n-modal>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.rate-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.small {
-  font-size: 12px;
-}
-.assign-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-.tag-cell {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-</style>

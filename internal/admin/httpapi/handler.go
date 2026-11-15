@@ -114,6 +114,24 @@ func (request channelRequest) validate() bool {
 	return false
 }
 
+// validStored reports whether a merged configuration is complete enough to keep.
+// The update path validates what will actually be stored, not what was submitted:
+// an edit that only renames a channel submits no credentials and must still pass.
+func (request channelRequest) validStored(configuration channelconfig.Config) bool {
+	if request.PluginCode == "sandbox" {
+		return true
+	}
+	if strings.TrimSpace(configuration.APIURL) != "" && strings.TrimSpace(configuration.PID) != "" && strings.TrimSpace(configuration.Key) != "" {
+		return true
+	}
+	for name, value := range configuration.Extra {
+		if strings.TrimSpace(name) != "" && strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func Register(group *gin.RouterGroup, db *gorm.DB, sessions gin.HandlerFunc, configs *channelconfig.Service, ledger *ledgerquery.Service, ledgerWriter *ledgerservice.Service, finance *financeservice.Service, outboxQuery *outbox.QueryService, options ...Option) {
 	handler := &Handler{db: db, configs: configs, ledger: ledger, ledgerWriter: ledgerWriter, finance: finance, outbox: outboxQuery}
 	for _, option := range options {
@@ -308,21 +326,67 @@ func (handler *Handler) createChannel(ctx *gin.Context) {
 
 func (handler *Handler) updateChannel(ctx *gin.Context) {
 	var request channelRequest
-	if ctx.ShouldBindJSON(&request) != nil || request.Weight <= 0 || !request.validate() {
+	if ctx.ShouldBindJSON(&request) != nil || request.Weight <= 0 {
 		invalidRequest(ctx)
 		return
 	}
-	encrypted, err := handler.configs.Encrypt(ctx.Param("id"), request.channelConfig())
+	id := ctx.Param("id")
+	var existing channelrouter.Channel
+	if err := handler.db.WithContext(ctx.Request.Context()).First(&existing, "id = ?", id).Error; err != nil {
+		notFound(ctx)
+		return
+	}
+	// The console never receives the stored credentials, so an edit sends only the
+	// fields the operator retyped. Merging over the stored configuration keeps every
+	// untouched secret alive instead of wiping it on save.
+	merged := request.channelConfig()
+	if previous, err := handler.configs.Decrypt(id, existing.ConfigEncrypted); err == nil {
+		merged = mergeChannelConfig(previous, merged)
+	}
+	if !request.validStored(merged) {
+		invalidRequest(ctx)
+		return
+	}
+	encrypted, err := handler.configs.Encrypt(id, merged)
 	if err != nil {
 		invalidRequest(ctx)
 		return
 	}
-	result := handler.db.WithContext(ctx.Request.Context()).Model(&channelrouter.Channel{}).Where("id = ?", ctx.Param("id")).Updates(map[string]any{"name": request.Name, "plugin_code": request.PluginCode, "payment_type": request.PaymentType, "priority": request.Priority, "weight": request.Weight, "status": normalizeChannelStatus(request.Status), "config_encrypted": encrypted, "updated_at": time.Now().UTC()})
+	result := handler.db.WithContext(ctx.Request.Context()).Model(&channelrouter.Channel{}).Where("id = ?", id).Updates(map[string]any{"name": request.Name, "plugin_code": request.PluginCode, "payment_type": request.PaymentType, "priority": request.Priority, "weight": request.Weight, "status": normalizeChannelStatus(request.Status), "config_encrypted": encrypted, "updated_at": time.Now().UTC()})
 	if result.Error != nil || result.RowsAffected != 1 {
 		notFound(ctx)
 		return
 	}
 	ctx.Status(http.StatusNoContent)
+}
+
+// mergeChannelConfig overlays the submitted configuration on the stored one. An
+// empty submitted value means "leave it alone": the operator cannot see the old
+// credential, so blank must never mean "erase".
+func mergeChannelConfig(stored, submitted channelconfig.Config) channelconfig.Config {
+	merged := stored
+	if value := strings.TrimSpace(submitted.APIURL); value != "" {
+		merged.APIURL = value
+	}
+	if value := strings.TrimSpace(submitted.PID); value != "" {
+		merged.PID = value
+	}
+	if value := strings.TrimSpace(submitted.Key); value != "" {
+		merged.Key = value
+	}
+	if len(submitted.Extra) > 0 {
+		extra := make(map[string]string, len(stored.Extra)+len(submitted.Extra))
+		for name, value := range stored.Extra {
+			extra[name] = value
+		}
+		for name, value := range submitted.Extra {
+			if trimmed := strings.TrimSpace(value); trimmed != "" {
+				extra[name] = trimmed
+			}
+		}
+		merged.Extra = extra
+	}
+	return merged
 }
 
 func (handler *Handler) channelStatus(ctx *gin.Context) {

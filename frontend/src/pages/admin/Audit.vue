@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
-import { useMessage } from 'naive-ui';
+import { NCode, useMessage } from 'naive-ui';
 import type { DataTableColumns } from 'naive-ui';
+import { FunnelOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5';
+import AdminPage from '@/components/AdminPage.vue';
 import { adminApi } from '@/api';
 import type { PageQuery } from '@/api';
 import { errorMessage } from '@/api/client';
-import PageHeader from '@/components/PageHeader.vue';
 import { formatDateTime } from '@/utils/format';
 import { prettyJson, useServerPaging } from './shared';
 
@@ -59,31 +60,37 @@ function resetFilters() {
   void load();
 }
 
+function payloadPreview(payload: string): string {
+  return prettyJson(payload).replace(/\s+/g, ' ').slice(0, 120);
+}
+
 const columns = computed<DataTableColumns<AuditRow>>(() => [
   {
     type: 'expand',
-    renderExpand: (row) => h('pre', { class: 'json' }, prettyJson(row.payload)),
+    width: 40,
+    renderExpand: (row) =>
+      h('div', { style: 'padding: 4px 0 8px' }, [h(NCode, { code: prettyJson(row.payload), language: 'json', wordWrap: true })]),
   },
   {
     title: 'ID',
     key: 'id',
-    width: 280,
-    ellipsis: true,
+    width: 260,
+    ellipsis: { tooltip: true },
     render: (row) => h('span', { class: 'mono' }, row.id || '-'),
   },
   {
     title: '事件类型',
     key: 'event_type',
     minWidth: 200,
-    ellipsis: true,
+    ellipsis: { tooltip: true },
     render: (row) => h('span', { class: 'mono' }, row.event_type || '-'),
   },
-  { title: '操作者类型', key: 'actor_type', width: 130, render: (row) => row.actor_type || '-' },
+  { title: '操作者类型', key: 'actor_type', width: 120, render: (row) => row.actor_type || '-' },
   {
     title: '操作者 ID',
     key: 'actor_id',
-    width: 280,
-    ellipsis: true,
+    width: 240,
+    ellipsis: { tooltip: true },
     render: (row) => h('span', { class: 'mono' }, row.actor_id || '-'),
   },
   {
@@ -95,9 +102,9 @@ const columns = computed<DataTableColumns<AuditRow>>(() => [
   {
     title: '载荷',
     key: 'payload',
-    width: 260,
-    ellipsis: true,
-    render: (row) => h('span', { class: 'muted mono' }, prettyJson(row.payload).replace(/\s+/g, ' ').slice(0, 80)),
+    minWidth: 260,
+    ellipsis: { tooltip: true },
+    render: (row) => h('span', { class: 'muted mono' }, payloadPreview(row.payload)),
   },
 ]);
 
@@ -105,42 +112,56 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader title="审计日志" subtitle="管理端写操作审计事件，展开行查看格式化 JSON 载荷">
-      <template #actions>
-        <n-button secondary :loading="loading" @click="load">刷新</n-button>
-      </template>
-    </PageHeader>
+  <admin-page title="审计日志" subtitle="管理端写操作审计事件，展开行查看格式化 JSON 载荷">
+    <template #actions>
+      <n-button :loading="loading" @click="load">
+        <template #icon>
+          <n-icon :component="RefreshOutline" />
+        </template>
+        刷新
+      </n-button>
+    </template>
 
-    <div class="toolbar">
-      <n-input
-        v-model:value="keyword"
-        placeholder="关键字（路径 / 资源 ID）"
-        clearable
-        style="width: 260px"
-        @keyup.enter="search"
-      />
-      <n-input
-        v-model:value="eventType"
-        placeholder="事件类型，例如 admin.http.patch"
-        clearable
-        style="width: 260px"
-        @keyup.enter="search"
-      />
-      <n-button type="primary" @click="search">查询</n-button>
-      <n-button @click="resetFilters">重置</n-button>
-    </div>
+    <n-card size="small" :bordered="false">
+      <n-space :size="10" align="center" style="margin-bottom: 12px">
+        <n-input
+          v-model:value="keyword"
+          placeholder="关键字（路径 / 资源 ID）"
+          clearable
+          style="width: 260px"
+          @keyup.enter="search"
+        >
+          <template #prefix>
+            <n-icon :component="SearchOutline" />
+          </template>
+        </n-input>
+        <n-input
+          v-model:value="eventType"
+          placeholder="事件类型，例如 admin.http.patch"
+          clearable
+          style="width: 260px"
+          @keyup.enter="search"
+        >
+          <template #prefix>
+            <n-icon :component="FunnelOutline" />
+          </template>
+        </n-input>
+        <n-button type="primary" @click="search">查询</n-button>
+        <n-button @click="resetFilters">重置</n-button>
+        <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
+      </n-space>
 
-    <n-card :bordered="false">
-      <p class="muted hint">点击行首箭头展开查看完整 payload；解析失败时展示原始文本。</p>
+      <n-text depth="3" style="display: block; font-size: 12px; margin-bottom: 10px">
+        点行首箭头展开完整 payload；解析失败时展示原始文本。
+      </n-text>
+
       <n-data-table
         :columns="columns"
         :data="rows"
         :loading="loading"
         :pagination="pagination"
         :row-key="(row: AuditRow) => row.id"
-        :bordered="false"
-        :single-line="false"
+        :scroll-x="1400"
         size="small"
         remote
         @update:page="onPage"
@@ -151,26 +172,5 @@ onMounted(load);
         </template>
       </n-data-table>
     </n-card>
-  </div>
+  </admin-page>
 </template>
-
-<style scoped>
-.hint {
-  font-size: 12px;
-  margin: 0 0 12px;
-}
-.json {
-  margin: 0;
-  max-height: 320px;
-  overflow: auto;
-  background: #0f172a;
-  color: #e2e8f0;
-  border-radius: 10px;
-  padding: 12px 14px;
-  font-size: 12px;
-  line-height: 1.6;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-</style>
