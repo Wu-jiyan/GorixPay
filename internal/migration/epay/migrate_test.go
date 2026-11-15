@@ -24,7 +24,7 @@ const (
 	fixtureTransferAmountCents = 500
 	fixtureConfigKeys          = 7
 	fixturePayTypes            = 2
-	fixtureChannels            = 3
+	fixtureChannels            = 4
 )
 
 func fixtureOptions(sourceDSN, targetDSN string, dryRun bool) Options {
@@ -770,6 +770,26 @@ func TestChannelCredentialsAreReadableByTheApplication(t *testing.T) {
 	}
 	if epayConfig.APIURL != "https://gateway.example.com/" || epayConfig.PID != "1001" || epayConfig.Key != "legacy-key" {
 		t.Fatalf("Epay 凭据丢失: %+v", epayConfig)
+	}
+
+	// huifu: the Epay labels are the same values under different names, so the
+	// plugin must see sys_id/product_id/private_key/huifu_public_key.
+	huifuID := queryString(t, db, `SELECT id FROM payment_channels WHERE name = '汇付-支付宝'`)
+	huifuConfig, err := service.Decrypt(huifuID, queryString(t, db, `SELECT config_encrypted FROM payment_channels WHERE id = ?`, huifuID))
+	if err != nil {
+		t.Fatalf("汇付渠道凭据无法用应用侧密钥解开: %v", err)
+	}
+	huifuValues := huifuConfig.Values()
+	wanted := map[string]string{
+		"sys_id":           "6666000197954883",
+		"product_id":       "PAYUN",
+		"private_key":      "merchant-private-key",
+		"huifu_public_key": "huifu-public-key",
+	}
+	for key, value := range wanted {
+		if huifuValues[key] != value {
+			t.Fatalf("汇付 %s = %q, want %q (全部键: %v)", key, huifuValues[key], value, huifuValues)
+		}
 	}
 
 	// A second run must not duplicate the rows it already wrote.

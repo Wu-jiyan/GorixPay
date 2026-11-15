@@ -174,6 +174,59 @@ func TestCreateAlipayNativeOrderReturnsQRCode(t *testing.T) {
 	}
 }
 
+// TestCreateHostingOrderReturnsJumpURL pins the 托管 route: a channel carrying
+// project_id (Epay fills it only for 托管 products) must call the hosting
+// pre-order endpoint and hand the buyer its jump_url, because those products do
+// not enable the direct T_NATIVE/A_NATIVE trade types.
+func TestCreateHostingOrderReturnsJumpURL(t *testing.T) {
+	merchant, platform := newKeyMaterial(t), newKeyMaterial(t)
+	gateway, recorded := newGateway(t, &merchant.private.PublicKey, platform.private, func(map[string]json.RawMessage) map[string]any {
+		return map[string]any{
+			"resp_code": "00000000",
+			"resp_desc": "成功",
+			"jump_url":  "https://paas.huifu.com/hosting/pay?token=abc",
+		}
+	})
+	defer gateway.Close()
+
+	action, err := New(gateway.Client()).CreatePayment(context.Background(), pluginpayment.CreateRequest{
+		TradeNo: "202611152200000001", Amount: 1, Description: "托管测试", PaymentType: "wxpay",
+		NotifyURL: "https://pay.example/cb", ReturnURL: "https://pay.example/return", ClientIP: "203.0.113.7",
+		Configuration: createConfig(merchant, platform, gateway.URL, map[string]string{
+			"project_id":    "PROJECTID2026051265060546",
+			"project_title": "测试站点",
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if action.Type != pluginpayment.ActionJump || action.URL != "https://paas.huifu.com/hosting/pay?token=abc" {
+		t.Fatalf("action=%+v", action)
+	}
+	for key, want := range map[string]string{
+		"pre_order_type": "1",
+		"trans_type":     "T_JSAPI",
+		"trans_amt":      "0.01",
+		"req_seq_id":     "202611152200000001",
+		"notify_url":     "https://pay.example/cb",
+	} {
+		if got := fieldString(t, recorded.data, key); got != want {
+			t.Errorf("%s=%q want %q", key, got, want)
+		}
+	}
+	hosting := fieldString(t, recorded.data, "hosting_data")
+	for _, want := range []string{
+		`"project_id":"PROJECTID2026051265060546"`,
+		`"project_title":"测试站点"`,
+		`"request_type":"M"`,
+		`"callback_url":"https://pay.example/return"`,
+	} {
+		if !strings.Contains(hosting, want) {
+			t.Fatalf("hosting_data=%s 缺少 %s", hosting, want)
+		}
+	}
+}
+
 func TestCreateAlipayNativeFallsBackToSysID(t *testing.T) {
 	merchant, platform := newKeyMaterial(t), newKeyMaterial(t)
 	gateway, recorded := newGateway(t, &merchant.private.PublicKey, platform.private, func(map[string]json.RawMessage) map[string]any {

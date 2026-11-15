@@ -41,8 +41,20 @@ var channelPluginMap = map[string]string{
 // channelConfigRenames maps legacy config keys onto the names this project's
 // plugins read. Only renames that are semantically the same value are listed;
 // unknown keys are carried over untouched so nothing is silently dropped.
+//
+// huifu: the Epay plugin's labels are 「汇付系统号 / 汇付产品号 / 商户私钥 /
+// 汇付公钥 / 汇付子商户号」 which is exactly sys_id / product_id / private_key /
+// huifu_public_key / huifu_id. Both plugins call /v3/trade/payment/jspay with the
+// same envelope, so the credentials move over unchanged.
 var channelConfigRenames = map[string]map[string]string{
 	"bepusdt": {"appurl": "api_url", "appkey": "key"},
+	"huifu": {
+		"appid":     "sys_id",
+		"appurl":    "product_id",
+		"appsecret": "private_key",
+		"appkey":    "huifu_public_key",
+		"appmchid":  "huifu_id",
+	},
 }
 
 // migrateChannels maps pre_channel (支付渠道) onto payment_channels.

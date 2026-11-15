@@ -28,6 +28,8 @@ const (
 	defaultClientIP = "127.0.0.1"
 	// defaultGoodsDesc is used when the order has no description.
 	defaultGoodsDesc = "订单支付"
+	// defaultProjectTitle is the title 汇付 shows on its hosted cashier.
+	defaultProjectTitle = "在线支付"
 )
 
 // Transaction families, derived from the channel payment type.
@@ -62,6 +64,9 @@ func (*Plugin) ConfigFields() []pluginpayment.ConfigField {
 		{Key: "private_key", Label: "商户私钥 (PKCS8 PEM)", Type: pluginpayment.ConfigFieldTextarea, Required: true, Secret: true},
 		{Key: "huifu_public_key", Label: "汇付公钥 (PEM)", Type: pluginpayment.ConfigFieldTextarea, Required: true, Secret: true},
 		{Key: "huifu_id", Label: "子商户号 (huifu_id)", Type: pluginpayment.ConfigFieldText},
+		{Key: "project_id", Label: "托管项目号 (project_id)", Type: pluginpayment.ConfigFieldText},
+		{Key: "project_title", Label: "托管收银台标题", Type: pluginpayment.ConfigFieldText},
+		{Key: "mode", Label: "接入方式 (native / hosting)", Type: pluginpayment.ConfigFieldText},
 	}
 }
 
@@ -75,6 +80,13 @@ func (plugin *Plugin) CreatePayment(ctx context.Context, request pluginpayment.C
 	}
 	if request.NotifyURL == "" {
 		return pluginpayment.Action{}, fmt.Errorf("%w: notify_url", pluginpayment.ErrInvalidConfiguration)
+	}
+	// 托管 (hosted cashier) channels do not take the jspay route: 汇付 only turns
+	// on the trade types used by the direct product, so a channel that was sold
+	// as 托管 must go through /v2/trade/hosting/payment/preorder and hand the
+	// buyer a jump_url.
+	if hostingMode(request.Configuration) {
+		return plugin.createHosting(ctx, request, invoice)
 	}
 	tradeType, family, jsapi := selectTradeType(request.PaymentType, request.Method)
 	description := strings.TrimSpace(request.Description)
@@ -202,6 +214,75 @@ func buildAction(tradeType string, data map[string]json.RawMessage) (pluginpayme
 		return pluginpayment.Action{}, fmt.Errorf("huifu returned no qr_code for %s", tradeType)
 	}
 	action := pluginpayment.Action{Type: pluginpayment.ActionQRCode, URL: qrCode}
+	if err := action.Validate(); err != nil {
+		return pluginpayment.Action{}, err
+	}
+	return action, nil
+}
+
+// hostingMode reports whether the channel runs through 汇付's hosted cashier.
+// Epay fills project_id only for 托管 channels, so its presence is the signal;
+// an explicit mode=hosting / mode=native always wins over that heuristic.
+func hostingMode(config map[string]string) bool {
+	switch strings.ToLower(strings.TrimSpace(config["mode"])) {
+	case "hosting", "host":
+		return true
+	case "native", "direct":
+		return false
+	}
+	return strings.TrimSpace(config["project_id"]) != ""
+}
+
+// createHosting places a 托管 pre-order: 汇付 renders its own cashier and answers
+// a jump_url the buyer is redirected to. This is the only route available on
+// products sold as 托管H5/PC, where the direct trade types are not enabled.
+func (plugin *Plugin) createHosting(ctx context.Context, request pluginpayment.CreateRequest, client *Client) (pluginpayment.Action, error) {
+	projectID := strings.TrimSpace(request.Configuration["project_id"])
+	if projectID == "" {
+		return pluginpayment.Action{}, fmt.Errorf("%w: project_id", pluginpayment.ErrInvalidConfiguration)
+	}
+	description := strings.TrimSpace(request.Description)
+	if description == "" {
+		description = defaultGoodsDesc
+	}
+	requestType := "M"
+	method := strings.ToLower(strings.TrimSpace(request.Method))
+	if strings.Contains(method, "pc") || strings.Contains(method, "web") {
+		requestType = "P"
+	}
+	// 托管 is always the JSAPI trade family: 汇付 selects H5/PC by request_type
+	// (M/P), while the trade type stays *_JSAPI — that is also what the Epay
+	// plugin sends for its 托管H5/PC channels.
+	tradeType, _, _ := selectTradeType(request.PaymentType, "jsapi")
+	hostingData := jsonObject(map[string]string{
+		"project_title": pluginpayment.ConfigValue(request.Configuration, "project_title", defaultProjectTitle),
+		"project_id":    projectID,
+		"callback_url":  request.ReturnURL,
+		"request_type":  requestType,
+	})
+	data := map[string]json.RawMessage{
+		"req_date":       rawValue(reqDate(request.TradeNo, plugin.now())),
+		"req_seq_id":     rawValue(request.TradeNo),
+		"huifu_id":       rawValue(pluginpayment.ConfigValue(request.Configuration, "huifu_id", client.sysID)),
+		"trans_amt":      rawValue(pluginpayment.FormatAmount(request.Amount)),
+		"goods_desc":     rawValue(description),
+		"pre_order_type": rawValue("1"),
+		"hosting_data":   rawValue(hostingData),
+		"notify_url":     rawValue(request.NotifyURL),
+		"trans_type":     rawValue(tradeType),
+	}
+	response, err := client.post(ctx, hostingPath, data)
+	if err != nil {
+		return pluginpayment.Action{}, err
+	}
+	if err := businessError(response); err != nil {
+		return pluginpayment.Action{}, err
+	}
+	jumpURL := strings.TrimSpace(rawString(response, "jump_url"))
+	if jumpURL == "" {
+		return pluginpayment.Action{}, fmt.Errorf("huifu hosting response carries no jump_url")
+	}
+	action := pluginpayment.Action{Type: pluginpayment.ActionJump, URL: jumpURL}
 	if err := action.Validate(); err != nil {
 		return pluginpayment.Action{}, err
 	}

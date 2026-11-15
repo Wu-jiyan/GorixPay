@@ -66,6 +66,7 @@ CREATE TABLE pre_channel (
 INSERT INTO pre_channel (id, type, plugin, name, rate, status, config) VALUES (1, 1, 'epay', 'Epay-支付宝', '99.00', 1, '{"api_url":"https://gateway.example.com/","pid":"1001","key":"legacy-key"}');
 INSERT INTO pre_channel (id, type, plugin, name, rate, status, config) VALUES (2, 2, 'bepusdt', 'BepUSDT-微信', '97.00', 1, '{"appurl":"https://beusdt.example.com/","appkey":"bep-key","fiat":"CNY"}');
 INSERT INTO pre_channel (id, type, plugin, name, rate, status, config) VALUES (3, 2, 'waffopancake', 'Waffo-微信', '99.90', 1, '{"appenv":"prod","appid":"MER_1"}');
+INSERT INTO pre_channel (id, type, plugin, name, rate, status, config) VALUES (4, 1, 'huifu', '汇付-支付宝', '99.62', 1, '{"appid":"6666000197954883","appurl":"PAYUN","appsecret":"merchant-private-key","appkey":"huifu-public-key","appmchid":"","project_id":"PROJECTID1"}');
 
 DROP TABLE IF EXISTS pre_user;
 CREATE TABLE pre_user (

@@ -26,6 +26,9 @@ const (
 	DefaultBaseURL = "https://api.huifu.com"
 	// jsPayPath is the aggregated (jspay) order endpoint.
 	jsPayPath = "/v3/trade/payment/jspay"
+	// hostingPath is the 托管 (hosted cashier) pre-order endpoint, used by channels
+	// whose product only enables the hosted trade types.
+	hostingPath = "/v2/trade/hosting/payment/preorder"
 	// successCode marks a successful business response.
 	successCode = "00000100"
 	// refundSuccessCode is the alternative success code some products return.
