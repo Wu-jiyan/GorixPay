@@ -203,6 +203,7 @@ async function handleUserSelect(key: string) {
       :width="228"
       :collapsed="collapsed"
       :native-scrollbar="false"
+      content-style="height: 100%; padding-bottom: 12px;"
       show-trigger="bar"
       @collapse="collapsed = true"
       @expand="collapsed = false"
@@ -233,7 +234,7 @@ async function handleUserSelect(key: string) {
       />
     </n-layout-sider>
 
-    <n-layout>
+    <n-layout style="height: 100vh">
       <n-layout-header bordered class="topbar">
         <n-space align="center" :size="12">
           <n-button quaternary circle size="small" @click="collapsed = !collapsed">
@@ -257,7 +258,12 @@ async function handleUserSelect(key: string) {
         </n-dropdown>
       </n-layout-header>
 
-      <n-layout-content class="content" content-style="padding: 20px 24px 40px; min-height: calc(100vh - 57px);">
+      <n-layout-content
+        class="content"
+        :native-scrollbar="false"
+        style="height: calc(100vh - 57px)"
+        content-style="padding: 20px 24px 40px; height: 100%;"
+      >
         <router-view />
       </n-layout-content>
     </n-layout>
@@ -266,7 +272,9 @@ async function handleUserSelect(key: string) {
 
 <style scoped>
 .admin-shell {
-  min-height: 100vh;
+  /* 整个外壳固定一屏高：侧栏自己滚，内容区自己滚，互不撑高 */
+  height: 100vh;
+  overflow: hidden;
 }
 .brand {
   display: flex;
