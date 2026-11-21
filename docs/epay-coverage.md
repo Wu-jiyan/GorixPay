@@ -150,10 +150,12 @@
 | `epay` | 上游 `/api.php?act=refund` | `out_refund_no` |
 | `qqpay` | `qpay_refund.cgi` | `out_refund_no` |
 | `jeepay` | `/api/refund/refundOrder` | `mchRefundNo` |
+| `unionpay` | `backTransReq.do`（txnType=04，需原交易 queryId） | `orderId` |
 | `sandbox` | 本地直接成功（用来跑通整条退款链路） | — |
 
-`unionpay`、`usdt`、`generic` 没有退款实现：通道退款失败时退款单保持 `pending` 并原样回报错误，
-不会假装已退；这三种只能走账务退款 + 人工转账。
+`usdt`、`generic` 没有退款实现：通道退款失败时退款单保持 `pending` 并原样回报错误，
+不会假装已退；这两种只能走账务退款 + 人工转账。银联退款要求 `channel_trade_no`
+（原交易的 queryId）在支付回调时就存下来，缺失时直接报错而不是发一个必然失败的请求。
 
 ## 10. 口径与未核实
 

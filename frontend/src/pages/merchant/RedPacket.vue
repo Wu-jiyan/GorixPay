@@ -292,7 +292,7 @@ onMounted(() => {
               </template>
               创建红包
             </n-button>
-            <n-text depth="3" style="font-size: 12px">
+            <n-text depth="3" class="gp-hint">
               每个红包最少 1 分，金额由平台随机拆分；创建后从可用余额扣减并生成对应的代付单。
             </n-text>
           </n-space>

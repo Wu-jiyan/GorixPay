@@ -182,7 +182,7 @@ const merchantColumns = computed<DataTableColumns<MerchantOption>>(() => [
     render: (row) =>
       h('div', null, [
         h('div', row.name || row.id),
-        h('div', { class: 'mono muted', style: 'font-size: 12px' }, row.id),
+        h('div', { class: 'mono muted gp-hint' }, row.id),
       ]),
   },
   {
@@ -571,7 +571,7 @@ onMounted(load);
               :precision="2"
               style="width: 100%; max-width: 180px"
             />
-            <n-text depth="3" style="font-size: 12px">
+            <n-text depth="3" class="gp-hint">
               按百分比填（100 = 1%），保存为万分比 {{ rateBpPreview }}bp
             </n-text>
           </n-space>
@@ -596,7 +596,7 @@ onMounted(load);
               :precision="2"
               style="width: 100%; max-width: 180px"
             />
-            <n-text depth="3" style="font-size: 12px">
+            <n-text depth="3" class="gp-hint">
               0 表示不单独售卖；保存走 PATCH /admin/groups/:id/price
             </n-text>
           </n-space>
@@ -630,7 +630,7 @@ onMounted(load);
           </n-input>
         </n-gi>
         <n-gi>
-          <n-text depth="3" style="font-size: 12px">共 {{ filteredMerchants.length }} 个商户</n-text>
+          <n-text depth="3" class="gp-hint">共 {{ filteredMerchants.length }} 个商户</n-text>
         </n-gi>
       </n-grid>
 
@@ -661,8 +661,8 @@ onMounted(load);
             <n-tag v-if="assignMerchantId" size="small" round :bordered="false" :type="currentGroupText === '未分组' ? 'default' : 'success'">
               {{ currentGroupText }}
             </n-tag>
-            <n-text v-else depth="3" style="font-size: 12px">先在上表点一个商户</n-text>
-            <span v-if="assignMerchantId" class="mono muted" style="font-size: 12px">{{ assignMerchantId }}</span>
+            <n-text v-else depth="3" class="gp-hint">先在上表点一个商户</n-text>
+            <span v-if="assignMerchantId" class="mono muted gp-hint">{{ assignMerchantId }}</span>
           </n-space>
         </n-form-item>
         <n-form-item label="目标用户组">
@@ -675,13 +675,13 @@ onMounted(load);
         </n-form-item>
       </n-form>
 
-      <n-text v-if="assignResult" depth="3" style="font-size: 12px">{{ assignResult }}</n-text>
+      <n-text v-if="assignResult" depth="3" class="gp-hint">{{ assignResult }}</n-text>
 
       <template #footer>
         <n-space justify="space-between" align="center" :wrap="true">
           <n-space :size="6" align="center" :wrap="true">
             <n-icon :component="PeopleOutline" />
-            <n-text depth="3" style="font-size: 12px">
+            <n-text depth="3" class="gp-hint">
               {{ assignMerchantId ? `已选商户 ${assignMerchantId}` : '未选择商户' }}
             </n-text>
           </n-space>

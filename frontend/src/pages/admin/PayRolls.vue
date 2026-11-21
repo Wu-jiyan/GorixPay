@@ -274,7 +274,7 @@ const columns = computed<DataTableColumns<RollRow>>(() => [
         h('div', row.name),
         h(
           NText,
-          { depth: 3, code: true, style: 'font-size: 12px' },
+          { depth: 3, code: true, class: 'gp-hint' },
           { default: () => row.channel_id },
         ),
       ]),
@@ -444,7 +444,7 @@ onMounted(() => {
             />
           </n-gi>
           <n-gi>
-            <n-text depth="3" style="font-size: 12px">
+            <n-text depth="3" class="gp-hint">
               当日已配置 {{ configuredCount }} 个渠道，权重合计 {{ totalWeight }}
             </n-text>
           </n-gi>

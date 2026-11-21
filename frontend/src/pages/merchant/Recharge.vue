@@ -403,7 +403,7 @@ onMounted(() => {
                         <n-icon :component="WalletOutline" />
                       </template>
                     </n-statistic>
-                    <n-text depth="3" style="font-size: 12px">已入账的保证金合计</n-text>
+                    <n-text depth="3" class="gp-hint">已入账的保证金合计</n-text>
                   </n-card>
                 </n-gi>
                 <n-gi>
@@ -413,7 +413,7 @@ onMounted(() => {
                         <n-icon :component="LockClosedOutline" />
                       </template>
                     </n-statistic>
-                    <n-text depth="3" style="font-size: 12px">
+                    <n-text depth="3" class="gp-hint">
                       {{ depositShortfall > 0 ? `还需缴纳 ${formatMoney(depositShortfall)}` : '已满足保证金要求' }}
                     </n-text>
                   </n-card>

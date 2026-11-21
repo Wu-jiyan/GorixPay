@@ -570,8 +570,8 @@ onMounted(() => {
                       :placeholder="fieldPlaceholder(field)"
                     />
                     <template #feedback>
-                      <n-space :size="6" align="center" style="font-size: 12px">
-                        <n-text class="mono" depth="3" style="font-size: 12px">{{ field.key }}</n-text>
+                      <n-space :size="6" align="center">
+                        <n-text class="mono gp-hint" depth="3">{{ field.key }}</n-text>
                         <n-tag v-if="field.required" size="small" type="warning" :bordered="false">必填</n-tag>
                         <n-tag v-if="field.secret" size="small" type="error" :bordered="false">密文</n-tag>
                       </n-space>

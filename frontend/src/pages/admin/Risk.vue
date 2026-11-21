@@ -314,7 +314,7 @@ onMounted(() => {
               </n-space>
             </n-gi>
             <n-gi>
-              <n-text depth="3" style="font-size: 12px">共 {{ entries.length }} 条</n-text>
+              <n-text depth="3" class="gp-hint">共 {{ entries.length }} 条</n-text>
             </n-gi>
           </n-grid>
 

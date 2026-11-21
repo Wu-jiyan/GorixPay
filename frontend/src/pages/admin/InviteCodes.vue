@@ -275,7 +275,7 @@ onMounted(load);
               :step="1"
               style="width: 100%; max-width: 160px"
             />
-            <n-text depth="3" style="font-size: 12px">0 表示不限次</n-text>
+            <n-text depth="3" class="gp-hint">0 表示不限次</n-text>
           </n-space>
         </n-form-item>
         <n-form-item label="归属商户">
@@ -304,7 +304,7 @@ onMounted(load);
       </n-alert>
       <n-space :size="8" align="center" style="margin-bottom: 10px">
         <n-icon :component="KeyOutline" />
-        <n-text depth="3" style="font-size: 12px">注册邀请码</n-text>
+        <n-text depth="3" class="gp-hint">注册邀请码</n-text>
       </n-space>
       <n-code :code="createdCode" word-wrap />
       <template #footer>

@@ -638,7 +638,7 @@ onMounted(load);
         <n-form-item label="立即向通道退款">
           <n-space vertical :size="4">
             <n-switch v-model:value="refundExecute" />
-            <n-text depth="3" style="font-size: 12px">
+            <n-text depth="3" class="gp-hint">
               开启：立刻调用捕获这笔款的通道退款接口并记账；关闭：只生成退款单，等待在「退款管理」里审核。
             </n-text>
           </n-space>

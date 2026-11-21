@@ -781,7 +781,7 @@ onMounted(load);
       <n-space align="center" :size="6" :wrap="true">
         <n-text depth="3">合计</n-text>
         <n-text class="amount">{{ formatMoney(batchTotalCents) }}</n-text>
-        <n-text depth="3" style="font-size: 12px">（{{ batchRows.length }} 行）</n-text>
+        <n-text depth="3" class="gp-hint">（{{ batchRows.length }} 行）</n-text>
       </n-space>
 
       <template #footer>
@@ -799,7 +799,7 @@ onMounted(load);
         </n-alert>
 
         <n-space align="center" justify="space-between" :wrap="true" style="margin-bottom: 12px">
-          <n-text depth="3" style="font-size: 12px">共 {{ redPaging.total.value }} 个批次</n-text>
+          <n-text depth="3" class="gp-hint">共 {{ redPaging.total.value }} 个批次</n-text>
           <n-button size="small" :loading="redLoading" @click="loadRedBatches">
             <template #icon>
               <n-icon :component="RefreshOutline" />

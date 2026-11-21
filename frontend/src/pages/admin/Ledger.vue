@@ -808,7 +808,7 @@ onMounted(() => {
               <n-empty description="暂无账本流水" size="small" />
             </template>
           </n-data-table>
-          <n-text depth="3" style="display: block; margin-top: 10px; font-size: 12px">
+          <n-text depth="3" class="gp-hint" style="display: block; margin-top: 10px">
             点击任意流水行，右侧查看该笔交易的分录与原始数据。
           </n-text>
         </n-tab-pane>
@@ -1172,7 +1172,7 @@ onMounted(() => {
             <n-grid :cols="1" :x-gap="10" :y-gap="8" style="width: 100%">
               <n-gi>
                 <n-space vertical :size="4" style="width: 100%">
-                  <n-text depth="3" style="font-size: 12px">分录 1 · 主账户（account_id）</n-text>
+                  <n-text depth="3" class="gp-hint">分录 1 · 主账户（account_id）</n-text>
                   <n-select
                     v-model:value="operationForm.account_id"
                     :options="accountOptions"
@@ -1187,7 +1187,7 @@ onMounted(() => {
               </n-gi>
               <n-gi>
                 <n-space vertical :size="4" style="width: 100%">
-                  <n-text depth="3" style="font-size: 12px">分录 2 · 对手账户（counterparty_account_id）</n-text>
+                  <n-text depth="3" class="gp-hint">分录 2 · 对手账户（counterparty_account_id）</n-text>
                   <n-select
                     v-model:value="operationForm.counterparty_account_id"
                     :options="accountOptions"

@@ -84,7 +84,7 @@ onUnmounted(() => mql?.removeEventListener('change', syncNarrow));
           <n-space vertical :size="10" style="width: 100%">
             <n-button block @click="go('/login')">商户登录</n-button>
             <n-button block type="primary" @click="go('/register')">免费注册</n-button>
-            <n-text depth="3" style="font-size: 12px">运营入口：/admin/login</n-text>
+            <n-text depth="3" class="gp-hint">运营入口：/admin/login</n-text>
           </n-space>
         </template>
       </n-drawer-content>

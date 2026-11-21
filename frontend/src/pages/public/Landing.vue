@@ -347,7 +347,7 @@ const go = (path: string) => {
           <n-card size="small" :bordered="true" class="step-card">
             <span class="step-index">{{ index + 1 }}</span>
             <n-text strong class="step-title">{{ step.title }}</n-text>
-            <n-text depth="3" style="font-size: 12.5px">{{ step.desc }}</n-text>
+            <n-text depth="3" class="gp-hint">{{ step.desc }}</n-text>
           </n-card>
         </n-gi>
       </n-grid>
@@ -364,7 +364,7 @@ const go = (path: string) => {
           <n-tab-pane v-for="tab in apiTabs" :key="tab.key" :name="tab.key" :tab="tab.label">
             <n-space vertical :size="10" style="width: 100%">
               <n-space justify="space-between" align="center" :size="12" style="width: 100%">
-                <n-text depth="3" style="font-size: 12.5px">{{ tab.note }}</n-text>
+                <n-text depth="3" class="gp-hint">{{ tab.note }}</n-text>
                 <n-button size="tiny" quaternary @click="copyCode">复制</n-button>
               </n-space>
               <n-code :code="tab.code" language="http" word-wrap class="api-code" />
@@ -386,7 +386,7 @@ const go = (path: string) => {
               <n-icon :component="feature.icon" size="22" />
               <div>
                 <n-text strong style="display: block">{{ feature.title }}</n-text>
-                <n-text depth="3" style="font-size: 12.5px">{{ feature.desc }}</n-text>
+                <n-text depth="3" class="gp-hint">{{ feature.desc }}</n-text>
               </div>
             </n-space>
           </n-card>

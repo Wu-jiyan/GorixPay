@@ -171,7 +171,7 @@ onMounted(() => {
             <template #extra>
               <n-space align="center" :size="6">
                 <n-icon :component="ShieldCheckmarkOutline" />
-                <n-text depth="3" style="font-size: 12px">最近没有触发任何风控规则</n-text>
+                <n-text depth="3" class="gp-hint">最近没有触发任何风控规则</n-text>
               </n-space>
             </template>
           </n-empty>

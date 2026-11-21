@@ -164,7 +164,7 @@ onMounted(() => {
           <n-descriptions-item label="费率">{{ rateText }}</n-descriptions-item>
           <n-descriptions-item label="结算模式">{{ settleModeText }}</n-descriptions-item>
         </n-descriptions>
-        <n-text v-if="!hasGroupInfo" depth="3" style="display: block; margin-top: 12px; font-size: 12px">
+        <n-text v-if="!hasGroupInfo" depth="3" class="gp-hint" style="display: block; margin-top: 12px">
           平台暂未返回当前用户组信息，以下只展示可购买的用户组。
         </n-text>
       </n-spin>

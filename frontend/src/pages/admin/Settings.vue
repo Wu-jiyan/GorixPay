@@ -256,7 +256,7 @@ onMounted(reload);
   <admin-page title="系统设置" subtitle="站点身份、业务规则、风控、通知与第三方登录">
     <template #actions>
       <n-space :wrap="true">
-        <n-text depth="3" v-if="loadedAt" style="font-size: 12px">读取于 {{ loadedAt }}</n-text>
+        <n-text depth="3" v-if="loadedAt" class="gp-hint">读取于 {{ loadedAt }}</n-text>
         <n-button :loading="loading" @click="reload">重新加载</n-button>
       </n-space>
     </template>
@@ -322,7 +322,7 @@ onMounted(reload);
                       <n-tag :type="secretConfigured[field.key] ? 'success' : 'warning'" size="small" :bordered="false">
                         {{ secretConfigured[field.key] ? '已配置' : '未配置' }}
                       </n-tag>
-                      <n-text v-if="secretMeta[field.key]" depth="3" style="font-size: 12px">
+                      <n-text v-if="secretMeta[field.key]" depth="3" class="gp-hint">
                         更新于 {{ formatDateTime(secretMeta[field.key]) }}
                       </n-text>
                     </n-space>
@@ -345,7 +345,7 @@ onMounted(reload);
 
           <template #footer>
             <n-space justify="space-between" align="center" :wrap="true">
-              <n-text depth="3" style="font-size: 12px">
+              <n-text depth="3" class="gp-hint">
                 {{ tabDirtyKeys(tab).length ? `${tabDirtyKeys(tab).length} 项待保存` : '没有改动' }}
               </n-text>
               <n-space :wrap="true">
@@ -365,7 +365,7 @@ onMounted(reload);
       </n-tab-pane>
     </n-tabs>
 
-    <n-text v-if="dirtyKeys.length" depth="3" style="font-size: 12px; display: block; margin-top: 12px">
+    <n-text v-if="dirtyKeys.length" depth="3" class="gp-hint" style="display: block; margin-top: 12px">
       注意：切换标签不会丢弃改动，{{ dirtyKeys.length }} 项改动仍在等待保存。
     </n-text>
   </admin-page>

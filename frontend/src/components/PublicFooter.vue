@@ -18,7 +18,7 @@ const year = new Date().getFullYear();
         <n-space align="center" :size="10">
           <brand-mark :size="26" :name="false" />
           <n-text depth="2" style="font-size: 13px">{{ siteName }}</n-text>
-          <n-text depth="3" style="font-size: 12.5px">{{ footerText }}</n-text>
+          <n-text depth="3" class="gp-hint">{{ footerText }}</n-text>
         </n-space>
         <n-space :size="16">
           <n-button text @click="router.push('/doc')">开发文档</n-button>

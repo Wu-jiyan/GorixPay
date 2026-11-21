@@ -159,7 +159,7 @@ onMounted(load);
         </n-gi>
       </n-grid>
 
-      <n-text depth="3" style="display: block; font-size: 12px; margin-bottom: 10px">
+      <n-text depth="3" class="gp-hint" style="display: block; margin-bottom: 10px">
         点行首箭头展开完整 payload；解析失败时展示原始文本。
       </n-text>
 

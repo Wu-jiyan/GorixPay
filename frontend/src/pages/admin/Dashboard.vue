@@ -152,7 +152,7 @@ onMounted(load);
                 <n-icon :component="ReturnDownBackOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">审核中的退款申请</n-text>
+            <n-text depth="3" class="gp-hint">审核中的退款申请</n-text>
           </n-card>
         </n-gi>
         <n-gi>
@@ -166,7 +166,7 @@ onMounted(load);
                 <n-icon :component="TimeOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">审核中的结算申请</n-text>
+            <n-text depth="3" class="gp-hint">审核中的结算申请</n-text>
           </n-card>
         </n-gi>
         <n-gi>
@@ -176,7 +176,7 @@ onMounted(load);
                 <n-icon :component="CashOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">今日已支付金额</n-text>
+            <n-text depth="3" class="gp-hint">今日已支付金额</n-text>
           </n-card>
         </n-gi>
         <n-gi>
@@ -186,7 +186,7 @@ onMounted(load);
                 <n-icon :component="CheckmarkCircleOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">全平台已支付订单</n-text>
+            <n-text depth="3" class="gp-hint">全平台已支付订单</n-text>
           </n-card>
         </n-gi>
       </n-grid>
@@ -199,7 +199,7 @@ onMounted(load);
                 <n-icon :component="PeopleOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">全平台已入驻商户</n-text>
+            <n-text depth="3" class="gp-hint">全平台已入驻商户</n-text>
           </n-card>
         </n-gi>
         <n-gi>
@@ -209,7 +209,7 @@ onMounted(load);
                 <n-icon :component="ReceiptOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">含全部状态</n-text>
+            <n-text depth="3" class="gp-hint">含全部状态</n-text>
           </n-card>
         </n-gi>
         <n-gi>
@@ -219,7 +219,7 @@ onMounted(load);
                 <n-icon :component="CheckmarkCircleOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">已入账订单</n-text>
+            <n-text depth="3" class="gp-hint">已入账订单</n-text>
           </n-card>
         </n-gi>
         <n-gi>
@@ -229,7 +229,7 @@ onMounted(load);
                 <n-icon :component="CashOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">累计支付金额</n-text>
+            <n-text depth="3" class="gp-hint">累计支付金额</n-text>
           </n-card>
         </n-gi>
       </n-grid>

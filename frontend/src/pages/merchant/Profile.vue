@@ -399,7 +399,7 @@ onMounted(reload);
             <n-button type="primary" :loading="pwdSaving" attr-type="submit" @click="handleChangePassword">
               修改密码
             </n-button>
-            <n-text depth="3" style="font-size: 12px">
+            <n-text depth="3" class="gp-hint">
               修改成功后当前登录状态仍然有效，下次登录请使用新密码；忘记当前密码可以用登录页的「忘记密码」重置。
             </n-text>
           </n-space>
@@ -425,7 +425,7 @@ onMounted(reload);
                 <n-radio-button value="mail">邮件</n-radio-button>
                 <n-radio-button value="sms">短信</n-radio-button>
               </n-radio-group>
-              <n-text v-if="!profile?.phone" depth="3" style="font-size: 12px">未绑定手机号，只发邮件</n-text>
+              <n-text v-if="!profile?.phone" depth="3" class="gp-hint">未绑定手机号，只发邮件</n-text>
             </n-space>
           </n-form-item>
           <n-form-item>
@@ -433,7 +433,7 @@ onMounted(reload);
           </n-form-item>
         </n-form>
       </n-spin>
-      <n-text depth="3" style="font-size: 12px">选择接收哪些业务通知，以及通知发送渠道。短信需要先绑定手机号。</n-text>
+      <n-text depth="3" class="gp-hint">选择接收哪些业务通知，以及通知发送渠道。短信需要先绑定手机号。</n-text>
     </n-card>
 
     <n-card size="small" :bordered="false" title="第三方账号绑定" style="margin-top: 16px">
@@ -445,7 +445,7 @@ onMounted(reload);
                 <n-space :size="8" align="center">
                   <n-icon :component="PersonCircleOutline" />
                   <n-text depth="3">{{ item.nickname || '已绑定' }}</n-text>
-                  <n-text depth="3" style="font-size: 12px">{{ formatDateTime(item.created_at) }}</n-text>
+                  <n-text depth="3" class="gp-hint">{{ formatDateTime(item.created_at) }}</n-text>
                 </n-space>
               </template>
             </n-thing>

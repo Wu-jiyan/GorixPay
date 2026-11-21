@@ -140,19 +140,19 @@ onMounted(reload);
           <n-form-item label="支付成功">
             <n-space vertical :size="4">
               <n-switch v-model:value="form.notify_payment" />
-              <n-text depth="3" style="font-size: 12px">订单支付成功时通知，含订单号与金额</n-text>
+              <n-text depth="3" class="gp-hint">订单支付成功时通知，含订单号与金额</n-text>
             </n-space>
           </n-form-item>
           <n-form-item label="结算结果">
             <n-space vertical :size="4">
               <n-switch v-model:value="form.notify_settlement" />
-              <n-text depth="3" style="font-size: 12px">结算审核通过或驳回时通知</n-text>
+              <n-text depth="3" class="gp-hint">结算审核通过或驳回时通知</n-text>
             </n-space>
           </n-form-item>
           <n-form-item label="投诉进展">
             <n-space vertical :size="4">
               <n-switch v-model:value="form.notify_complaint" />
-              <n-text depth="3" style="font-size: 12px">买家提交投诉、平台回复时通知</n-text>
+              <n-text depth="3" class="gp-hint">买家提交投诉、平台回复时通知</n-text>
             </n-space>
           </n-form-item>
         </n-form>
@@ -168,7 +168,7 @@ onMounted(reload);
                   {{ option.label }}
                 </n-radio>
               </n-radio-group>
-              <n-text depth="3" style="font-size: 12px">{{ channelSummary }}</n-text>
+              <n-text depth="3" class="gp-hint">{{ channelSummary }}</n-text>
             </n-space>
           </n-form-item>
         </n-form>

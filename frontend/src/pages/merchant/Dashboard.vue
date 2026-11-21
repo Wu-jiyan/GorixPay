@@ -162,7 +162,7 @@ onMounted(reload);
                 <n-icon :component="WalletOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">可随时结算、代付的余额</n-text>
+            <n-text depth="3" class="gp-hint">可随时结算、代付的余额</n-text>
           </n-card>
         </n-gi>
         <n-gi>
@@ -172,7 +172,7 @@ onMounted(reload);
                 <n-icon :component="LockClosedOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">结算中或退款冻结的金额</n-text>
+            <n-text depth="3" class="gp-hint">结算中或退款冻结的金额</n-text>
           </n-card>
         </n-gi>
         <n-gi>
@@ -182,7 +182,7 @@ onMounted(reload);
                 <n-icon :component="ReceiptOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">今日创建的支付订单数</n-text>
+            <n-text depth="3" class="gp-hint">今日创建的支付订单数</n-text>
           </n-card>
         </n-gi>
         <n-gi>
@@ -192,7 +192,7 @@ onMounted(reload);
                 <n-icon :component="CashOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">今日完成支付的订单金额</n-text>
+            <n-text depth="3" class="gp-hint">今日完成支付的订单金额</n-text>
           </n-card>
         </n-gi>
       </n-grid>
@@ -284,7 +284,7 @@ onMounted(reload);
                   <template #description>
                     <n-space :size="6" align="center">
                       <n-icon :component="NotificationsOutline" />
-                      <n-text depth="3" style="font-size: 12px">
+                      <n-text depth="3" class="gp-hint">
                         {{ formatDateTime(item.published_at ?? item.created_at) }}
                       </n-text>
                     </n-space>

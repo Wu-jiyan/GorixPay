@@ -246,7 +246,7 @@ onMounted(reloadAll);
             </n-text>
             <n-space align="center" :wrap="true" :size="12">
               <n-button type="primary" @click="passwordVisible = true">修改登录密码</n-button>
-              <n-text depth="3" style="font-size: 12.5px">也可以点右上角头像 → 修改登录密码</n-text>
+              <n-text depth="3" class="gp-hint">也可以点右上角头像 → 修改登录密码</n-text>
             </n-space>
           </n-space>
         </n-card>
@@ -267,7 +267,7 @@ onMounted(reloadAll);
                 </n-switch>
                 <n-text>管理员与商户登录都要填验证码</n-text>
               </n-space>
-              <n-text depth="3" style="font-size: 12.5px">
+              <n-text depth="3" class="gp-hint">
                 验证码能拦住批量撞库，代价是每次登录多填四位字符。后台被反复试密码时先开这个。
               </n-text>
               <n-alert v-if="!captchaFound" type="warning" :bordered="false">

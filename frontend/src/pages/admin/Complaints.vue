@@ -612,7 +612,7 @@ onMounted(load);
               >
                 {{ msg.content }}
                 <template #footer>
-                  <n-text depth="3" style="font-size: 12px">{{ msg.operator || '-' }}</n-text>
+                  <n-text depth="3" class="gp-hint">{{ msg.operator || '-' }}</n-text>
                 </template>
               </n-timeline-item>
             </n-timeline>
@@ -777,7 +777,7 @@ onMounted(load);
             :step="1"
             style="width: 100%; max-width: 160px"
           />
-          <n-text depth="3" style="margin-left: 10px; font-size: 12px">0 表示不自动关闭</n-text>
+          <n-text depth="3" class="gp-hint" style="margin-left: 10px">0 表示不自动关闭</n-text>
         </n-form-item>
         <n-form-item label="状态">
           <n-select

@@ -114,7 +114,7 @@ async function submit() {
           @keyup.enter="submit"
         />
       </n-form-item>
-      <n-text depth="3" style="font-size: 12.5px">改完以后，其它设备上的登录会立即失效，当前这台不受影响。</n-text>
+      <n-text depth="3" class="gp-hint">改完以后，其它设备上的登录会立即失效，当前这台不受影响。</n-text>
     </n-form>
 
     <template #footer>

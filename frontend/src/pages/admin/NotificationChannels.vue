@@ -366,7 +366,7 @@ onMounted(load);
                     >
                       {{ kindLabels[card.kind] ?? card.kind }}
                     </n-tag>
-                    <n-text depth="3" style="font-size: 12px">
+                    <n-text depth="3" class="gp-hint">
                       更新于 {{ formatDateTime(card.updatedAt) }}
                     </n-text>
                   </n-space>
@@ -489,7 +489,7 @@ onMounted(load);
         </n-form-item>
         <n-form-item label="配置项">
           <n-space vertical style="width: 100%">
-            <n-text depth="3" style="font-size: 12px">
+            <n-text depth="3" class="gp-hint">
               {{
                 createForm.kind === 'sms'
                   ? '短信常见键：access_key、secret、sign_name、template_code'

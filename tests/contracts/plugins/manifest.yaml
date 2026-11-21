@@ -119,7 +119,7 @@ plugins:
     amount_unit: fen (total_fee)
   - code: unionpay
     name: 银联全渠道
-    capabilities: [payment]
+    capabilities: [payment, refund]
     callback_verifier: true
     upstream:
       create_path: 5.1.0 frontTransReq (auto-submitting form rendered locally)

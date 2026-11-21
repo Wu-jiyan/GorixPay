@@ -167,7 +167,7 @@ onMounted(() => {
                 <n-icon :component="PeopleOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">通过你的邀请码注册的商户</n-text>
+            <n-text depth="3" class="gp-hint">通过你的邀请码注册的商户</n-text>
           </n-card>
         </n-gi>
         <n-gi>
@@ -177,7 +177,7 @@ onMounted(() => {
                 <n-icon :component="TrendingUpOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">按被邀请商户订单金额计算</n-text>
+            <n-text depth="3" class="gp-hint">按被邀请商户订单金额计算</n-text>
           </n-card>
         </n-gi>
         <n-gi>
@@ -187,7 +187,7 @@ onMounted(() => {
                 <n-icon :component="TrendingUpOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">今日支付的订单返佣</n-text>
+            <n-text depth="3" class="gp-hint">今日支付的订单返佣</n-text>
           </n-card>
         </n-gi>
         <n-gi>
@@ -197,7 +197,7 @@ onMounted(() => {
                 <n-icon :component="TrendingUpOutline" />
               </template>
             </n-statistic>
-            <n-text depth="3" style="font-size: 12px">历史返佣合计</n-text>
+            <n-text depth="3" class="gp-hint">历史返佣合计</n-text>
           </n-card>
         </n-gi>
       </n-grid>
