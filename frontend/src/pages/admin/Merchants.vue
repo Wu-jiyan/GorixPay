@@ -20,6 +20,7 @@ const rows = ref<Merchant[]>([]);
 const loading = ref(false);
 const keyword = ref('');
 const status = ref<string | null>(null);
+const settleMode = ref<string | null>(null);
 
 const showDetail = ref(false);
 const detail = ref<MerchantDetail | null>(null);
@@ -31,6 +32,12 @@ const statusOptions: SelectOption[] = [
   { label: '全部状态', value: '' },
   { label: '启用', value: 'active' },
   { label: '禁用', value: 'disabled' },
+];
+
+// settle_mode 挂在用户组上，后端按「带该结算模式的组」反查商户
+const settleModeOptions: SelectOption[] = [
+  { label: '普通结算', value: 'normal' },
+  { label: '商户直清', value: 'direct' },
 ];
 
 function statusParam(): string | undefined {
@@ -45,6 +52,7 @@ async function load() {
       page_size: pageSize.value,
       keyword: keyword.value.trim() || undefined,
       status: statusParam(),
+      settle_mode: settleMode.value ?? undefined,
     });
     rows.value = data.items;
     total.value = data.total;
@@ -63,8 +71,28 @@ function search() {
 function resetFilters() {
   keyword.value = '';
   status.value = null;
+  settleMode.value = null;
   resetPage();
   void load();
+}
+
+/** 用户组：未归组时 group_name 是空串，用次要色标出来 */
+function groupCell(row: Merchant) {
+  const name = (row.group_name ?? '').trim();
+  if (name === '') return h('span', { class: 'muted' }, '未归组');
+  return name;
+}
+
+/** 结算模式：direct 直清要抢眼，normal 普通保持中性，缺失值不算任何一种 */
+function settleModeTag(row: Merchant) {
+  const mode = (row.settle_mode ?? '').trim();
+  if (mode === 'direct') {
+    return h(NTag, { size: 'small', type: 'warning', bordered: false }, () => '直清');
+  }
+  if (mode === 'normal') {
+    return h(NTag, { size: 'small', bordered: false }, () => '普通');
+  }
+  return h('span', { class: 'muted' }, '未设置');
 }
 
 async function toggleStatus(row: Merchant) {
@@ -122,6 +150,19 @@ const columns = computed<DataTableColumns<Merchant>>(() => [
     key: 'phone',
     width: 140,
     render: (row) => row.phone || '-',
+  },
+  {
+    title: '用户组',
+    key: 'group_name',
+    width: 140,
+    ellipsis: { tooltip: true },
+    render: (row) => groupCell(row),
+  },
+  {
+    title: '结算模式',
+    key: 'settle_mode',
+    width: 110,
+    render: (row) => settleModeTag(row),
   },
   {
     title: '状态',
@@ -272,6 +313,17 @@ onMounted(load);
             </n-form-item>
           </n-gi>
           <n-gi>
+            <n-form-item label="结算模式">
+              <n-select
+                v-model:value="settleMode"
+                :options="settleModeOptions"
+                placeholder="全部模式"
+                clearable
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
             <n-form-item>
               <n-space align="center" :wrap="true">
                 <n-button type="primary" @click="search">
@@ -294,7 +346,7 @@ onMounted(load);
         :data="rows"
         :pagination="pagination"
         :row-key="(row: Merchant) => row.id"
-        :scroll-x="1200"
+        :scroll-x="1480"
         :size="isNarrow ? 'small' : 'medium'"
         @update:page="onPage"
         @update:page-size="onPageSize"
@@ -313,6 +365,25 @@ onMounted(load);
               <n-descriptions-item label="商户名称">{{ detail.display_name || '-' }}</n-descriptions-item>
               <n-descriptions-item label="邮箱">{{ detail.email || '-' }}</n-descriptions-item>
               <n-descriptions-item label="手机号">{{ detail.phone || '-' }}</n-descriptions-item>
+              <n-descriptions-item label="用户组">
+                <span :class="{ muted: !(detail.group_name ?? '').trim() }">
+                  {{ (detail.group_name ?? '').trim() || '未归组' }}
+                </span>
+              </n-descriptions-item>
+              <n-descriptions-item label="结算模式">
+                <n-tag
+                  v-if="detail.settle_mode === 'direct'"
+                  size="small"
+                  type="warning"
+                  :bordered="false"
+                >
+                  直清
+                </n-tag>
+                <n-tag v-else-if="detail.settle_mode === 'normal'" size="small" :bordered="false">
+                  普通
+                </n-tag>
+                <span v-else class="muted">未设置</span>
+              </n-descriptions-item>
               <n-descriptions-item label="状态">
                 <n-tag :type="activeStatus(detail.status).type" size="small" :bordered="false">
                   {{ activeStatus(detail.status).text }}

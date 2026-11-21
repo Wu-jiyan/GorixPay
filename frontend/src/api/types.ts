@@ -21,6 +21,10 @@ export interface Merchant {
   /** 结算方式，对应上游 pre_user.settle_id：0 未设置 / 1 支付宝 / 2 银行卡 */
   settle_type?: number;
   settle_account?: string | null;
+  /** 所属用户组名，未归组时为空串（列表接口 GET /admin/merchants 额外返回） */
+  group_name?: string | null;
+  /** 结算模式：normal（普通结算）/ direct（商户直清）（列表接口额外返回） */
+  settle_mode?: string | null;
   created_at: string;
   updated_at?: string;
 }

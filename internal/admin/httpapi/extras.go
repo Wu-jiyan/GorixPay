@@ -3,10 +3,12 @@ package httpapi
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	financemodel "gorixpay/internal/finance/model"
 	identitymodel "gorixpay/internal/identity/model"
+	"gorixpay/internal/merchantgroup"
 	paymentmodel "gorixpay/internal/payment/model"
 
 	"github.com/gin-gonic/gin"
@@ -97,6 +99,17 @@ func (handler *ExtrasHandler) merchantDetail(ctx *gin.Context) {
 		internalError(ctx)
 		return
 	}
+	// The group facts come with the detail so the drawer can show which group and
+	// which settlement mode the merchant is on without a second request.
+	groupName := ""
+	settleMode := ""
+	if merchant.GroupID != nil && strings.TrimSpace(*merchant.GroupID) != "" {
+		var group merchantgroup.Group
+		if err := handler.db.WithContext(request).First(&group, "id = ?", *merchant.GroupID).Error; err == nil {
+			groupName = group.Name
+			settleMode = string(group.SettleMode)
+		}
+	}
 	ctx.JSON(http.StatusOK, gin.H{
 		"id":           merchant.ID,
 		"legacy_uid":   merchant.LegacyUID,
@@ -104,6 +117,9 @@ func (handler *ExtrasHandler) merchantDetail(ctx *gin.Context) {
 		"email":        merchant.Email,
 		"phone":        merchant.Phone,
 		"status":       merchant.Status,
+		"group_id":     merchant.GroupID,
+		"group_name":   groupName,
+		"settle_mode":  settleMode,
 		"created_at":   merchant.CreatedAt,
 		"updated_at":   merchant.UpdatedAt,
 		"credentials":  summaries,

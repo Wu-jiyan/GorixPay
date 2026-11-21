@@ -181,6 +181,9 @@ type orderFilter struct {
 	Kind        paymentmodel.Kind
 	PaymentType string
 	Keyword     string
+	// Frozen filters on the order freeze flag: nil means both, true means only the
+	// orders whose credited money sits in the merchant's frozen bucket.
+	Frozen      *bool
 	CreatedFrom *time.Time
 	CreatedTo   *time.Time
 }
@@ -209,6 +212,19 @@ func orderFilterFromQuery(ctx *gin.Context, forcedMerchantID string) (orderFilte
 			return orderFilter{}, false
 		}
 		filter.Kind = kind
+	}
+	if raw := strings.TrimSpace(ctx.Query("frozen")); raw != "" {
+		switch raw {
+		case "true", "1":
+			frozen := true
+			filter.Frozen = &frozen
+		case "false", "0":
+			frozen := false
+			filter.Frozen = &frozen
+		default:
+			invalidRequest(ctx)
+			return orderFilter{}, false
+		}
 	}
 	from, to, ok := timeRangeFromQuery(ctx)
 	if !ok {

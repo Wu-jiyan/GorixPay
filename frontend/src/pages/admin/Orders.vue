@@ -21,6 +21,8 @@ const status = ref<string | null>(null);
 const paymentType = ref<string | null>(null);
 const keyword = ref('');
 const dateRange = ref<[number, number] | null>(null);
+/** 资金冻结筛选：null=全部、'true'=仅已冻结、'false'=仅未冻结 */
+const frozen = ref<'true' | 'false' | null>(null);
 
 const showDetail = ref(false);
 const detail = ref<Order | null>(null);
@@ -61,6 +63,12 @@ const paymentTypeOptions: SelectOption[] = [
   { label: '沙箱支付', value: 'sandbox' },
 ];
 
+// 选「全部」是 null，clean() 会把它从 query 里剔掉
+const frozenOptions: SelectOption[] = [
+  { label: '仅已冻结', value: 'true' },
+  { label: '仅未冻结', value: 'false' },
+];
+
 async function load() {
   loading.value = true;
   try {
@@ -71,6 +79,7 @@ async function load() {
       status: status.value ?? undefined,
       payment_type: paymentType.value ?? undefined,
       keyword: keyword.value.trim() || undefined,
+      frozen: frozen.value ?? undefined,
       created_from: range ? toISOString(range[0]) : undefined,
       created_to: range ? toISOString(range[1]) : undefined,
     });
@@ -98,6 +107,7 @@ function exportCsv() {
       status: status.value ?? undefined,
       payment_type: paymentType.value ?? undefined,
       keyword: keyword.value.trim() || undefined,
+      frozen: frozen.value ?? undefined,
       created_from: range ? toISOString(range[0]) : undefined,
       created_to: range ? toISOString(range[1]) : undefined,
     }),
@@ -110,6 +120,7 @@ function resetFilters() {
   paymentType.value = null;
   keyword.value = '';
   dateRange.value = null;
+  frozen.value = null;
   resetPage();
   void load();
 }
@@ -522,6 +533,17 @@ onMounted(load);
                 v-model:value="paymentType"
                 :options="paymentTypeOptions"
                 placeholder="全部支付方式"
+                clearable
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="资金冻结">
+              <n-select
+                v-model:value="frozen"
+                :options="frozenOptions"
+                placeholder="全部"
                 clearable
                 style="width: 100%"
               />

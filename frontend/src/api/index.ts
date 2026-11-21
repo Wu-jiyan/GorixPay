@@ -289,7 +289,7 @@ export const adminApi = {
     const { data } = await http.get<AdminSummary>('/admin/stats/summary');
     return data;
   },
-  async merchants(query: PageQuery = {}) {
+  async merchants(query: PageQuery & { settle_mode?: string } = {}) {
     const { data } = await http.get<Paginated<Merchant>>('/admin/merchants', { params: clean(query) });
     return data;
   },
@@ -302,7 +302,11 @@ export const adminApi = {
   async setMerchantStatus(id: string, status: string) {
     await http.patch(`/admin/merchants/${id}/status`, { status });
   },
-  async orders(query: PageQuery = {}) {
+  /**
+   * 订单列表：GET /admin/orders。
+   * frozen=true 只看已冻结、false 只看未冻结、不传=全部（非法值后端 400）。
+   */
+  async orders(query: PageQuery & { frozen?: 'true' | 'false' } = {}) {
     const { data } = await http.get<Paginated<Order>>('/admin/orders', { params: clean(query) });
     return data;
   },

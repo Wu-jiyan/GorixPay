@@ -539,6 +539,13 @@ func orderQuery(db *gorm.DB, filter orderFilter) *gorm.DB {
 	if filter.PaymentType != "" {
 		query = query.Where("payment_type = ?", filter.PaymentType)
 	}
+	if filter.Frozen != nil {
+		if *filter.Frozen {
+			query = query.Where("frozen_at IS NOT NULL")
+		} else {
+			query = query.Where("frozen_at IS NULL")
+		}
+	}
 	if keyword := strings.TrimSpace(filter.Keyword); keyword != "" {
 		like := "%" + keyword + "%"
 		query = query.Where("trade_no LIKE ? OR out_trade_no LIKE ? OR name LIKE ?", like, like, like)

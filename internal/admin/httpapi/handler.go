@@ -17,6 +17,7 @@ import (
 	ledgermodel "gorixpay/internal/ledger/model"
 	ledgerquery "gorixpay/internal/ledger/query"
 	ledgerservice "gorixpay/internal/ledger/service"
+	"gorixpay/internal/merchantgroup"
 	"gorixpay/internal/outbox"
 	paymentmodel "gorixpay/internal/payment/model"
 	"gorixpay/internal/platform/secret"
@@ -285,6 +286,24 @@ func (handler *Handler) merchants(ctx *gin.Context) {
 	if status := ctx.Query("status"); status != "" {
 		query = query.Where("status = ?", status)
 	}
+	// settle_mode lives on the merchant group, so filtering by it means filtering by
+	// the groups that carry that mode. Upstream shows 直清/普通 as a column plus a
+	// filter on the merchant list (ulist.php); without it an operator cannot answer
+	// "which merchants settle directly" at a glance.
+	if mode := strings.TrimSpace(ctx.Query("settle_mode")); mode != "" {
+		var groupIDs []string
+		if err := handler.db.WithContext(ctx.Request.Context()).
+			Model(&merchantgroup.Group{}).Where("settle_mode = ?", mode).
+			Pluck("id", &groupIDs).Error; err != nil {
+			internalError(ctx)
+			return
+		}
+		if len(groupIDs) == 0 {
+			ctx.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0, "page": page, "page_size": size})
+			return
+		}
+		query = query.Where("group_id IN ?", groupIDs)
+	}
 	var total int64
 	query.Count(&total)
 	var items []identitymodel.Merchant
@@ -292,7 +311,54 @@ func (handler *Handler) merchants(ctx *gin.Context) {
 		internalError(ctx)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"items": items, "total": total, "page": page, "page_size": size})
+	views := handler.merchantViews(ctx, items)
+	ctx.JSON(http.StatusOK, gin.H{"items": views, "total": total, "page": page, "page_size": size})
+}
+
+// merchantView is a merchant plus the group facts the list shows: the group name
+// and whether it settles directly. Embedding keeps every merchant field at the
+// same JSON level it was before.
+type merchantView struct {
+	identitymodel.Merchant
+	GroupName  string `json:"group_name"`
+	SettleMode string `json:"settle_mode"`
+}
+
+// merchantViews joins the groups of one page of merchants in a single query.
+func (handler *Handler) merchantViews(ctx *gin.Context, merchants []identitymodel.Merchant) []merchantView {
+	groupIDs := make([]string, 0, len(merchants))
+	seen := make(map[string]struct{}, len(merchants))
+	for _, merchant := range merchants {
+		if merchant.GroupID == nil || strings.TrimSpace(*merchant.GroupID) == "" {
+			continue
+		}
+		if _, exists := seen[*merchant.GroupID]; exists {
+			continue
+		}
+		seen[*merchant.GroupID] = struct{}{}
+		groupIDs = append(groupIDs, *merchant.GroupID)
+	}
+	groups := make(map[string]merchantgroup.Group, len(groupIDs))
+	if len(groupIDs) > 0 {
+		var rows []merchantgroup.Group
+		if err := handler.db.WithContext(ctx.Request.Context()).Where("id IN ?", groupIDs).Find(&rows).Error; err == nil {
+			for _, row := range rows {
+				groups[row.ID] = row
+			}
+		}
+	}
+	views := make([]merchantView, 0, len(merchants))
+	for _, merchant := range merchants {
+		view := merchantView{Merchant: merchant}
+		if merchant.GroupID != nil {
+			if group, ok := groups[*merchant.GroupID]; ok {
+				view.GroupName = group.Name
+				view.SettleMode = string(group.SettleMode)
+			}
+		}
+		views = append(views, view)
+	}
+	return views
 }
 
 func (handler *Handler) merchantStatus(ctx *gin.Context) {
@@ -350,6 +416,19 @@ func (handler *Handler) orders(ctx *gin.Context) {
 			return
 		}
 		query = query.Where("created_at <= ?", parsed.UTC())
+	}
+	// frozen=true lists the orders whose credited money sits in the merchant's
+	// frozen bucket, which is how an operator reviews a dispute batch.
+	if value := strings.TrimSpace(ctx.Query("frozen")); value != "" {
+		switch value {
+		case "true", "1":
+			query = query.Where("frozen_at IS NOT NULL")
+		case "false", "0":
+			query = query.Where("frozen_at IS NULL")
+		default:
+			invalidRequest(ctx)
+			return
+		}
 	}
 	var total int64
 	query.Count(&total)
