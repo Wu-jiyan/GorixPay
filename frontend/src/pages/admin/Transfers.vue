@@ -644,6 +644,7 @@ onMounted(load);
       </n-empty>
 
       <n-data-table
+        :bordered="false"
         v-else
         :remote="true"
         :loading="loading"
@@ -809,6 +810,7 @@ onMounted(load);
         </n-space>
 
         <n-data-table
+          :bordered="false"
           :remote="true"
           :loading="redLoading"
           :columns="redColumns"

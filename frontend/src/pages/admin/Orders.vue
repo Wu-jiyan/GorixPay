@@ -578,6 +578,7 @@ onMounted(load);
       </n-form>
 
       <n-data-table
+        :bordered="false"
         v-model:checked-row-keys="checkedKeys"
         :remote="true"
         :loading="loading"

@@ -164,6 +164,7 @@ onMounted(load);
       </n-text>
 
       <n-data-table
+        :bordered="false"
         :columns="columns"
         :data="rows"
         :loading="loading"

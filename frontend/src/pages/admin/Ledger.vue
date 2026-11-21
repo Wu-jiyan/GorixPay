@@ -767,6 +767,7 @@ onMounted(() => {
             </n-space>
           </template>
           <n-data-table
+            :bordered="false"
             :columns="accountColumns"
             :data="accounts"
             :loading="accountsLoading"
@@ -792,6 +793,7 @@ onMounted(() => {
             </n-space>
           </template>
           <n-data-table
+            :bordered="false"
             :columns="transactionColumns"
             :data="transactions"
             :loading="transactionsLoading"
@@ -821,6 +823,7 @@ onMounted(() => {
             </n-space>
           </template>
           <n-data-table
+            :bordered="false"
             :columns="operationColumns"
             :data="operations"
             :loading="operationsLoading"
@@ -882,6 +885,7 @@ onMounted(() => {
             </n-button>
           </n-space>
           <n-data-table
+            :bordered="false"
             :columns="entryColumns"
             :data="accountEntries"
             :loading="accountEntriesLoading"
@@ -929,6 +933,7 @@ onMounted(() => {
             分录（{{ transactionEntries.length }} 条）
           </n-divider>
           <n-data-table
+            :bordered="false"
             :columns="entryColumns"
             :data="transactionEntries"
             :row-key="(row: LedgerEntryRow) => String(row.id ?? row.sequence ?? '')"

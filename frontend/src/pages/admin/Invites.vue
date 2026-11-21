@@ -181,6 +181,7 @@ onMounted(load);
         </template>
       </n-empty>
       <n-data-table
+        :bordered="false"
         v-else
         :columns="columns"
         :data="rows"

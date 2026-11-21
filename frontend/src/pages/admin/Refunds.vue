@@ -321,6 +321,7 @@ onMounted(load);
       </n-form>
 
       <n-data-table
+        :bordered="false"
         :remote="true"
         :loading="loading"
         :columns="columns"

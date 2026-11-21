@@ -554,6 +554,7 @@ onMounted(load);
       </n-form>
 
       <n-data-table
+        :bordered="false"
         :remote="true"
         :loading="loading"
         :columns="columns"
@@ -741,6 +742,7 @@ onMounted(load);
         </n-space>
 
         <n-data-table
+          :bordered="false"
           :loading="rulesLoading"
           :columns="ruleColumns()"
           :data="autoRules"

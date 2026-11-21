@@ -235,6 +235,7 @@ onMounted(load);
 
     <n-card size="small" :bordered="false">
       <n-data-table
+        :bordered="false"
         :columns="columns"
         :data="rows"
         :loading="loading"

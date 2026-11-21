@@ -522,6 +522,7 @@ onMounted(() => {
       <n-tabs :value="tab" type="line" animated @update:value="handleTab">
         <n-tab-pane name="voice" tab="语音设备">
           <n-data-table
+            :bordered="false"
             :columns="deviceColumns"
             :data="devices"
             :loading="devicesLoading"
@@ -538,6 +539,7 @@ onMounted(() => {
 
         <n-tab-pane name="printer" tab="打印机">
           <n-data-table
+            :bordered="false"
             :columns="printerColumns"
             :data="printers"
             :loading="printersLoading"

@@ -318,6 +318,7 @@ onMounted(() => {
           </n-grid>
 
           <n-data-table
+            :bordered="false"
             :columns="buyerColumns"
             :data="buyers"
             :loading="buyersLoading"
@@ -383,6 +384,7 @@ onMounted(() => {
           </n-grid>
 
           <n-data-table
+            :bordered="false"
             :columns="merchantColumns"
             :data="merchants"
             :loading="merchantsLoading"

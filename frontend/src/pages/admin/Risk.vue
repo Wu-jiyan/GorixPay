@@ -324,6 +324,7 @@ onMounted(() => {
             </template>
           </n-empty>
           <n-data-table
+            :bordered="false"
             v-else
             :columns="entryColumns"
             :data="entries"
@@ -388,6 +389,7 @@ onMounted(() => {
             </template>
           </n-empty>
           <n-data-table
+            :bordered="false"
             v-else
             :columns="eventColumns"
             :data="events"

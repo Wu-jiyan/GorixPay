@@ -322,13 +322,12 @@ onMounted(load);
 
     <n-card :bordered="false">
       <n-data-table
+        :bordered="false"
         :columns="columns"
         :data="rows"
         :loading="loading"
         :pagination="pagination"
         :row-key="(row: SettleRule) => row.id"
-        :bordered="false"
-        :single-line="false"
         :scroll-x="1350"
         :size="isNarrow ? 'small' : 'medium'"
         remote

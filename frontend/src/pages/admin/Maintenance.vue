@@ -246,11 +246,10 @@ const columns = computed<DataTableColumns<CleanupResultRow>>(() => [
       </n-alert>
 
       <n-data-table
+        :bordered="false"
         :columns="columns"
         :data="results"
         :row-key="(row: CleanupResultRow) => row.target ?? ''"
-        :bordered="false"
-        :single-line="false"
         :scroll-x="620"
         :size="isNarrow ? 'small' : 'medium'"
       >

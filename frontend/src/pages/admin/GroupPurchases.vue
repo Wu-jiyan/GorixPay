@@ -291,7 +291,6 @@ onMounted(() => {
         :pagination="pagination"
         :row-key="(row: GroupPurchase) => row.id"
         :bordered="false"
-        :single-line="false"
         :scroll-x="1200"
         :size="isNarrow ? 'small' : 'medium'"
         remote

@@ -247,7 +247,6 @@ onMounted(load);
           :data="dailyStats"
           :loading="loading"
           :bordered="false"
-          :single-line="false"
           :size="isNarrow ? 'small' : 'medium'"
           :max-height="320"
           :pagination="false"

@@ -258,13 +258,12 @@ onMounted(load);
       </n-grid>
 
       <n-data-table
+        :bordered="false"
         :columns="columns"
         :data="rows"
         :loading="loading"
         :pagination="pagination"
         :row-key="(row: MerchantDomain) => row.id"
-        :bordered="false"
-        :single-line="false"
         :scroll-x="1200"
         :size="isNarrow ? 'small' : 'medium'"
         remote

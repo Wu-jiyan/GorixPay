@@ -427,13 +427,12 @@ onMounted(reloadAll);
       </n-grid>
 
       <n-data-table
+        :bordered="false"
         :columns="attemptColumns"
         :data="attempts"
         :loading="attemptsLoading"
         :pagination="pagination"
         :row-key="(row: LoginAttempt) => row.id ?? `${row.identifier}-${row.created_at}`"
-        :bordered="false"
-        :single-line="false"
         :scroll-x="900"
         :size="isNarrow ? 'small' : 'medium'"
         remote

@@ -105,7 +105,9 @@
 
 ## 7. 协议面与运营面的区别
 
-协议面覆盖完整。V1 的 `submit.php`、`mapi.php`、`api.php?act=*`（含内部 `refundapi` 与系统签名查询）、`submit2.php`、`/pay/{func}/{trade_no}/`（八种页面名）、`getshop.php` 全部有实现，字段、错误码、签名规则、HTTP 永远 200 这些怪癖都对齐，`tests/conformance/epay` 有 63 个测试函数、109 条用例守着，其中一部分真跑 PHP 7.4 与上游 `EpayCore` 客户端 SDK。V2 的 12 个方法齐全，双向签名、时间戳窗口、防重放都有。异步通知与浏览器回跳也补齐了。
+协议面覆盖完整。V1 的 `submit.php`、`mapi.php`、`api.php?act=*`（含内部 `refundapi` 与系统签名查询）、`submit2.php`、`/pay/{func}/{trade_no}/`（八种页面名）、`getshop.php` 全部有实现，字段、错误码、签名规则、HTTP 永远 200 这些怪癖都对齐，`tests/conformance/epay` 有 63 个测试函数、109 条用例守着，其中一部分真跑 PHP 7.4 与上游 `EpayCore` 客户端 SDK。V2 的 12 个方法齐全（`pay` 6 个、`merchant` 2 个、`transfer` 4 个，与上游 `includes/lib/api/{Pay,Merchant,Transfer}.php` 的方法名逐一对应），双向签名、时间戳窗口、防重放都有。异步通知与浏览器回跳也补齐了。
+
+`act=order` 与 `act=orders` 的 `type` 字段与上游一致地返回支付方式**显示名**（`pre_types.name`，取不到时退回 code），`buyer` 也如实回填订单上的买家标识，不再是空串。
 
 运营面覆盖到订单、退款、结算（规则、批量、自动打款）、分账（内部接收方）、代付与红包批次、投诉（含自动规则）、通道与插件、支付方式与按日轮询、公众号配置、商户与用户组费率与套餐购买、认证、域名、风控、账本、消息队列、公告、设置（验证码、TOTP、通知通道、皮肤）、审计、设备、第三方登录、数据清理与导出。代码层面没有剩下的缺口；点金计划与企微客服属于不适用，三个待渠道开通的口子单列在第 9 节。
 

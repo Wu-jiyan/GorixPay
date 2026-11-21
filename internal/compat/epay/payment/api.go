@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"gorixpay/internal/channelops"
 	epayv2 "gorixpay/internal/compat/epay/v2"
 	financeservice "gorixpay/internal/finance/service"
 	identitymodel "gorixpay/internal/identity/model"
@@ -192,17 +193,34 @@ func (handler *APIHandler) writeOrder(ctx *gin.Context, order paymentmodel.Order
 		"out_trade_no":  order.OutTradeNo,
 		"api_trade_no":  legacyString(order.ChannelTradeNo),
 		"bill_trade_no": "",
-		"type":          order.PaymentType,
+		"type":          handler.paymentTypeName(ctx, order.PaymentType),
 		"pid":           handler.orderPID(ctx, order),
 		"addtime":       order.CreatedAt.Format("2006-01-02 15:04:05"),
 		"endtime":       legacyOptionalTime(order.PaidAt),
 		"name":          order.Name,
 		"money":         formatCentsYuan(order.Amount),
 		"param":         legacyString(order.Attach),
-		"buyer":         "",
+		"buyer":         legacyString(order.Buyer),
 		"status":        legacyOrderStatus(order.Status),
 		"payurl":        handler.orderPayURL(ctx, order.ID),
 	})
+}
+
+// paymentTypeName answers the display name upstream returns here: Epay/api.php:80
+// selects pre_type.name, so a client sees 支付宝 rather than the alipay code. An
+// unknown code falls back to the code itself, which is what older clients parse.
+func (handler *APIHandler) paymentTypeName(ctx *gin.Context, code string) string {
+	if strings.TrimSpace(code) == "" {
+		return ""
+	}
+	var name string
+	err := handler.db.WithContext(ctx.Request.Context()).
+		Model(&channelops.PayType{}).Where("code = ?", code).
+		Limit(1).Pluck("name", &name).Error
+	if err != nil || strings.TrimSpace(name) == "" {
+		return code
+	}
+	return name
 }
 
 // orderPID reports the legacy uid of the merchant that owns the order, which
@@ -293,15 +311,17 @@ func (handler *APIHandler) listOrders(ctx *gin.Context) {
 		data = append(data, gin.H{
 			"trade_no":     order.TradeNo,
 			"out_trade_no": order.OutTradeNo,
-			"type":         order.PaymentType,
-			"pid":          merchantPID(merchant),
-			"addtime":      order.CreatedAt.Format("2006-01-02 15:04:05"),
-			"endtime":      legacyOptionalTime(order.PaidAt),
-			"name":         order.Name,
-			"money":        formatCentsYuan(order.Amount),
-			"param":        legacyString(order.Attach),
-			"buyer":        "",
-			"status":       legacyOrderStatus(order.Status),
+			// Upstream joins pre_type and publishes its display name here
+			// (Epay/api.php:110-118), the same value act=order uses.
+			"type":    handler.paymentTypeName(ctx, order.PaymentType),
+			"pid":     merchantPID(merchant),
+			"addtime": order.CreatedAt.Format("2006-01-02 15:04:05"),
+			"endtime": legacyOptionalTime(order.PaidAt),
+			"name":    order.Name,
+			"money":   formatCentsYuan(order.Amount),
+			"param":   legacyString(order.Attach),
+			"buyer":   legacyString(order.Buyer),
+			"status":  legacyOrderStatus(order.Status),
 		})
 	}
 	writeAPIReply(ctx, gin.H{"code": 1, "msg": "查询订单记录成功！", "count": total, "data": data})

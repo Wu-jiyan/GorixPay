@@ -380,13 +380,12 @@ onMounted(() => {
       <n-tabs :value="tab" type="line" animated @update:value="handleTab">
         <n-tab-pane name="receivers" tab="接收方">
           <n-data-table
+            :bordered="false"
             :columns="receiverColumns"
             :data="receivers"
             :loading="receiversLoading"
             :pagination="receiverPagination"
             :row-key="(row: ProfitReceiver) => row.id"
-            :bordered="false"
-            :single-line="false"
             :scroll-x="1210"
             :size="isNarrow ? 'small' : 'medium'"
             remote
@@ -401,13 +400,12 @@ onMounted(() => {
 
         <n-tab-pane name="orders" tab="分账流水">
           <n-data-table
+            :bordered="false"
             :columns="orderColumns"
             :data="orders"
             :loading="ordersLoading"
             :pagination="orderPagination"
             :row-key="(row: ProfitSharingOrder) => row.id"
-            :bordered="false"
-            :single-line="false"
             :scroll-x="1450"
             :size="isNarrow ? 'small' : 'medium'"
             remote

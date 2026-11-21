@@ -246,12 +246,11 @@ onMounted(load);
       </template>
 
       <n-data-table
+        :bordered="false"
         :columns="columns"
         :data="plugins"
         :loading="loading"
         :row-key="(row: PluginMeta) => row.code"
-        :bordered="false"
-        :single-line="false"
         :scroll-x="1080"
         :size="isNarrow ? 'small' : 'medium'"
       >
@@ -309,11 +308,10 @@ onMounted(load);
           </n-descriptions>
 
           <n-data-table
+            :bordered="false"
             :columns="configFieldColumns"
             :data="detail.config_fields ?? []"
             :row-key="(row: PluginConfigField) => row.key"
-            :bordered="false"
-            :single-line="false"
             :scroll-x="620"
             :size="isNarrow ? 'small' : 'medium'"
           >

@@ -482,6 +482,7 @@ onMounted(() => {
 
     <n-card size="small" :bordered="false">
       <n-data-table
+        :bordered="false"
         :loading="loading"
         :columns="columns"
         :data="rows"

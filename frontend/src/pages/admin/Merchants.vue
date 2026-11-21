@@ -340,6 +340,7 @@ onMounted(load);
       </n-form>
 
       <n-data-table
+              :bordered="false"
         :remote="true"
         :loading="loading"
         :columns="columns"
@@ -394,6 +395,7 @@ onMounted(load);
 
             <n-divider title-placement="left">密钥（Credentials）</n-divider>
             <n-data-table
+              :bordered="false"
               :columns="credentialColumns"
               :data="detail.credentials ?? []"
               :row-key="(row: Credential) => row.id"
@@ -403,6 +405,7 @@ onMounted(load);
 
             <n-divider title-placement="left">账本账户与余额</n-divider>
             <n-data-table
+              :bordered="false"
               :columns="accountColumns"
               :data="detailAccounts"
               :row-key="(row: LedgerAccountRow) => row.id"
