@@ -282,11 +282,38 @@ func (plugin *Plugin) createHosting(ctx context.Context, request pluginpayment.C
 	if jumpURL == "" {
 		return pluginpayment.Action{}, fmt.Errorf("huifu hosting response carries no jump_url")
 	}
-	action := pluginpayment.Action{Type: pluginpayment.ActionJump, URL: jumpURL}
+	// 汇付的托管收银台是 H5 页面（hostingh5）。上游 Epay 在 PC 浏览器上不会把买家
+	// 直接跳到这个地址——那样汇付会回「当前订单方式不支持」——而是把它当二维码渲染，
+	// 让买家拿手机扫。手机上才直接跳过去，所以这里按设备决定动作类型。
+	if hostingDevice(request) == "mobile" {
+		action := pluginpayment.Action{Type: pluginpayment.ActionJump, URL: jumpURL}
+		if err := action.Validate(); err != nil {
+			return pluginpayment.Action{}, err
+		}
+		return action, nil
+	}
+	action := pluginpayment.Action{Type: pluginpayment.ActionQRCode, URL: jumpURL}
 	if err := action.Validate(); err != nil {
 		return pluginpayment.Action{}, err
 	}
 	return action, nil
+}
+
+// hostingDevice reports how the buyer is paying. The request hints carry the
+// device the protocol layer detected (Epay's device=mobile/wechat/alipay/app/pc);
+// anything missing or unrecognised counts as a desktop browser, which is the
+// safe default because the hosted cashier is an H5 page.
+func hostingDevice(request pluginpayment.CreateRequest) string {
+	device := strings.ToLower(strings.TrimSpace(request.Extra["device"]))
+	if device == "" {
+		device = strings.ToLower(strings.TrimSpace(request.Method))
+	}
+	switch device {
+	case "mobile", "wap", "wechat", "weixin", "alipay", "qq", "app", "jump", "h5", "jsapi":
+		return "mobile"
+	default:
+		return "pc"
+	}
 }
 
 // VerifyCallback authenticates the notification: Huifu signs the exact resp_data

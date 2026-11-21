@@ -176,8 +176,10 @@ func TestCreateAlipayNativeOrderReturnsQRCode(t *testing.T) {
 
 // TestCreateHostingOrderReturnsJumpURL pins the 托管 route: a channel carrying
 // project_id (Epay fills it only for 托管 products) must call the hosting
-// pre-order endpoint and hand the buyer its jump_url, because those products do
-// not enable the direct T_NATIVE/A_NATIVE trade types.
+// pre-order endpoint. On a phone the buyer is sent straight to that page; on a
+// desktop the same URL is rendered as a QR code, which is what upstream Epay
+// does — opening the H5 page in a desktop browser makes 汇付 answer
+// 「当前订单方式不支持」.
 func TestCreateHostingOrderReturnsJumpURL(t *testing.T) {
 	merchant, platform := newKeyMaterial(t), newKeyMaterial(t)
 	gateway, recorded := newGateway(t, &merchant.private.PublicKey, platform.private, func(map[string]json.RawMessage) map[string]any {
@@ -189,20 +191,37 @@ func TestCreateHostingOrderReturnsJumpURL(t *testing.T) {
 	})
 	defer gateway.Close()
 
-	action, err := New(gateway.Client()).CreatePayment(context.Background(), pluginpayment.CreateRequest{
+	base := pluginpayment.CreateRequest{
 		TradeNo: "202611152200000001", Amount: 1, Description: "托管测试", PaymentType: "wxpay",
 		NotifyURL: "https://pay.example/cb", ReturnURL: "https://pay.example/return", ClientIP: "203.0.113.7",
 		Configuration: createConfig(merchant, platform, gateway.URL, map[string]string{
 			"project_id":    "PROJECTID2026051265060546",
 			"project_title": "测试站点",
 		}),
-	})
+	}
+
+	// A phone opens the hosted page directly.
+	mobile := base
+	mobile.Extra = map[string]string{"device": "mobile"}
+	action, err := New(gateway.Client()).CreatePayment(context.Background(), mobile)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if action.Type != pluginpayment.ActionJump || action.URL != "https://paas.huifu.com/hosting/pay?token=abc" {
-		t.Fatalf("action=%+v", action)
+		t.Fatalf("mobile action=%+v", action)
 	}
+
+	// A desktop gets the same URL as a QR code instead of a redirect.
+	desktop := base
+	desktop.Extra = map[string]string{"device": "pc"}
+	action, err = New(gateway.Client()).CreatePayment(context.Background(), desktop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if action.Type != pluginpayment.ActionQRCode || action.URL != "https://paas.huifu.com/hosting/pay?token=abc" {
+		t.Fatalf("desktop action=%+v", action)
+	}
+
 	for key, want := range map[string]string{
 		"pre_order_type": "1",
 		"trans_type":     "T_JSAPI",

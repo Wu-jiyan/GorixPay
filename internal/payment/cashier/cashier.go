@@ -124,7 +124,7 @@ func (handler *Handler) start(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"code": "internal_error", "message": "internal server error"})
 		return
 	}
-	result, startErr := handler.deps.Starter.Start(ctx.Request.Context(), order.TradeNo)
+	result, startErr := handler.startPayment(ctx, order.TradeNo)
 	if startErr != nil {
 		handler.startError(ctx, startErr)
 		return
@@ -135,6 +135,42 @@ func (handler *Handler) start(ctx *gin.Context) {
 		Channel: channelView{ID: result.Channel.ID, Name: result.Channel.Name, PluginCode: result.Channel.PluginCode},
 		Status:  string(paymentmodel.StatusProcessing),
 	})
+}
+
+// starterWithOptions is implemented by the orchestrator service; the cashier
+// uses it to hand the plugin a device hint. A starter that only has Start still
+// works, it just cannot tell a phone from a desktop.
+type starterWithOptions interface {
+	StartWithOptions(context.Context, string, paymentorchestrator.StartOptions) (paymentorchestrator.Result, error)
+}
+
+// startPayment starts (or resumes) the order, passing the detected device so a
+// hosted channel can decide between "jump straight in" and "show a QR code".
+func (handler *Handler) startPayment(ctx *gin.Context, tradeNo string) (paymentorchestrator.Result, error) {
+	if starter, ok := handler.deps.Starter.(starterWithOptions); ok {
+		return starter.StartWithOptions(ctx.Request.Context(), tradeNo, paymentorchestrator.StartOptions{
+			Device: deviceFromRequest(ctx.Request),
+		})
+	}
+	return handler.deps.Starter.Start(ctx.Request.Context(), tradeNo)
+}
+
+// deviceFromRequest maps the User-Agent onto the device hints the protocol layer
+// already uses (pc / mobile / wechat): an in-app browser can open a hosted page
+// directly, a desktop browser needs a QR code to scan.
+func deviceFromRequest(request *http.Request) string {
+	agent := strings.ToLower(request.UserAgent())
+	switch {
+	case strings.Contains(agent, "micromessenger"), strings.Contains(agent, "alipayclient"),
+		strings.Contains(agent, "weibo"), strings.Contains(agent, "dingtalk"):
+		return "wechat"
+	case strings.Contains(agent, "mobile"), strings.Contains(agent, "android"),
+		strings.Contains(agent, "iphone"), strings.Contains(agent, "ipad"),
+		strings.Contains(agent, "ipod"), strings.Contains(agent, "harmony"):
+		return "mobile"
+	default:
+		return "pc"
+	}
 }
 
 func (handler *Handler) status(ctx *gin.Context) {
