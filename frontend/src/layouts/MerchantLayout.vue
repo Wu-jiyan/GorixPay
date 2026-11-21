@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref } from 'vue';
+import { computed, h, onMounted, onUnmounted, ref } from 'vue';
 import type { Component } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
@@ -7,14 +7,14 @@ import {
   NButton,
   NBreadcrumb,
   NBreadcrumbItem,
+  NDrawer,
+  NDrawerContent,
   NDropdown,
   NIcon,
   NLayout,
   NLayoutContent,
   NLayoutHeader,
   NLayoutSider,
-  NMenu,
-  NSpace,
   useMessage,
 } from 'naive-ui';
 import type { DropdownOption, MenuOption } from 'naive-ui';
@@ -41,7 +41,7 @@ import {
   WalletOutline,
 } from '@vicons/ionicons5';
 import { useAuthStore } from '@/stores/auth';
-import BrandMark from '@/components/BrandMark.vue';
+import ShellMenu from '@/components/ShellMenu.vue';
 import ChangePasswordModal from '@/components/ChangePasswordModal.vue';
 
 const router = useRouter();
@@ -130,6 +130,33 @@ const userOptions: DropdownOption[] = [
   { label: '退出登录', key: 'logout' },
 ];
 
+// 窄屏（≤992px）把侧栏收进抽屉：手机上固定侧栏会把内容挤到没法看。
+const narrow = ref(false);
+const drawerOpen = ref(false);
+let mql: MediaQueryList | null = null;
+const contentStyle = computed(() =>
+  narrow.value ? 'padding: 14px 12px 32px; height: 100%;' : 'padding: 20px 24px 40px; height: 100%;',
+);
+function syncNarrow(event: MediaQueryListEvent) {
+  narrow.value = event.matches;
+  if (!event.matches) drawerOpen.value = false;
+}
+function toggleSider() {
+  if (narrow.value) drawerOpen.value = !drawerOpen.value;
+  else collapsed.value = !collapsed.value;
+}
+function navigate(key: string) {
+  drawerOpen.value = false;
+  router.push(key);
+}
+
+onMounted(() => {
+  mql = window.matchMedia('(max-width: 992px)');
+  narrow.value = mql.matches;
+  mql.addEventListener('change', syncNarrow);
+});
+onUnmounted(() => mql?.removeEventListener('change', syncNarrow));
+
 async function handleUserSelect(key: string) {
   if (key === 'password') {
     passwordVisible.value = true;
@@ -152,6 +179,7 @@ async function handleUserSelect(key: string) {
 <template>
   <n-layout has-sider class="merchant-shell">
     <n-layout-sider
+      v-if="!narrow"
       bordered
       collapse-mode="width"
       :collapsed-width="64"
@@ -163,30 +191,30 @@ async function handleUserSelect(key: string) {
       @collapse="collapsed = true"
       @expand="collapsed = false"
     >
-      <div class="brand" :class="{ 'brand-collapsed': collapsed }">
-        <brand-mark :size="32" :name="!collapsed" subtitle="商户中心" />
-      </div>
-      <n-menu
-        :value="activeKey"
+      <shell-menu
         :options="menuOptions"
+        :value="activeKey"
         :collapsed="collapsed"
-        :collapsed-width="64"
-        :collapsed-icon-size="20"
-        :indent="18"
-        :root-indent="18"
-        @update:value="(key: string) => router.push(key)"
+        subtitle="商户中心"
+        @update:value="navigate"
       />
     </n-layout-sider>
+
+    <n-drawer v-if="narrow" v-model:show="drawerOpen" placement="left" :width="narrow ? '84vw' : 260">
+      <n-drawer-content :native-scrollbar="false" body-content-style="padding: 0">
+        <shell-menu :options="menuOptions" :value="activeKey" subtitle="商户中心" @update:value="navigate" />
+      </n-drawer-content>
+    </n-drawer>
 
     <n-layout style="height: 100vh">
       <n-layout-header bordered class="topbar">
         <n-space align="center" :size="12">
-          <n-button quaternary circle size="small" @click="collapsed = !collapsed">
+          <n-button quaternary circle size="small" @click="toggleSider">
             <template #icon>
               <n-icon :component="MenuOutline" />
             </template>
           </n-button>
-          <n-breadcrumb>
+          <n-breadcrumb v-if="!narrow">
             <n-breadcrumb-item>商户中心</n-breadcrumb-item>
             <n-breadcrumb-item v-if="current?.group">{{ current.group }}</n-breadcrumb-item>
             <n-breadcrumb-item>{{ headerTitle }}</n-breadcrumb-item>
@@ -206,7 +234,7 @@ async function handleUserSelect(key: string) {
         class="content"
         :native-scrollbar="false"
         style="height: calc(100vh - 57px)"
-        content-style="padding: 20px 24px 40px; height: 100%;"
+        :content-style="contentStyle"
       >
         <router-view />
       </n-layout-content>

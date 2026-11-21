@@ -40,6 +40,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '开发文档' },
   },
   {
+    // 对应上游易支付首页的「支付测试」：不需要登录，直接用演示商户下一笔真实订单。
+    path: '/test',
+    component: () => import('@/pages/public/TestPayment.vue'),
+    meta: { title: '支付测试' },
+  },
+  {
     path: '/cashier.php',
     component: () => import('@/pages/cashier/Cashier.vue'),
     meta: { title: '收银台' },

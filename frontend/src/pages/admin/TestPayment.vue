@@ -15,9 +15,10 @@ import { testPaymentApi } from '@/api/testPayment';
 import type { TestOrderResult } from '@/api/testPayment';
 import { errorMessage } from '@/api/client';
 import { copyText, paymentTypeText } from '@/utils/format';
-import { asRow, itemsOf, prettyJson } from './shared';
+import { asRow, itemsOf, prettyJson, useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const channels = ref<Channel[]>([]);
 const loading = ref(false);
@@ -152,7 +153,7 @@ onMounted(loadChannels);
     <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16">
       <n-gi>
         <n-card size="small" :bordered="false" title="下单参数">
-          <n-form label-placement="left" label-width="180">
+          <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 180">
             <n-form-item label="支付渠道">
               <n-select
                 :value="channelId"
@@ -172,7 +173,7 @@ onMounted(loadChannels);
                 :min="0.01"
                 :step="0.01"
                 :precision="2"
-                style="width: 200px"
+                style="width: 100%; max-width: 200px"
               >
                 <template #suffix>元</template>
               </n-input-number>
@@ -190,7 +191,7 @@ onMounted(loadChannels);
           </n-alert>
 
           <template #footer>
-            <n-space justify="space-between" align="center">
+            <n-space justify="space-between" align="center" :wrap="true">
               <n-text depth="3">
                 {{ channels.length > 0 ? `可选渠道 ${channels.length} 个` : '暂无可用渠道' }}
               </n-text>
@@ -218,7 +219,7 @@ onMounted(loadChannels);
       <n-gi>
         <n-card size="small" :bordered="false" title="订单结果">
           <n-empty v-if="!result" description="还没有创建测试订单" size="small" />
-          <n-form v-else label-placement="left" label-width="180">
+          <n-form v-else :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 180">
             <n-form-item label="订单号">
               <n-input :value="tradeNo" readonly placeholder="-">
                 <template #suffix>
@@ -229,7 +230,7 @@ onMounted(loadChannels);
               </n-input>
             </n-form-item>
             <n-form-item label="支付方式">
-              <n-space align="center" :size="8">
+              <n-space align="center" :wrap="true" :size="8">
                 <n-tag size="small" round :bordered="false" type="info">
                   {{ paymentTypeText(payType) }}
                 </n-tag>
@@ -237,7 +238,7 @@ onMounted(loadChannels);
               </n-space>
             </n-form-item>
             <n-form-item label="收银台链接">
-              <n-space align="center" :size="8" style="width: 100%">
+              <n-space align="center" :wrap="true" :size="8" style="width: 100%">
                 <n-input :value="cashierUrl" readonly placeholder="-">
                   <template #suffix>
                     <n-button text type="primary" @click="copy(cashierUrl)">

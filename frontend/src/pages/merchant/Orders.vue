@@ -9,8 +9,10 @@ import { errorMessage } from '@/api/client';
 import { downloadMerchantCsv, type MerchantExportQuery } from '@/api/merchantExports';
 import AdminPage from '@/components/AdminPage.vue';
 import { centsToYuan, formatDateTime, formatMoney, orderStatus, paymentTypeText, yuanToCents } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const loading = ref(false);
 const exporting = ref(false);
@@ -291,7 +293,7 @@ onMounted(() => {
 <template>
   <admin-page title="我的订单" subtitle="按状态、支付方式、时间范围筛选订单，已支付订单可直接申请退款">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -308,59 +310,71 @@ onMounted(() => {
     </template>
 
     <n-card size="small" :bordered="false">
-      <n-form inline :show-feedback="false">
-        <n-form-item label="关键字">
-          <n-input
-            v-model:value="filters.keyword"
-            placeholder="订单号 / 商品名称"
-            clearable
-            style="width: 220px"
-            @keyup.enter="handleSearch"
-          >
-            <template #prefix>
-              <n-icon :component="SearchOutline" />
-            </template>
-          </n-input>
-        </n-form-item>
-        <n-form-item label="状态">
-          <n-select
-            v-model:value="filters.status"
-            :options="statusOptions"
-            placeholder="全部状态"
-            clearable
-            style="width: 150px"
-          />
-        </n-form-item>
-        <n-form-item label="支付方式">
-          <n-select
-            v-model:value="filters.payment_type"
-            :options="paymentTypeOptions"
-            placeholder="全部方式"
-            clearable
-            style="width: 150px"
-          />
-        </n-form-item>
-        <n-form-item label="创建时间">
-          <n-date-picker
-            v-model:value="filters.range"
-            type="daterange"
-            clearable
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            style="width: 260px"
-          />
-        </n-form-item>
-        <n-form-item>
-          <n-space>
-            <n-button type="primary" :loading="loading" @click="handleSearch">
-              <template #icon>
-                <n-icon :component="SearchOutline" />
-              </template>
-              查询
-            </n-button>
-            <n-button @click="handleReset">重置</n-button>
-          </n-space>
-        </n-form-item>
+      <n-form :show-feedback="false" :label-placement="isNarrow ? 'top' : 'left'">
+        <n-grid cols="1 s:2 m:3 l:5" responsive="screen" :x-gap="12" :y-gap="12" style="align-items: end">
+          <n-gi>
+            <n-form-item label="关键字">
+              <n-input
+                v-model:value="filters.keyword"
+                placeholder="订单号 / 商品名称"
+                clearable
+                style="width: 100%"
+                @keyup.enter="handleSearch"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchOutline" />
+                </template>
+              </n-input>
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="状态">
+              <n-select
+                v-model:value="filters.status"
+                :options="statusOptions"
+                placeholder="全部状态"
+                clearable
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="支付方式">
+              <n-select
+                v-model:value="filters.payment_type"
+                :options="paymentTypeOptions"
+                placeholder="全部方式"
+                clearable
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="创建时间">
+              <n-date-picker
+                v-model:value="filters.range"
+                type="daterange"
+                clearable
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item>
+              <n-space :wrap="true">
+                <n-button type="primary" :loading="loading" @click="handleSearch">
+                  <template #icon>
+                    <n-icon :component="SearchOutline" />
+                  </template>
+                  查询
+                </n-button>
+                <n-button @click="handleReset">重置</n-button>
+              </n-space>
+            </n-form-item>
+          </n-gi>
+        </n-grid>
       </n-form>
 
       <n-data-table
@@ -372,7 +386,7 @@ onMounted(() => {
         :bordered="false"
         :row-key="rowKey"
         :scroll-x="1220"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       >
@@ -382,15 +396,15 @@ onMounted(() => {
       </n-data-table>
     </n-card>
 
-    <n-drawer v-model:show="detailVisible" :width="560" placement="right">
+    <n-drawer v-model:show="detailVisible" :width="isNarrow ? '92vw' : 560" placement="right">
       <n-drawer-content title="订单详情" closable>
         <n-descriptions
           v-if="detailOrder"
-          :column="2"
+          :column="isNarrow ? 1 : 2"
           bordered
           size="small"
-          label-placement="left"
-          :label-width="110"
+          :label-placement="isNarrow ? 'top' : 'left'"
+          :label-width="isNarrow ? undefined : 110"
         >
           <n-descriptions-item label="平台订单号">
             <n-text class="mono" style="word-break: break-all">{{ detailOrder.trade_no }}</n-text>
@@ -443,13 +457,13 @@ onMounted(() => {
       </n-drawer-content>
     </n-drawer>
 
-    <n-modal v-model:show="refundVisible" preset="card" title="申请退款" style="width: 620px">
+    <n-modal v-model:show="refundVisible" preset="card" title="申请退款" style="width: 620px; max-width: 94vw">
       <n-space vertical :size="16">
         <n-alert type="info" :bordered="false">
           退款将进入平台审核流程，审核通过后按原路退回。剩余可退金额
           <n-text strong class="amount">{{ formatMoney(refundRemaining) }}</n-text>。
         </n-alert>
-        <n-form label-placement="left" label-width="160">
+        <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
           <n-form-item label="退款金额（元）">
             <n-input-number
               v-model:value="refundForm.amountYuan"
@@ -457,7 +471,7 @@ onMounted(() => {
               :min="0.01"
               :max="refundRemaining / 100"
               placeholder="0.00"
-              style="width: 220px"
+              style="width: 100%"
             >
               <template #prefix>¥</template>
             </n-input-number>

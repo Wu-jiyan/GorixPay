@@ -9,7 +9,7 @@ import { inviteCodesApi } from '@/api/inviteCodes';
 import type { InviteCode } from '@/api/inviteCodes';
 import { errorMessage } from '@/api/client';
 import { activeStatus, copyText, formatDateTime } from '@/utils/format';
-import { asRow, itemsOf } from './shared';
+import { asRow, itemsOf, useNarrow } from './shared';
 
 interface CodeForm {
   max_uses: number | null;
@@ -18,6 +18,7 @@ interface CodeForm {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<InviteCode[]>([]);
 const loading = ref(false);
@@ -214,7 +215,7 @@ onMounted(load);
 <template>
   <admin-page title="邀请码" subtitle="生成注册邀请码，可限定归属商户、可用次数与有效期">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -242,7 +243,7 @@ onMounted(load);
         :pagination="{ pageSize: 10 }"
         :row-key="(row: InviteCode) => row.id"
         :scroll-x="1010"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
       >
         <template #empty>
           <n-empty description="还没有邀请码，点击右上角生成" size="small" />
@@ -259,10 +260,21 @@ onMounted(load);
       <n-alert v-if="isEditing" type="info" :bordered="false" style="margin-bottom: 14px">
         邀请码本身不可修改，这里只能调整归属商户、可用次数与过期时间。
       </n-alert>
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="110">
+      <n-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 110"
+      >
         <n-form-item label="可用次数" path="max_uses">
-          <n-space align="center" :size="10">
-            <n-input-number v-model:value="form.max_uses" :min="0" :step="1" style="width: 160px" />
+          <n-space align="center" :size="10" :wrap="true">
+            <n-input-number
+              v-model:value="form.max_uses"
+              :min="0"
+              :step="1"
+              style="width: 100%; max-width: 160px"
+            />
             <n-text depth="3" style="font-size: 12px">0 表示不限次</n-text>
           </n-space>
         </n-form-item>
@@ -270,11 +282,16 @@ onMounted(load);
           <n-input v-model:value="form.owner_merchant_id" placeholder="留空表示平台通用，或填商户 ID" />
         </n-form-item>
         <n-form-item label="过期时间">
-          <n-date-picker v-model:value="form.expires_at" type="datetime" clearable style="width: 240px" />
+          <n-date-picker
+            v-model:value="form.expires_at"
+            type="datetime"
+            clearable
+            style="width: 100%; max-width: 240px"
+          />
         </n-form-item>
       </n-form>
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="showForm = false">取消</n-button>
           <n-button type="primary" :loading="submitting" @click="submit">保存</n-button>
         </n-space>
@@ -291,7 +308,7 @@ onMounted(load);
       </n-space>
       <n-code :code="createdCode" word-wrap />
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="showCode = false">关闭</n-button>
           <n-button type="primary" @click="copy(createdCode)">
             <template #icon>

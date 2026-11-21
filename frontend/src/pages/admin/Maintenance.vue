@@ -8,8 +8,10 @@ import AdminPage from '@/components/AdminPage.vue';
 import { maintenanceApi } from '@/api/maintenance';
 import type { CleanupResultRow } from '@/api/maintenance';
 import { errorMessage } from '@/api/client';
+import { useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 /** 操作员要在二次确认弹窗里手输的文字 */
 const CONFIRM_WORD = 'DELETE';
@@ -158,7 +160,7 @@ const columns = computed<DataTableColumns<CleanupResultRow>>(() => [
 <template>
   <admin-page title="数据清理" subtitle="按截止日期清理历史数据，先预演确认命中行数，再执行删除">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="running" @click="dryRun">
           <template #icon><n-icon><PlayOutline /></n-icon></template>
           预演
@@ -176,24 +178,24 @@ const columns = computed<DataTableColumns<CleanupResultRow>>(() => [
     </n-alert>
 
     <n-card size="small" :bordered="false" title="清理条件" style="margin-bottom: 16px">
-      <n-form label-placement="left" label-width="180">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 180">
         <n-form-item label="清理目标">
           <n-select
             v-model:value="targets"
             multiple
             :options="targetOptions"
             placeholder="选择要清理的表"
-            style="max-width: 460px"
+            style="width: 100%; max-width: 460px"
           />
         </n-form-item>
         <n-form-item label="保留天数">
-          <n-space align="center" :size="12">
+          <n-space align="center" :size="12" :wrap="true">
             <n-input-number
               v-model:value="retentionDays"
               :min="1"
               :max="3650"
               :precision="0"
-              style="width: 160px"
+              style="width: 100%; max-width: 160px"
             />
             <n-text depth="3">
               保留最近 {{ retentionDays ?? 0 }} 天，清理 {{ beforeText }} 之前的数据
@@ -201,7 +203,7 @@ const columns = computed<DataTableColumns<CleanupResultRow>>(() => [
           </n-space>
         </n-form-item>
         <n-form-item label="预演状态">
-          <n-space align="center" :size="10">
+          <n-space align="center" :size="10" :wrap="true">
             <n-tag v-if="dryRunDone" size="small" type="success" round :bordered="false">
               已预演：匹配 {{ matchedRows }} 行
             </n-tag>
@@ -249,7 +251,8 @@ const columns = computed<DataTableColumns<CleanupResultRow>>(() => [
         :row-key="(row: CleanupResultRow) => row.target ?? ''"
         :bordered="false"
         :single-line="false"
-        size="small"
+        :scroll-x="620"
+        :size="isNarrow ? 'small' : 'medium'"
       >
         <template #empty>
           <n-empty description="还没有执行记录，点右上角「预演」开始" size="small" />
@@ -268,7 +271,7 @@ const columns = computed<DataTableColumns<CleanupResultRow>>(() => [
         {{ matchedRows }} 行。删除后不可恢复。
       </n-alert>
 
-      <n-form label-placement="left" label-width="180">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 180">
         <n-form-item label="输入确认文字">
           <n-input
             v-model:value="confirmText"
@@ -280,7 +283,7 @@ const columns = computed<DataTableColumns<CleanupResultRow>>(() => [
       <n-text depth="3">输入 {{ CONFIRM_WORD }} 后「确认删除」才会亮起。</n-text>
 
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="showConfirm = false">取消</n-button>
           <n-button
             type="error"

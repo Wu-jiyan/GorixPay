@@ -17,7 +17,7 @@ import type { NotificationChannel } from '@/api/notificationChannels';
 import type { PageQuery } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import { formatDateTime } from '@/utils/format';
-import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
+import { asRow, itemsOf, numberOr, useNarrow, useServerPaging } from './shared';
 
 /** 后端只接受 sms / mail 两类通道；微信的凭据在「公众号配置」页维护 */
 const kindTabs = [
@@ -47,6 +47,7 @@ interface ChannelCard {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const activeTab = ref('sms');
 const cards = ref<ChannelCard[]>([]);
@@ -318,7 +319,7 @@ onMounted(load);
 <template>
   <admin-page title="通知通道" subtitle="短信与邮件的服务商配置，配置键值由后端加密保存">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -356,7 +357,7 @@ onMounted(load);
 
               <n-card v-for="card in cards" :key="card.id" size="small" :bordered="true">
                 <template #header>
-                  <n-space align="center">
+                  <n-space align="center" :wrap="true">
                     <n-text strong>{{ card.provider || '(未填写服务商)' }}</n-text>
                     <n-tag
                       size="small"
@@ -379,13 +380,13 @@ onMounted(load);
                   </n-space>
                 </template>
 
-                <n-form label-placement="left" label-width="200" :show-feedback="false">
+                <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 200" :show-feedback="false">
                   <n-form-item label="服务商">
                     <n-input v-model:value="card.provider" placeholder="例如 aliyun / tencent / smtp" />
                   </n-form-item>
 
                   <n-form-item v-for="key in card.keys" :key="key" :label="key">
-                    <n-space align="center" :size="8">
+                    <n-space align="center" :size="8" :wrap="true" style="width: 100%">
                       <n-input
                         v-model:value="card.values[key]"
                         :type="isSensitive(key) ? 'password' : 'text'"
@@ -395,7 +396,7 @@ onMounted(load);
                             ? '留空表示保持原值'
                             : '新增配置项，填值后保存'
                         "
-                        style="width: 320px"
+                        style="flex: 1 1 200px; min-width: 0"
                       />
                       <n-tag
                         size="small"
@@ -408,11 +409,11 @@ onMounted(load);
                   </n-form-item>
 
                   <n-form-item label="新增配置项">
-                    <n-space align="center">
+                    <n-space align="center" :wrap="true" style="width: 100%">
                       <n-input
                         v-model:value="card.newKey"
                         placeholder="额外配置键，例如 template_code"
-                        style="width: 240px"
+                        style="flex: 1 1 180px; min-width: 0"
                         @keyup.enter="addCardKey(card)"
                       />
                       <n-button size="small" @click="addCardKey(card)">添加键</n-button>
@@ -421,9 +422,9 @@ onMounted(load);
                 </n-form>
 
                 <template #footer>
-                  <n-space justify="space-between" align="center">
+                  <n-space justify="space-between" align="center" :wrap="true">
                     <n-button size="small" dashed @click="fillCardSample(card)">插入示例键</n-button>
-                    <n-space>
+                    <n-space :wrap="true">
                       <n-button size="small" @click="openTest(card)">
                         <template #icon>
                           <n-icon :component="PaperPlaneOutline" />
@@ -467,8 +468,8 @@ onMounted(load);
       />
     </n-card>
 
-    <n-modal v-model:show="showCreate" preset="card" title="新建通知通道" style="width: 640px">
-      <n-form label-placement="left" label-width="120">
+    <n-modal v-model:show="showCreate" preset="card" title="新建通知通道" style="width: 640px; max-width: 94vw">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120">
         <n-form-item label="类型">
           <n-radio-group v-model:value="createForm.kind">
             <n-space>
@@ -499,15 +500,16 @@ onMounted(load);
               v-for="(row, index) in createForm.rows"
               :key="index"
               align="center"
-              :wrap="false"
+              :wrap="true"
+              style="width: 100%"
             >
-              <n-input v-model:value="row.key" placeholder="配置键" style="width: 200px" />
+              <n-input v-model:value="row.key" placeholder="配置键" style="flex: 1 1 140px; min-width: 0" />
               <n-input
                 v-model:value="row.value"
                 :type="isSensitive(row.key) ? 'password' : 'text'"
                 :show-password-on="isSensitive(row.key) ? 'click' : undefined"
                 placeholder="配置值"
-                style="width: 260px"
+                style="flex: 1 1 160px; min-width: 0"
               />
               <n-button text type="error" @click="removeCreateRow(index)">删除</n-button>
             </n-space>
@@ -519,21 +521,21 @@ onMounted(load);
         </n-form-item>
       </n-form>
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="showCreate = false">取消</n-button>
           <n-button type="primary" :loading="creating" @click="submitCreate">保存</n-button>
         </n-space>
       </template>
     </n-modal>
 
-    <n-modal v-model:show="showTest" preset="card" title="发送测试消息" style="width: 640px">
+    <n-modal v-model:show="showTest" preset="card" title="发送测试消息" style="width: 640px; max-width: 94vw">
       <n-descriptions v-if="testTarget" :column="1" label-placement="left" size="small" bordered>
         <n-descriptions-item label="类型">
           {{ kindLabels[testTarget.kind] ?? testTarget.kind }}
         </n-descriptions-item>
         <n-descriptions-item label="服务商">{{ testTarget.provider || '-' }}</n-descriptions-item>
       </n-descriptions>
-      <n-form label-placement="left" label-width="120" style="margin-top: 16px">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120" style="margin-top: 16px">
         <n-form-item label="接收目标">
           <n-input
             v-model:value="testValue"
@@ -547,7 +549,7 @@ onMounted(load);
         未配置真实网关时，这条测试消息只会写入服务端日志。
       </n-alert>
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="showTest = false">取消</n-button>
           <n-button type="primary" :loading="testing" @click="runTest">
             <template #icon>

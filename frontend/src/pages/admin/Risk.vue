@@ -15,9 +15,10 @@ import { adminApi } from '@/api';
 import type { BlacklistEntry, RiskEvent } from '@/api';
 import { errorMessage } from '@/api/client';
 import { formatDateTime } from '@/utils/format';
-import { httpStatus, itemsOf, numberOr, useServerPaging } from './shared';
+import { httpStatus, itemsOf, numberOr, useNarrow, useServerPaging } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const tab = ref('blacklist');
 
@@ -270,7 +271,7 @@ onMounted(() => {
 <template>
   <admin-page title="风控与黑名单" subtitle="IP / 域名 / 关键词拦截名单与风控命中事件">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="entriesLoading || eventsLoading" @click="refreshCurrent">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -296,18 +297,26 @@ onMounted(() => {
             </n-space>
           </template>
 
-          <n-space :size="10" align="center" style="margin-bottom: 12px">
-            <n-select
-              v-model:value="entryTypeFilter"
-              :options="entryTypeOptions"
-              placeholder="全部类型"
-              clearable
-              style="width: 150px"
-              @update:value="loadEntries"
-            />
-            <n-button @click="loadEntries">刷新</n-button>
-            <n-text depth="3" style="font-size: 12px">共 {{ entries.length }} 条</n-text>
-          </n-space>
+          <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">
+            <n-gi>
+              <n-select
+                v-model:value="entryTypeFilter"
+                :options="entryTypeOptions"
+                placeholder="全部类型"
+                clearable
+                style="width: 100%"
+                @update:value="loadEntries"
+              />
+            </n-gi>
+            <n-gi>
+              <n-space :wrap="true">
+                <n-button @click="loadEntries">刷新</n-button>
+              </n-space>
+            </n-gi>
+            <n-gi>
+              <n-text depth="3" style="font-size: 12px">共 {{ entries.length }} 条</n-text>
+            </n-gi>
+          </n-grid>
 
           <n-empty v-if="entriesUnavailable" description="接口未启用" size="large">
             <template #extra>
@@ -322,7 +331,7 @@ onMounted(() => {
             :pagination="{ pageSize: 10 }"
             :row-key="(row: BlacklistEntry) => row.id"
             :scroll-x="800"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
           >
             <template #empty>
               <n-empty description="暂无黑名单条目" size="small" />
@@ -338,33 +347,43 @@ onMounted(() => {
             </n-space>
           </template>
 
-          <n-space :size="10" align="center" style="margin-bottom: 12px">
-            <n-input
-              v-model:value="merchantId"
-              placeholder="商户 ID"
-              clearable
-              style="width: 250px"
-              @keyup.enter="searchEvents"
-            >
-              <template #prefix>
-                <n-icon :component="SearchOutline" />
-              </template>
-            </n-input>
-            <n-input
-              v-model:value="ruleCode"
-              placeholder="规则编码，例如 risk.ip_limit"
-              clearable
-              style="width: 260px"
-              @keyup.enter="searchEvents"
-            >
-              <template #prefix>
-                <n-icon :component="SearchOutline" />
-              </template>
-            </n-input>
-            <n-button type="primary" @click="searchEvents">查询</n-button>
-            <n-button @click="resetEventFilters">重置</n-button>
-            <n-text depth="3" style="font-size: 12px">共 {{ eventsTotal }} 条</n-text>
-          </n-space>
+          <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">
+            <n-gi>
+              <n-input
+                v-model:value="merchantId"
+                placeholder="商户 ID"
+                clearable
+                style="width: 100%"
+                @keyup.enter="searchEvents"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchOutline" />
+                </template>
+              </n-input>
+            </n-gi>
+            <n-gi>
+              <n-input
+                v-model:value="ruleCode"
+                placeholder="规则编码，例如 risk.ip_limit"
+                clearable
+                style="width: 100%"
+                @keyup.enter="searchEvents"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchOutline" />
+                </template>
+              </n-input>
+            </n-gi>
+            <n-gi>
+              <n-space :wrap="true">
+                <n-button type="primary" @click="searchEvents">查询</n-button>
+                <n-button @click="resetEventFilters">重置</n-button>
+              </n-space>
+            </n-gi>
+            <n-gi>
+              <n-text depth="3" style="font-size: 12px">共 {{ eventsTotal }} 条</n-text>
+            </n-gi>
+          </n-grid>
 
           <n-empty v-if="eventsUnavailable" description="接口未启用" size="large">
             <template #extra>
@@ -379,7 +398,7 @@ onMounted(() => {
             :pagination="eventsPagination"
             :row-key="(row: RiskEvent) => row.id"
             :scroll-x="1020"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
             remote
             @update:page="onEventsPage"
             @update:page-size="onEventsPageSize"
@@ -393,7 +412,7 @@ onMounted(() => {
     </n-card>
 
     <n-modal v-model:show="showCreate" preset="card" title="添加黑名单" style="width: 560px; max-width: 94vw">
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="80">
+      <n-form ref="formRef" :model="form" :rules="rules" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 80">
         <n-form-item label="类型" path="entry_type">
           <n-select v-model:value="form.entry_type" :options="entryTypeOptions" />
         </n-form-item>

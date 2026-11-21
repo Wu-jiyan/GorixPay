@@ -8,8 +8,10 @@ import { adminApi } from '@/api';
 import type { Announcement } from '@/api';
 import { errorMessage } from '@/api/client';
 import { formatDateTime } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<Announcement[]>([]);
 const loading = ref(false);
@@ -215,7 +217,7 @@ onMounted(load);
 <template>
   <admin-page title="公告管理" subtitle="站点公告的发布、编辑与下线">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -239,7 +241,7 @@ onMounted(load);
         :pagination="{ pageSize: 10 }"
         :row-key="(row: Announcement) => row.id"
         :scroll-x="1000"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
       >
         <template #empty>
           <n-empty description="暂无公告，点击右上角新建" size="small" />
@@ -251,9 +253,15 @@ onMounted(load);
       v-model:show="showForm"
       preset="card"
       :title="isEditing ? '编辑公告' : '新建公告'"
-      style="width: 720px"
+      style="width: 720px; max-width: 94vw"
     >
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="90">
+      <n-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 90"
+      >
         <n-form-item label="标题" path="title">
           <n-input v-model:value="form.title" placeholder="例如：系统升级维护通知" />
         </n-form-item>
@@ -273,7 +281,7 @@ onMounted(load);
         </n-form-item>
       </n-form>
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="showForm = false">取消</n-button>
           <n-button type="primary" :loading="submitting" @click="submit">保存</n-button>
         </n-space>

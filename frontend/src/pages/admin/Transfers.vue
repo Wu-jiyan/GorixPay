@@ -20,9 +20,10 @@ import { exportCsvUrl } from '@/api/reports';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { financeStatus, formatDateTime, formatMoney } from '@/utils/format';
-import { asRow, httpStatus, numberOr, usePendingAction, useServerPaging } from './shared';
+import { asRow, httpStatus, numberOr, useNarrow, usePendingAction, useServerPaging } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<Transfer[]>([]);
 const loading = ref(false);
@@ -507,7 +508,7 @@ onMounted(load);
 <template>
   <admin-page title="代付管理" subtitle="商户代付申请审核，需扣减可用余额或冻结资金">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -546,53 +547,63 @@ onMounted(load);
     </n-alert>
 
     <n-card size="small" :bordered="false">
-      <n-form inline :show-feedback="false">
-        <n-form-item label="关键字">
-          <n-input
-            v-model:value="keyword"
-            placeholder="代付单号 / 商户单号"
-            clearable
-            style="width: 230px"
-            @keyup.enter="search"
-          >
-            <template #prefix>
-              <n-icon :component="SearchOutline" />
-            </template>
-          </n-input>
-        </n-form-item>
-        <n-form-item label="商户 ID">
-          <n-input
-            v-model:value="merchantId"
-            placeholder="按商户筛选"
-            clearable
-            style="width: 230px"
-            @keyup.enter="search"
-          >
-            <template #prefix>
-              <n-icon :component="SearchOutline" />
-            </template>
-          </n-input>
-        </n-form-item>
-        <n-form-item label="状态">
-          <n-select
-            v-model:value="status"
-            :options="statusOptions"
-            placeholder="全部状态"
-            clearable
-            style="width: 140px"
-          />
-        </n-form-item>
-        <n-form-item>
-          <n-space>
-            <n-button type="primary" @click="search">
-              <template #icon>
-                <n-icon :component="SearchOutline" />
-              </template>
-              查询
-            </n-button>
-            <n-button @click="resetFilters">重置</n-button>
-          </n-space>
-        </n-form-item>
+      <n-form :show-feedback="false" :label-placement="isNarrow ? 'top' : 'left'">
+        <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12">
+          <n-gi>
+            <n-form-item label="关键字">
+              <n-input
+                v-model:value="keyword"
+                placeholder="代付单号 / 商户单号"
+                clearable
+                style="width: 100%"
+                @keyup.enter="search"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchOutline" />
+                </template>
+              </n-input>
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="商户 ID">
+              <n-input
+                v-model:value="merchantId"
+                placeholder="按商户筛选"
+                clearable
+                style="width: 100%"
+                @keyup.enter="search"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchOutline" />
+                </template>
+              </n-input>
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="状态">
+              <n-select
+                v-model:value="status"
+                :options="statusOptions"
+                placeholder="全部状态"
+                clearable
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item :show-label="false">
+              <n-space :wrap="true">
+                <n-button type="primary" @click="search">
+                  <template #icon>
+                    <n-icon :component="SearchOutline" />
+                  </template>
+                  查询
+                </n-button>
+                <n-button @click="resetFilters">重置</n-button>
+              </n-space>
+            </n-form-item>
+          </n-gi>
+        </n-grid>
       </n-form>
 
       <n-empty v-if="notAvailable" description="接口未启用">
@@ -616,7 +627,7 @@ onMounted(load);
     </n-card>
 
     <n-modal v-model:show="showReject" preset="card" title="驳回代付申请" style="width: 560px; max-width: 94vw">
-      <n-descriptions v-if="rejectTarget" :column="2" bordered size="small" label-placement="left">
+      <n-descriptions v-if="rejectTarget" :column="isNarrow ? 1 : 2" bordered size="small" label-placement="left">
         <n-descriptions-item label="代付单号">
           <n-text class="mono">{{ rejectTarget.transfer_no }}</n-text>
         </n-descriptions-item>
@@ -625,7 +636,7 @@ onMounted(load);
         </n-descriptions-item>
       </n-descriptions>
 
-      <n-form label-placement="left" label-width="120" style="margin-top: 16px">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120" style="margin-top: 16px">
         <n-form-item label="驳回原因">
           <n-input
             v-model:value="rejectionReason"
@@ -649,7 +660,7 @@ onMounted(load);
         手动付款会直接生成一笔代付单，后端按账本规则扣减可用余额；金额与收款账户请核对后再提交。
       </n-alert>
 
-      <n-form ref="manualFormRef" :model="manualForm" :rules="manualRules" label-placement="left" label-width="120">
+      <n-form ref="manualFormRef" :model="manualForm" :rules="manualRules" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120">
         <n-form-item label="商户 ID" path="merchant_id">
           <n-input v-model:value="manualForm.merchant_id" placeholder="这笔付款记在哪个商户名下" />
         </n-form-item>
@@ -659,7 +670,7 @@ onMounted(load);
             :min="0.01"
             :step="1"
             :precision="2"
-            style="width: 200px"
+            style="width: 100%; max-width: 240px"
           />
         </n-form-item>
         <n-form-item label="收款账户" path="destination">
@@ -686,7 +697,7 @@ onMounted(load);
         所有行记在同一个商户名下，合计金额会先从该商户可用余额扣减；空行或金额为 0 的行提交时会被忽略。
       </n-alert>
 
-      <n-form label-placement="left" label-width="120">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120">
         <n-form-item label="商户 ID">
           <n-input v-model:value="batchMerchantId" placeholder="这笔批次记在哪个商户名下" />
         </n-form-item>
@@ -695,23 +706,36 @@ onMounted(load);
         </n-form-item>
         <n-form-item label="付款明细">
           <n-space vertical :size="10" style="width: 100%">
-            <n-space v-for="(row, index) in batchRows" :key="index" align="center" :size="10">
-              <n-input-number
-                v-model:value="row.amount_yuan"
-                :min="0"
-                :step="1"
-                :precision="2"
-                placeholder="金额（元）"
-                style="width: 170px"
-              />
-              <n-input v-model:value="row.destination" placeholder="收款账户" style="width: 360px" />
-              <n-button size="small" text type="error" @click="removeBatchRow(index)">
-                <template #icon>
-                  <n-icon :component="TrashOutline" />
-                </template>
-                删除
-              </n-button>
-            </n-space>
+            <n-grid
+              v-for="(row, index) in batchRows"
+              :key="index"
+              :cols="isNarrow ? 1 : 3"
+              :x-gap="10"
+              :y-gap="10"
+              style="width: 100%"
+            >
+              <n-gi>
+                <n-input-number
+                  v-model:value="row.amount_yuan"
+                  :min="0"
+                  :step="1"
+                  :precision="2"
+                  placeholder="金额（元）"
+                  style="width: 100%"
+                />
+              </n-gi>
+              <n-gi>
+                <n-input v-model:value="row.destination" placeholder="收款账户" style="width: 100%" />
+              </n-gi>
+              <n-gi>
+                <n-button size="small" text type="error" @click="removeBatchRow(index)">
+                  <template #icon>
+                    <n-icon :component="TrashOutline" />
+                  </template>
+                  删除
+                </n-button>
+              </n-gi>
+            </n-grid>
             <n-button size="small" dashed @click="addBatchRow">
               <template #icon>
                 <n-icon :component="AddOutline" />
@@ -722,7 +746,7 @@ onMounted(load);
         </n-form-item>
       </n-form>
 
-      <n-space align="center" :size="6">
+      <n-space align="center" :size="6" :wrap="true">
         <n-text depth="3">合计</n-text>
         <n-text class="amount">{{ formatMoney(batchTotalCents) }}</n-text>
         <n-text depth="3" style="font-size: 12px">（{{ batchRows.length }} 行）</n-text>
@@ -736,13 +760,13 @@ onMounted(load);
       </template>
     </n-modal>
 
-    <n-drawer v-model:show="showRedBatches" :width="900" placement="right">
+    <n-drawer v-model:show="showRedBatches" :width="isNarrow ? '92vw' : 900" placement="right">
       <n-drawer-content title="红包批次" closable>
         <n-alert type="info" :bordered="false" style="margin-bottom: 14px">
           撤销会把该批次里仍是待领取的红包退回商户可用余额；已领取的部分不受影响。
         </n-alert>
 
-        <n-space align="center" justify="space-between" style="margin-bottom: 12px">
+        <n-space align="center" justify="space-between" :wrap="true" style="margin-bottom: 12px">
           <n-text depth="3" style="font-size: 12px">共 {{ redPaging.total.value }} 个批次</n-text>
           <n-button size="small" :loading="redLoading" @click="loadRedBatches">
             <template #icon>
@@ -767,7 +791,7 @@ onMounted(load);
     </n-drawer>
 
     <n-modal v-model:show="showRedCancel" preset="card" title="撤销红包批次" style="width: 560px; max-width: 94vw">
-      <n-descriptions v-if="redCancelTarget" :column="2" bordered size="small" label-placement="left">
+      <n-descriptions v-if="redCancelTarget" :column="isNarrow ? 1 : 2" bordered size="small" label-placement="left">
         <n-descriptions-item label="批次号">
           <n-text class="mono">{{ redCancelTarget.batch_no }}</n-text>
         </n-descriptions-item>
@@ -779,7 +803,7 @@ onMounted(load);
         </n-descriptions-item>
       </n-descriptions>
 
-      <n-form label-placement="left" label-width="120" style="margin-top: 16px">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120" style="margin-top: 16px">
         <n-form-item label="撤销原因">
           <n-input v-model:value="redCancelReason" placeholder="可选，记录到审计" />
         </n-form-item>

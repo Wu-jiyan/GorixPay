@@ -12,8 +12,10 @@ import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import PaymentBrandIcon from '@/components/PaymentBrandIcon.vue';
 import { copyText, formatDateTime, yuanToCents } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const activeTab = ref<'code' | 'test'>('code');
 
@@ -156,7 +158,7 @@ onMounted(() => {
         <n-tab-pane name="code" tab="收款码">
           <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16">
             <n-gi>
-              <n-form label-placement="left" label-width="160">
+              <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
                 <n-form-item label="支付方式">
                   <n-select
                     v-model:value="codeForm.payment_type"
@@ -199,11 +201,11 @@ onMounted(() => {
                       v-if="codeResult && codeResult.code_svg"
                       :src="'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(codeResult.code_svg)"
                       alt="收款二维码"
-                      style="display: block; width: 220px; height: 220px"
+                      style="display: block; max-width: 100%; width: 220px; height: auto; aspect-ratio: 1 / 1"
                     />
                     <n-empty v-else description="渠道未返回二维码" size="small" />
 
-                    <n-form v-if="codeResult" label-placement="left" label-width="110" style="width: 100%">
+                    <n-form v-if="codeResult" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 110" style="width: 100%">
                       <n-form-item label="收银台链接">
                         <n-input :value="codeResult.url || ''" readonly placeholder="生成后展示收款链接">
                           <template #suffix>
@@ -227,7 +229,7 @@ onMounted(() => {
                     </n-form>
                     <n-empty v-else description="还没有生成收款码" size="small" />
 
-                    <n-space v-if="codeResult">
+                    <n-space v-if="codeResult" :wrap="true">
                       <n-button
                         v-if="codeResult.url"
                         type="primary"
@@ -255,7 +257,7 @@ onMounted(() => {
         <n-tab-pane name="test" tab="测试支付">
           <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16">
             <n-gi>
-              <n-form label-placement="left" label-width="160">
+              <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
                 <n-form-item label="支付方式">
                   <n-select
                     v-model:value="testForm.payment_type"
@@ -287,7 +289,7 @@ onMounted(() => {
 
             <n-gi>
               <n-spin :show="testLoading">
-                <n-form v-if="testResult" label-placement="left" label-width="110">
+                <n-form v-if="testResult" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 110">
                   <n-form-item label="订单号">
                     <n-input :value="testResult.trade_no" readonly class="mono" />
                   </n-form-item>
@@ -317,7 +319,7 @@ onMounted(() => {
                 </n-form>
                 <n-empty v-else description="还没有创建测试订单" size="small" />
 
-                <n-space v-if="testResult" style="margin-top: 16px">
+                <n-space v-if="testResult" :wrap="true" style="margin-top: 16px">
                   <n-button
                     v-if="testResult.cashier_url"
                     type="primary"

@@ -9,7 +9,7 @@ import AdminPage from '@/components/AdminPage.vue';
 import MoneyText from '@/components/MoneyText.vue';
 import StatusTag from '@/components/StatusTag.vue';
 import { formatDateTime } from '@/utils/format';
-import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
+import { asRow, itemsOf, numberOr, useNarrow, useServerPaging } from './shared';
 
 interface ReceiverForm {
   merchant_id: string;
@@ -20,6 +20,7 @@ interface ReceiverForm {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const tab = ref('receivers');
 
@@ -386,7 +387,8 @@ onMounted(() => {
             :row-key="(row: ProfitReceiver) => row.id"
             :bordered="false"
             :single-line="false"
-            size="small"
+            :scroll-x="1210"
+            :size="isNarrow ? 'small' : 'medium'"
             remote
             @update:page="onReceiverPage"
             @update:page-size="onReceiverPageSize"
@@ -406,7 +408,8 @@ onMounted(() => {
             :row-key="(row: ProfitSharingOrder) => row.id"
             :bordered="false"
             :single-line="false"
-            size="small"
+            :scroll-x="1450"
+            :size="isNarrow ? 'small' : 'medium'"
             remote
             @update:page="onOrderPage"
             @update:page-size="onOrderPageSize"
@@ -425,7 +428,7 @@ onMounted(() => {
       :title="isEditing ? '编辑接收方' : '新建接收方'"
       style="width: 640px; max-width: 94vw"
     >
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="130">
+      <n-form ref="formRef" :model="form" :rules="rules" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 130">
         <n-form-item label="商户 ID" path="merchant_id">
           <n-input v-model:value="form.merchant_id" placeholder="接收方所属商户" />
         </n-form-item>

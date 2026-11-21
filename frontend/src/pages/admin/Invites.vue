@@ -8,9 +8,10 @@ import { adminApi } from '@/api';
 import type { InviteRecord } from '@/api';
 import { errorMessage } from '@/api/client';
 import { formatDateTime, formatMoney } from '@/utils/format';
-import { httpStatus, itemsOf, numberOr, useServerPaging } from './shared';
+import { httpStatus, itemsOf, numberOr, useNarrow, useServerPaging } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<InviteRecord[]>([]);
 const loading = ref(false);
@@ -152,22 +153,30 @@ onMounted(load);
         </n-space>
       </template>
 
-      <n-space :size="10" align="center" style="margin-bottom: 12px">
-        <n-input
-          v-model:value="inviterId"
-          placeholder="邀请人商户 ID"
-          clearable
-          style="width: 280px"
-          @keyup.enter="search"
-        >
-          <template #prefix>
-            <n-icon :component="SearchOutline" />
-          </template>
-        </n-input>
-        <n-button type="primary" @click="search">查询</n-button>
-        <n-button @click="resetFilters">重置</n-button>
-        <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
-      </n-space>
+      <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">
+        <n-gi>
+          <n-input
+            v-model:value="inviterId"
+            placeholder="邀请人商户 ID"
+            clearable
+            style="width: 100%"
+            @keyup.enter="search"
+          >
+            <template #prefix>
+              <n-icon :component="SearchOutline" />
+            </template>
+          </n-input>
+        </n-gi>
+        <n-gi>
+          <n-space :wrap="true">
+            <n-button type="primary" @click="search">查询</n-button>
+            <n-button @click="resetFilters">重置</n-button>
+          </n-space>
+        </n-gi>
+        <n-gi>
+          <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
+        </n-gi>
+      </n-grid>
 
       <n-empty v-if="unavailable" description="接口未启用" size="large">
         <template #extra>
@@ -182,7 +191,7 @@ onMounted(load);
         :pagination="pagination"
         :row-key="(row: InviteRecord) => row.id"
         :scroll-x="1560"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         remote
         @update:page="onPage"
         @update:page-size="onPageSize"

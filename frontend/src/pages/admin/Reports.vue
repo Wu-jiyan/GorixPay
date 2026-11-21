@@ -8,9 +8,10 @@ import { exportCsvUrl, reportsApi } from '@/api/reports';
 import type { ExportQuery, ReportQuery, ReportRow } from '@/api/reports';
 import { errorMessage } from '@/api/client';
 import { formatDateTime, formatMoney } from '@/utils/format';
-import { asRow, fieldNumber, itemsOf, numberOr, pick, textOf, toISOString, useServerPaging } from './shared';
+import { asRow, fieldNumber, itemsOf, numberOr, pick, textOf, toISOString, useNarrow, useServerPaging } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const buyers = ref<ReportRow[]>([]);
 const merchants = ref<ReportRow[]>([]);
@@ -277,37 +278,47 @@ onMounted(() => {
             </n-space>
           </template>
 
-          <n-space :size="10" align="center" style="margin-bottom: 12px">
-            <n-input
-              v-model:value="buyerKeyword"
-              placeholder="买家标识 / 付款方账号"
-              clearable
-              style="width: 240px"
-              @keyup.enter="searchBuyers"
-            >
-              <template #prefix>
-                <n-icon :component="SearchOutline" />
-              </template>
-            </n-input>
-            <n-date-picker
-              v-model:value="buyerRange"
-              type="daterange"
-              clearable
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              style="width: 280px"
-            />
-            <n-button type="primary" @click="searchBuyers">查询</n-button>
-            <n-button @click="resetBuyerFilters">重置</n-button>
-            <n-divider vertical />
-            <n-button @click="exportBuyers">
-              <template #icon>
-                <n-icon :component="DownloadOutline" />
-              </template>
-              导出 CSV
-            </n-button>
-            <n-text depth="3" style="font-size: 12px">共 {{ buyerTotal }} 条</n-text>
-          </n-space>
+          <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">
+            <n-gi>
+              <n-input
+                v-model:value="buyerKeyword"
+                placeholder="买家标识 / 付款方账号"
+                clearable
+                style="width: 100%"
+                @keyup.enter="searchBuyers"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchOutline" />
+                </template>
+              </n-input>
+            </n-gi>
+            <n-gi>
+              <n-date-picker
+                v-model:value="buyerRange"
+                type="daterange"
+                clearable
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                style="width: 100%"
+              />
+            </n-gi>
+            <n-gi>
+              <n-space :wrap="true">
+                <n-button type="primary" @click="searchBuyers">查询</n-button>
+                <n-button @click="resetBuyerFilters">重置</n-button>
+                <n-divider vertical />
+                <n-button @click="exportBuyers">
+                  <template #icon>
+                    <n-icon :component="DownloadOutline" />
+                  </template>
+                  导出 CSV
+                </n-button>
+              </n-space>
+            </n-gi>
+            <n-gi>
+              <n-text depth="3" style="font-size: 12px">共 {{ buyerTotal }} 条</n-text>
+            </n-gi>
+          </n-grid>
 
           <n-data-table
             :columns="buyerColumns"
@@ -316,7 +327,7 @@ onMounted(() => {
             :pagination="buyerPagination"
             :row-key="(row: ReportRow) => String(row.__rowKey ?? '')"
             :scroll-x="900"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
             remote
             @update:page="onBuyerPage"
             @update:page-size="onBuyerPageSize"
@@ -335,37 +346,47 @@ onMounted(() => {
             </n-space>
           </template>
 
-          <n-space :size="10" align="center" style="margin-bottom: 12px">
-            <n-input
-              v-model:value="merchantKeyword"
-              placeholder="商户 ID / 名称"
-              clearable
-              style="width: 240px"
-              @keyup.enter="searchMerchants"
-            >
-              <template #prefix>
-                <n-icon :component="SearchOutline" />
-              </template>
-            </n-input>
-            <n-date-picker
-              v-model:value="merchantRange"
-              type="daterange"
-              clearable
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              style="width: 280px"
-            />
-            <n-button type="primary" @click="searchMerchants">查询</n-button>
-            <n-button @click="resetMerchantFilters">重置</n-button>
-            <n-divider vertical />
-            <n-button @click="exportMerchants">
-              <template #icon>
-                <n-icon :component="DownloadOutline" />
-              </template>
-              导出 CSV
-            </n-button>
-            <n-text depth="3" style="font-size: 12px">共 {{ merchantTotal }} 条</n-text>
-          </n-space>
+          <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">
+            <n-gi>
+              <n-input
+                v-model:value="merchantKeyword"
+                placeholder="商户 ID / 名称"
+                clearable
+                style="width: 100%"
+                @keyup.enter="searchMerchants"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchOutline" />
+                </template>
+              </n-input>
+            </n-gi>
+            <n-gi>
+              <n-date-picker
+                v-model:value="merchantRange"
+                type="daterange"
+                clearable
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                style="width: 100%"
+              />
+            </n-gi>
+            <n-gi>
+              <n-space :wrap="true">
+                <n-button type="primary" @click="searchMerchants">查询</n-button>
+                <n-button @click="resetMerchantFilters">重置</n-button>
+                <n-divider vertical />
+                <n-button @click="exportMerchants">
+                  <template #icon>
+                    <n-icon :component="DownloadOutline" />
+                  </template>
+                  导出 CSV
+                </n-button>
+              </n-space>
+            </n-gi>
+            <n-gi>
+              <n-text depth="3" style="font-size: 12px">共 {{ merchantTotal }} 条</n-text>
+            </n-gi>
+          </n-grid>
 
           <n-data-table
             :columns="merchantColumns"
@@ -374,7 +395,7 @@ onMounted(() => {
             :pagination="merchantPagination"
             :row-key="(row: ReportRow) => String(row.__rowKey ?? '')"
             :scroll-x="1080"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
             remote
             @update:page="onMerchantPage"
             @update:page-size="onMerchantPageSize"

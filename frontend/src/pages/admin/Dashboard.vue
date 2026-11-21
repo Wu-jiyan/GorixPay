@@ -170,7 +170,7 @@ onMounted(load);
       <n-card size="small" style="margin-top: 16px">
         <template #header>近 14 天支付走势</template>
         <template #header-extra>
-          <n-space :size="16">
+          <n-space :size="16" :wrap="true">
             <n-text depth="3">合计支付 {{ totalPaidCount }} 笔</n-text>
             <n-text depth="3">合计 {{ formatMoney(totalPaid) }}</n-text>
           </n-space>
@@ -184,6 +184,7 @@ onMounted(load);
           size="small"
           :max-height="320"
           :pagination="false"
+          :scroll-x="860"
           :row-key="(row: DailyStat) => row.date"
         />
         <n-empty v-if="!dailyStats.length && !loading" description="还没有订单数据" style="padding: 24px 0" />
@@ -209,7 +210,7 @@ onMounted(load);
 
       <n-card size="small" style="margin-top: 16px">
         <template #header>快捷入口</template>
-        <n-space>
+        <n-space :wrap="true">
           <n-button v-for="link in quickLinks" :key="link.path" secondary @click="router.push(link.path)">
             {{ link.label }}
           </n-button>

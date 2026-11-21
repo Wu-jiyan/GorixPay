@@ -8,6 +8,7 @@ import { merchantGroupPlanApi, type GroupPlan } from '@/api/merchantGroupPlans';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { formatMoney, paymentTypeText } from '@/utils/format';
+import { useNarrow } from './shared';
 
 // 商户表可能已经带了用户组字段（M1 加的），类型文件不归我改，这里做可选扩展。
 interface ProfileWithGroup extends Merchant {
@@ -18,6 +19,7 @@ interface ProfileWithGroup extends Merchant {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const loading = ref(true);
 const plans = ref<GroupPlan[]>([]);
@@ -157,7 +159,7 @@ onMounted(() => {
 
     <n-card size="small" :bordered="false" title="当前用户组">
       <n-spin :show="loading">
-        <n-descriptions :column="3" bordered size="small" label-placement="top">
+        <n-descriptions :column="isNarrow ? 1 : 3" bordered size="small" label-placement="top">
           <n-descriptions-item label="用户组">{{ currentGroupName }}</n-descriptions-item>
           <n-descriptions-item label="费率">{{ rateText }}</n-descriptions-item>
           <n-descriptions-item label="结算模式">{{ settleModeText }}</n-descriptions-item>
@@ -177,7 +179,7 @@ onMounted(() => {
         :row-key="rowKey"
         :pagination="false"
         :scroll-x="880"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
       >
         <template #empty>
           <n-empty description="暂无可购买的用户组" size="small" />

@@ -47,6 +47,10 @@ const tabs: Tab[] = [
           { label: '紧凑', value: 'compact' },
         ],
       },
+      { key: 'site.test_payment_enabled', label: '开放官网支付测试', type: 'bool', hint: '首页「支付测试」页，无需登录即可下一笔真实订单' },
+      { key: 'site.test_payment_pid', label: '测试订单商户 UID', type: 'number', hint: '易支付老 UID；留空取最早注册的启用商户', min: 0 },
+      { key: 'site.test_payment_max_cents', label: '支付测试单笔上限', type: 'cents', hint: '默认 ￥1，防止被当作付款通道滥用', min: 0 },
+      { key: 'site.test_payment_hourly_limit', label: '支付测试每 IP 每小时笔数', type: 'number', hint: '按创建时间统计，默认 10', min: 1, max: 1000 },
     ],
   },
   {
@@ -249,7 +253,7 @@ onMounted(reload);
 <template>
   <admin-page title="系统设置" subtitle="站点身份、业务规则、风控、通知与第三方登录">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-text depth="3" v-if="loadedAt" style="font-size: 12px">读取于 {{ loadedAt }}</n-text>
         <n-button :loading="loading" @click="reload">重新加载</n-button>
       </n-space>
@@ -304,7 +308,7 @@ onMounted(reload);
                     />
 
                     <!-- 凭据 -->
-                    <n-space v-else-if="field.type === 'secret'" align="center" :size="10" style="width: 100%">
+                    <n-space v-else-if="field.type === 'secret'" align="center" :wrap="true" :size="10" style="width: 100%">
                       <n-input
                         v-model:value="secretInput[field.key]"
                         type="password"
@@ -338,11 +342,11 @@ onMounted(reload);
           </n-spin>
 
           <template #footer>
-            <n-space justify="space-between" align="center">
+            <n-space justify="space-between" align="center" :wrap="true">
               <n-text depth="3" style="font-size: 12px">
                 {{ tabDirtyKeys(tab).length ? `${tabDirtyKeys(tab).length} 项待保存` : '没有改动' }}
               </n-text>
-              <n-space>
+              <n-space :wrap="true">
                 <n-button :disabled="!tabDirtyKeys(tab).length" @click="resetTab(tab)">还原</n-button>
                 <n-button
                   type="primary"

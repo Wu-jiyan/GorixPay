@@ -9,9 +9,10 @@ import { exportCsvUrl } from '@/api/reports';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { financeStatus, formatDateTime, formatMoney } from '@/utils/format';
-import { usePendingAction, useServerPaging } from './shared';
+import { useNarrow, usePendingAction, useServerPaging } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<Refund[]>([]);
 const loading = ref(false);
@@ -213,7 +214,7 @@ onMounted(load);
 <template>
   <admin-page title="退款管理" subtitle="审核商户退款申请，通过后由账本完成资金回退">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -230,53 +231,63 @@ onMounted(load);
     </template>
 
     <n-card size="small" :bordered="false">
-      <n-form inline :show-feedback="false">
-        <n-form-item label="关键字">
-          <n-input
-            v-model:value="keyword"
-            placeholder="退款单号 / 商户订单号"
-            clearable
-            style="width: 230px"
-            @keyup.enter="search"
-          >
-            <template #prefix>
-              <n-icon :component="SearchOutline" />
-            </template>
-          </n-input>
-        </n-form-item>
-        <n-form-item label="商户 ID">
-          <n-input
-            v-model:value="merchantId"
-            placeholder="按商户筛选"
-            clearable
-            style="width: 230px"
-            @keyup.enter="search"
-          >
-            <template #prefix>
-              <n-icon :component="SearchOutline" />
-            </template>
-          </n-input>
-        </n-form-item>
-        <n-form-item label="状态">
-          <n-select
-            v-model:value="status"
-            :options="statusOptions"
-            placeholder="全部状态"
-            clearable
-            style="width: 140px"
-          />
-        </n-form-item>
-        <n-form-item>
-          <n-space>
-            <n-button type="primary" @click="search">
-              <template #icon>
-                <n-icon :component="SearchOutline" />
-              </template>
-              查询
-            </n-button>
-            <n-button @click="resetFilters">重置</n-button>
-          </n-space>
-        </n-form-item>
+      <n-form :show-feedback="false" :label-placement="isNarrow ? 'top' : 'left'">
+        <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12">
+          <n-gi>
+            <n-form-item label="关键字">
+              <n-input
+                v-model:value="keyword"
+                placeholder="退款单号 / 商户订单号"
+                clearable
+                style="width: 100%"
+                @keyup.enter="search"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchOutline" />
+                </template>
+              </n-input>
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="商户 ID">
+              <n-input
+                v-model:value="merchantId"
+                placeholder="按商户筛选"
+                clearable
+                style="width: 100%"
+                @keyup.enter="search"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchOutline" />
+                </template>
+              </n-input>
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="状态">
+              <n-select
+                v-model:value="status"
+                :options="statusOptions"
+                placeholder="全部状态"
+                clearable
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item :show-label="false">
+              <n-space :wrap="true">
+                <n-button type="primary" @click="search">
+                  <template #icon>
+                    <n-icon :component="SearchOutline" />
+                  </template>
+                  查询
+                </n-button>
+                <n-button @click="resetFilters">重置</n-button>
+              </n-space>
+            </n-form-item>
+          </n-gi>
+        </n-grid>
       </n-form>
 
       <n-data-table
@@ -293,7 +304,7 @@ onMounted(load);
     </n-card>
 
     <n-modal v-model:show="showReject" preset="card" title="驳回退款申请" style="width: 560px; max-width: 94vw">
-      <n-descriptions v-if="rejectTarget" :column="2" bordered size="small" label-placement="left">
+      <n-descriptions v-if="rejectTarget" :column="isNarrow ? 1 : 2" bordered size="small" label-placement="left">
         <n-descriptions-item label="退款单号">
           <n-text class="mono">{{ rejectTarget.refund_no }}</n-text>
         </n-descriptions-item>
@@ -302,7 +313,7 @@ onMounted(load);
         </n-descriptions-item>
       </n-descriptions>
 
-      <n-form label-placement="left" label-width="120" style="margin-top: 16px">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120" style="margin-top: 16px">
         <n-form-item label="驳回原因">
           <n-input
             v-model:value="rejectionReason"

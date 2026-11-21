@@ -15,9 +15,10 @@ import { adminApi } from '@/api';
 import type { MerchantDomain } from '@/api';
 import { errorMessage } from '@/api/client';
 import { formatDateTime } from '@/utils/format';
-import { httpStatus, itemsOf, numberOr, usePendingAction, useServerPaging } from './shared';
+import { httpStatus, itemsOf, numberOr, useNarrow, usePendingAction, useServerPaging } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<MerchantDomain[]>([]);
 const loading = ref(false);
@@ -232,24 +233,32 @@ onMounted(load);
     </n-alert>
 
     <n-card size="small" :bordered="false">
-      <n-space align="center" :size="12" style="margin-bottom: 12px">
-        <n-select
-          v-model:value="status"
-          :options="statusOptions"
-          placeholder="全部状态"
-          clearable
-          style="width: 160px"
-        />
-        <n-button type="primary" @click="search">
-          <template #icon><n-icon><SearchOutline /></n-icon></template>
-          查询
-        </n-button>
-        <n-button @click="resetFilters">
-          <template #icon><n-icon><ReloadOutline /></n-icon></template>
-          重置
-        </n-button>
-        <n-text depth="3">共 {{ total }} 条</n-text>
-      </n-space>
+      <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">
+        <n-gi>
+          <n-select
+            v-model:value="status"
+            :options="statusOptions"
+            placeholder="全部状态"
+            clearable
+            style="width: 100%"
+          />
+        </n-gi>
+        <n-gi>
+          <n-space align="center" :wrap="true">
+            <n-button type="primary" @click="search">
+              <template #icon><n-icon><SearchOutline /></n-icon></template>
+              查询
+            </n-button>
+            <n-button @click="resetFilters">
+              <template #icon><n-icon><ReloadOutline /></n-icon></template>
+              重置
+            </n-button>
+          </n-space>
+        </n-gi>
+        <n-gi>
+          <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
+        </n-gi>
+      </n-grid>
 
       <n-data-table
         :columns="columns"
@@ -260,7 +269,7 @@ onMounted(load);
         :bordered="false"
         :single-line="false"
         :scroll-x="1200"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         remote
         @update:page="onPage"
         @update:page-size="onPageSize"
@@ -281,7 +290,7 @@ onMounted(load);
       title="驳回支付域名"
       style="width: 560px; max-width: 94vw"
     >
-      <n-descriptions v-if="rejectTarget" :column="2" label-placement="left" bordered size="small">
+      <n-descriptions v-if="rejectTarget" :column="isNarrow ? 1 : 2" label-placement="left" bordered size="small">
         <n-descriptions-item label="域名">
           <n-text code>{{ rejectTarget.domain }}</n-text>
         </n-descriptions-item>
@@ -303,7 +312,11 @@ onMounted(load);
         </n-descriptions-item>
       </n-descriptions>
 
-      <n-form label-placement="left" label-width="180" style="margin-top: 16px">
+      <n-form
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 180"
+        style="margin-top: 16px"
+      >
         <n-form-item label="驳回原因">
           <n-input
             v-model:value="rejectionReason"
@@ -315,7 +328,7 @@ onMounted(load);
       </n-form>
 
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="showReject = false">取消</n-button>
           <n-button type="error" :loading="processing" @click="submitReject">
             <template #icon><n-icon><CloseOutline /></n-icon></template>

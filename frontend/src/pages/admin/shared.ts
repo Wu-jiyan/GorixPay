@@ -1,9 +1,44 @@
-import { computed, ref } from 'vue';
+import { computed, onMounted, onUnmounted, readonly, ref } from 'vue';
 import axios from 'axios';
 import { formatDateTime } from '@/utils/format';
 
 /** 运营后台页面共用的取值 / 分页工具（仅本目录使用） */
 export type Row = Record<string, unknown>;
+
+/**
+ * 窄屏（手机）开关：全站共用一份 matchMedia 监听，页面只拿一个布尔值用。
+ * 断点固定 768px，和 styles/global.css 里缩 gut 的媒体查询保持一致。
+ * 用法：const isNarrow = useNarrow(); 模板里直接 isNarrow ? 'top' : 'left'。
+ */
+const NARROW_QUERY = '(max-width: 768px)';
+const narrowState = ref(false);
+let narrowQuery: MediaQueryList | null = null;
+let narrowSubscribers = 0;
+
+function onNarrowChange(event: MediaQueryListEvent) {
+  narrowState.value = event.matches;
+}
+
+/** 返回只读的窄屏标记；最后一个使用方卸载时摘掉监听 */
+export function useNarrow() {
+  onMounted(() => {
+    narrowSubscribers += 1;
+    if (!narrowQuery && typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+      narrowQuery = window.matchMedia(NARROW_QUERY);
+      narrowState.value = narrowQuery.matches;
+      narrowQuery.addEventListener('change', onNarrowChange);
+    }
+  });
+  onUnmounted(() => {
+    narrowSubscribers -= 1;
+    if (narrowSubscribers <= 0) {
+      narrowSubscribers = 0;
+      narrowQuery?.removeEventListener('change', onNarrowChange);
+      narrowQuery = null;
+    }
+  });
+  return readonly(narrowState);
+}
 
 export function asRow(value: unknown): Row {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Row) : {};

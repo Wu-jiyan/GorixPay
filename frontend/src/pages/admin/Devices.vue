@@ -18,7 +18,7 @@ import { devicesApi } from '@/api/devices';
 import type { Printer, VoiceDevice } from '@/api/devices';
 import { errorMessage } from '@/api/client';
 import { activeStatus, copyText, formatDateTime } from '@/utils/format';
-import { asRow, itemsOf } from './shared';
+import { asRow, itemsOf, useNarrow } from './shared';
 
 interface DeviceForm {
   device_no: string;
@@ -32,6 +32,7 @@ interface PrinterForm {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const tab = ref('voice');
 
@@ -423,7 +424,7 @@ onMounted(() => {
 <template>
   <admin-page title="语音设备与打印机" subtitle="设备侧拿 device_no + secret 轮询，播报与打印由支付成功钩子入队">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="devicesLoading || printersLoading" @click="reloadCurrent">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -459,7 +460,7 @@ onMounted(() => {
             :pagination="{ pageSize: 10 }"
             :row-key="(row: VoiceDevice) => row.id"
             :scroll-x="900"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
           >
             <template #empty>
               <n-empty description="暂无语音设备" size="small" />
@@ -475,7 +476,7 @@ onMounted(() => {
             :pagination="{ pageSize: 10 }"
             :row-key="(row: Printer) => row.id"
             :scroll-x="900"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
           >
             <template #empty>
               <n-empty description="暂无打印机" size="small" />
@@ -489,9 +490,15 @@ onMounted(() => {
       v-model:show="showDeviceForm"
       preset="card"
       :title="deviceEditingId ? '编辑语音设备' : '新增语音设备'"
-      style="width: 640px"
+      style="width: 640px; max-width: 94vw"
     >
-      <n-form ref="deviceFormRef" :model="deviceForm" :rules="deviceRules" label-placement="left" label-width="120">
+      <n-form
+        ref="deviceFormRef"
+        :model="deviceForm"
+        :rules="deviceRules"
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 120"
+      >
         <n-form-item label="设备号" path="device_no">
           <n-input
             v-model:value="deviceForm.device_no"
@@ -521,9 +528,15 @@ onMounted(() => {
       v-model:show="showPrinterForm"
       preset="card"
       :title="printerEditingId ? '编辑打印机' : '新增打印机'"
-      style="width: 640px"
+      style="width: 640px; max-width: 94vw"
     >
-      <n-form ref="printerFormRef" :model="printerForm" :rules="printerRules" label-placement="left" label-width="120">
+      <n-form
+        ref="printerFormRef"
+        :model="printerForm"
+        :rules="printerRules"
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 120"
+      >
         <n-form-item label="名称" path="name">
           <n-input v-model:value="printerForm.name" placeholder="例如 前台热敏打印机" />
         </n-form-item>
@@ -542,17 +555,17 @@ onMounted(() => {
       </template>
     </n-modal>
 
-    <n-modal v-model:show="showSecret" preset="card" :title="secretTitle" style="width: 640px">
+    <n-modal v-model:show="showSecret" preset="card" :title="secretTitle" style="width: 640px; max-width: 94vw">
       <n-alert type="warning" :bordered="false" style="margin-bottom: 16px">
         secret 只显示这一次，关掉就查不到了；丢了只能删除设备重建。
       </n-alert>
-      <n-space align="center" :size="12">
+      <n-space align="center" :wrap="true" :size="12">
         <n-input
           :value="secretValue"
           type="password"
           show-password-on="click"
           readonly
-          style="width: 440px"
+          style="width: 100%; max-width: 440px"
         />
         <n-button @click="copySecret">
           <template #icon>
@@ -568,12 +581,21 @@ onMounted(() => {
       </template>
     </n-modal>
 
-    <n-modal v-model:show="showVoiceTest" preset="card" title="发送测试播报" style="width: 640px">
+    <n-modal
+      v-model:show="showVoiceTest"
+      preset="card"
+      title="发送测试播报"
+      style="width: 640px; max-width: 94vw"
+    >
       <n-descriptions v-if="voiceTestTarget" :column="1" label-placement="left" size="small" bordered>
         <n-descriptions-item label="设备号">{{ voiceTestTarget.device_no }}</n-descriptions-item>
         <n-descriptions-item label="名称">{{ voiceTestTarget.name || '-' }}</n-descriptions-item>
       </n-descriptions>
-      <n-form label-placement="left" label-width="120" style="margin-top: 16px">
+      <n-form
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 120"
+        style="margin-top: 16px"
+      >
         <n-form-item label="播报内容">
           <n-input
             v-model:value="voiceTestText"

@@ -13,10 +13,11 @@ import AdminPage from '@/components/AdminPage.vue';
 import { adminApi } from '@/api';
 import type { PluginConfigField, PluginMeta } from '@/api';
 import { errorMessage } from '@/api/client';
-import { httpStatus, itemsOf } from './shared';
+import { httpStatus, itemsOf, useNarrow } from './shared';
 
 const message = useMessage();
 const router = useRouter();
+const isNarrow = useNarrow();
 
 const plugins = ref<PluginMeta[]>([]);
 const loading = ref(false);
@@ -214,7 +215,7 @@ onMounted(load);
 <template>
   <admin-page title="插件与渠道" subtitle="支付插件注册表元数据；具体渠道请在「支付渠道」页创建与配置">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
@@ -234,7 +235,7 @@ onMounted(load);
 
     <n-card size="small" :bordered="false">
       <template #header>
-        <n-space align="center" :size="10">
+        <n-space align="center" :size="10" :wrap="true">
           <n-text depth="3">
             已注册插件 {{ plugins.length }} 个，配置字段总计 {{ totalFields }} 项
           </n-text>
@@ -252,7 +253,7 @@ onMounted(load);
         :bordered="false"
         :single-line="false"
         :scroll-x="1080"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
       >
         <template #empty>
           <n-empty
@@ -270,11 +271,11 @@ onMounted(load);
       </n-data-table>
     </n-card>
 
-    <n-drawer v-model:show="showDetail" :width="720" placement="right">
+    <n-drawer v-model:show="showDetail" :width="isNarrow ? '92vw' : 720" placement="right">
       <n-drawer-content :title="detailTitle" closable>
         <n-empty v-if="!detail" description="暂无数据" size="small" />
         <n-space v-else vertical :size="16">
-          <n-descriptions :column="2" label-placement="left" bordered size="small">
+          <n-descriptions :column="isNarrow ? 1 : 2" label-placement="left" bordered size="small">
             <n-descriptions-item label="插件代码">
               <n-text code>{{ detail.code }}</n-text>
             </n-descriptions-item>
@@ -313,6 +314,7 @@ onMounted(load);
             :row-key="(row: PluginConfigField) => row.key"
             :bordered="false"
             :single-line="false"
+            :scroll-x="620"
             size="small"
           >
             <template #empty>

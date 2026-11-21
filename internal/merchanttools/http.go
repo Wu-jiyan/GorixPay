@@ -23,6 +23,9 @@ type Deps struct {
 	PublicURL string
 	Orders    *paymentservice.Service
 	Starter   PaymentStarter
+	// Channels filters the public test page by "a channel can be picked right
+	// now". Nil keeps every catalogue entry.
+	Channels ChannelSelector
 }
 
 // Handler exposes the merchant tools.
@@ -35,7 +38,9 @@ type Handler struct {
 // /api/v1/merchant/pay-code and /api/v1/merchant/test-order for the console,
 // /pay/code/{payment_type} for the payer.
 func Register(router *gin.Engine, deps Deps) *Service {
-	service := New(deps.DB, deps.PublicURL, nil).WithPayments(deps.Orders, deps.Starter)
+	service := New(deps.DB, deps.PublicURL, nil).
+		WithPayments(deps.Orders, deps.Starter).
+		WithChannels(deps.Channels)
 	if router == nil || deps.Sessions == nil {
 		return service
 	}
@@ -43,6 +48,11 @@ func Register(router *gin.Engine, deps Deps) *Service {
 	merchant := router.Group("/api/v1/merchant", deps.Sessions)
 	merchant.GET("/pay-code", handler.merchantPayCode)
 	merchant.POST("/test-order", handler.merchantTestOrder)
+	// 官网「支付测试」页（无需登录），对应上游 Epay 首页的 test.php。
+	router.GET("/api/v1/public/test-payment", handler.publicTestPage)
+	router.POST("/api/v1/public/test-payment", handler.publicTestOrder)
+	router.GET("/pay/test/ack", handler.testACK)
+	router.POST("/pay/test/ack", handler.testACK)
 	router.GET("/pay/code/ack", handler.payCodeACK)
 	router.POST("/pay/code/ack", handler.payCodeACK)
 	router.GET("/pay/code/:payment_type", handler.payCodePage)
@@ -87,6 +97,45 @@ func (handler *Handler) merchantTestOrder(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusCreated, order)
+}
+
+// publicTestPage serves the configuration of the public test page.
+func (handler *Handler) publicTestPage(ctx *gin.Context) {
+	page, err := handler.service.TestPage(ctx.Request.Context())
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, page)
+}
+
+type publicTestOrderRequest struct {
+	PaymentType string `json:"payment_type"`
+	AmountCents int64  `json:"amount_cents"`
+}
+
+// publicTestOrder creates one test order for the demo merchant. It is the only
+// order-creating endpoint that needs no session, so every bound it has (amount
+// cap, per-IP hourly quota, active-channel filter) is enforced in the service.
+func (handler *Handler) publicTestOrder(ctx *gin.Context) {
+	var request publicTestOrderRequest
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		invalid(ctx)
+		return
+	}
+	order, err := handler.service.CreatePublicTestOrder(ctx.Request.Context(), request.PaymentType, request.AmountCents, ctx.ClientIP())
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusCreated, order)
+}
+
+// testACK is the notify sink of a public test order: the money, if the payer
+// really pays, lands on the demo merchant's balance through the payment
+// callback, so the platform answers the notification itself.
+func (handler *Handler) testACK(ctx *gin.Context) {
+	ctx.String(http.StatusOK, "success")
 }
 
 // payCodePage renders the amount form behind a scanned pay code.
@@ -189,6 +238,10 @@ func writeError(ctx *gin.Context, err error) {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"code": "service_unavailable", "message": "自助测试支付未接线"})
 	case errors.Is(err, ErrPaymentTypeUnavailable):
 		ctx.JSON(http.StatusBadRequest, gin.H{"code": "payment_type_unavailable", "message": "该支付方式不可用"})
+	case errors.Is(err, ErrTestPageDisabled):
+		ctx.JSON(http.StatusForbidden, gin.H{"code": "test_disabled", "message": "站点未开放支付测试"})
+	case errors.Is(err, ErrTestRateLimited):
+		ctx.JSON(http.StatusTooManyRequests, gin.H{"code": "test_rate_limited", "message": "测试下单过于频繁，请稍后再试"})
 	case errors.Is(err, channelrouter.ErrNoAvailableChannel):
 		ctx.JSON(http.StatusConflict, gin.H{"code": "no_available_channel", "message": "该支付方式暂无可用通道"})
 	default:

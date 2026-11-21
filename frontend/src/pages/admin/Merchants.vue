@@ -8,12 +8,13 @@ import type { Credential, LedgerAccount, Merchant } from '@/api';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { activeStatus, formatDateTime, formatMoney } from '@/utils/format';
-import { normalizeLedgerAccount, useServerPaging } from './shared';
+import { normalizeLedgerAccount, useNarrow, useServerPaging } from './shared';
 import type { LedgerAccountRow } from './shared';
 
 type MerchantDetail = Merchant & { credentials?: Credential[]; accounts?: LedgerAccount[] };
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<Merchant[]>([]);
 const loading = ref(false);
@@ -231,7 +232,7 @@ onMounted(load);
 <template>
   <admin-page title="商户管理" subtitle="查看商户资料、密钥与账本余额，控制商户启用状态">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -242,41 +243,49 @@ onMounted(load);
     </template>
 
     <n-card size="small" :bordered="false">
-      <n-form inline :show-feedback="false">
-        <n-form-item label="关键字">
-          <n-input
-            v-model:value="keyword"
-            placeholder="搜索名称 / 邮箱 / 手机号"
-            clearable
-            style="width: 250px"
-            @keyup.enter="search"
-          >
-            <template #prefix>
-              <n-icon :component="SearchOutline" />
-            </template>
-          </n-input>
-        </n-form-item>
-        <n-form-item label="状态">
-          <n-select
-            v-model:value="status"
-            :options="statusOptions"
-            placeholder="全部状态"
-            clearable
-            style="width: 150px"
-          />
-        </n-form-item>
-        <n-form-item>
-          <n-space align="center">
-            <n-button type="primary" @click="search">
-              <template #icon>
-                <n-icon :component="SearchOutline" />
-              </template>
-              查询
-            </n-button>
-            <n-button @click="resetFilters">重置</n-button>
-            <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
-          </n-space>
-        </n-form-item>
+      <n-form :show-feedback="false" style="margin-bottom: 12px">
+        <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12">
+          <n-gi>
+            <n-form-item label="关键字">
+              <n-input
+                v-model:value="keyword"
+                placeholder="搜索名称 / 邮箱 / 手机号"
+                clearable
+                style="width: 100%"
+                @keyup.enter="search"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchOutline" />
+                </template>
+              </n-input>
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="状态">
+              <n-select
+                v-model:value="status"
+                :options="statusOptions"
+                placeholder="全部状态"
+                clearable
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item>
+              <n-space align="center" :wrap="true">
+                <n-button type="primary" @click="search">
+                  <template #icon>
+                    <n-icon :component="SearchOutline" />
+                  </template>
+                  查询
+                </n-button>
+                <n-button @click="resetFilters">重置</n-button>
+                <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
+              </n-space>
+            </n-form-item>
+          </n-gi>
+        </n-grid>
       </n-form>
 
       <n-data-table
@@ -287,17 +296,18 @@ onMounted(load);
         :pagination="pagination"
         :row-key="(row: Merchant) => row.id"
         :scroll-x="1200"
+        :size="isNarrow ? 'small' : 'medium'"
         @update:page="onPage"
         @update:page-size="onPageSize"
       />
     </n-card>
 
-    <n-drawer v-model:show="showDetail" :width="720" placement="right">
+    <n-drawer v-model:show="showDetail" :width="isNarrow ? '92vw' : 720" placement="right">
       <n-drawer-content :title="detail?.display_name ?? '商户详情'" closable>
         <n-spin :show="detailLoading">
           <n-empty v-if="!detail && !detailLoading" description="暂无商户数据" />
           <template v-else-if="detail">
-            <n-descriptions :column="2" bordered size="small" label-placement="left">
+            <n-descriptions :column="isNarrow ? 1 : 2" bordered size="small" label-placement="left">
               <n-descriptions-item label="商户 ID">
                 <n-text class="mono">{{ detail.id }}</n-text>
               </n-descriptions-item>

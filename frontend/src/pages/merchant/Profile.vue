@@ -18,9 +18,11 @@ import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { activeStatus, formatDateTime } from '@/utils/format';
 import { useAuthStore } from '@/stores/auth';
+import { useNarrow } from './shared';
 
 const message = useMessage();
 const auth = useAuthStore();
+const isNarrow = useNarrow();
 
 const loading = ref(true);
 const saving = ref(false);
@@ -280,11 +282,11 @@ onMounted(reload);
           ref="formRef"
           :model="form"
           :rules="rules"
-          label-placement="left"
-          label-width="160"
+          :label-placement="isNarrow ? 'top' : 'left'"
+          :label-width="isNarrow ? undefined : 160"
           @submit.prevent="handleSave"
         >
-          <n-grid cols="1 m:2" responsive="screen" :x-gap="16">
+          <n-grid cols="1 m:2" responsive="screen" item-responsive :x-gap="16">
             <n-gi>
               <n-form-item label="显示名称" path="display_name">
                 <n-input v-model:value="form.display_name" placeholder="请输入显示名称" :maxlength="40" show-count />
@@ -324,7 +326,7 @@ onMounted(reload);
 
     <n-card size="small" :bordered="false" title="基本信息" style="margin-top: 16px">
       <n-spin :show="loading">
-        <n-descriptions :column="2" bordered size="small" label-placement="left" :label-width="120">
+        <n-descriptions :column="isNarrow ? 1 : 2" bordered size="small" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120">
           <n-descriptions-item label="商户 ID">
             <n-text class="mono" style="word-break: break-all">{{ profile?.id || '-' }}</n-text>
           </n-descriptions-item>
@@ -351,8 +353,8 @@ onMounted(reload);
         ref="pwdFormRef"
         :model="pwdForm"
         :rules="pwdRules"
-        label-placement="left"
-        label-width="160"
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 160"
         @submit.prevent="handleChangePassword"
       >
         <n-form-item label="当前密码" path="old_password">
@@ -393,7 +395,7 @@ onMounted(reload);
           </n-input>
         </n-form-item>
         <n-form-item>
-          <n-space align="center">
+          <n-space align="center" :wrap="true">
             <n-button type="primary" :loading="pwdSaving" attr-type="submit" @click="handleChangePassword">
               修改密码
             </n-button>
@@ -407,7 +409,7 @@ onMounted(reload);
 
     <n-card size="small" :bordered="false" title="通知偏好" style="margin-top: 16px">
       <n-spin :show="prefsLoading">
-        <n-form label-placement="left" label-width="160">
+        <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
           <n-form-item label="支付成功通知">
             <n-switch v-model:value="prefs.notify_payment" />
           </n-form-item>
@@ -418,7 +420,7 @@ onMounted(reload);
             <n-switch v-model:value="prefs.notify_complaint" />
           </n-form-item>
           <n-form-item label="通知渠道">
-            <n-space align="center">
+            <n-space align="center" :wrap="true">
               <n-radio-group :value="prefs.notify_channel" @update:value="handleChannelChange">
                 <n-radio-button value="mail">邮件</n-radio-button>
                 <n-radio-button value="sms">短信</n-radio-button>

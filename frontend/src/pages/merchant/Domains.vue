@@ -8,8 +8,10 @@ import type { MerchantDomain } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { financeStatus, formatDateTime } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const loading = ref(true);
 const notEnabled = ref(false);
@@ -148,7 +150,7 @@ onMounted(() => {
 <template>
   <admin-page title="支付域名" subtitle="添加下单使用的 notify_url / return_url 域名，平台审核通过后生效">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -182,7 +184,7 @@ onMounted(() => {
         :row-key="rowKey"
         :pagination="false"
         :scroll-x="940"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
       >
         <template #empty>
           <n-empty description="还没有添加域名" size="small" />
@@ -190,8 +192,13 @@ onMounted(() => {
       </n-data-table>
     </n-card>
 
-    <n-modal v-model:show="modalVisible" preset="card" title="添加支付域名" style="width: 620px">
-      <n-form label-placement="left" label-width="160">
+    <n-modal
+      v-model:show="modalVisible"
+      preset="card"
+      title="添加支付域名"
+      style="width: 620px; max-width: 94vw"
+    >
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-form-item label="域名">
           <n-input
             v-model:value="domainInput"

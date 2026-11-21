@@ -9,7 +9,7 @@ import { errorMessage, http } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import PaymentBrandIcon from '@/components/PaymentBrandIcon.vue';
 import { activeStatus, paymentTypeText } from '@/utils/format';
-import { asRow, itemsOf, prettyJson } from './shared';
+import { asRow, itemsOf, prettyJson, useNarrow } from './shared';
 
 interface ChannelForm {
   name: string;
@@ -46,6 +46,7 @@ interface TestResult {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<Channel[]>([]);
 const plugins = ref<PluginMeta[]>([]);
@@ -463,7 +464,7 @@ onMounted(() => {
 <template>
   <admin-page title="支付渠道" subtitle="上游支付通道的插件配置、优先级、权重与启用状态管理">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -487,6 +488,7 @@ onMounted(() => {
         :pagination="{ pageSize: 10 }"
         :row-key="(row: Channel) => row.id"
         :scroll-x="1300"
+        :size="isNarrow ? 'small' : 'medium'"
       />
     </n-card>
 
@@ -508,8 +510,14 @@ onMounted(() => {
         </n-alert>
       </n-space>
 
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="120">
-        <n-grid :cols="2" :x-gap="16">
+      <n-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 120"
+      >
+        <n-grid cols="1 s:2" responsive="screen" :x-gap="16" :y-gap="12">
           <n-form-item-gi label="渠道名称" path="name">
             <n-input v-model:value="form.name" placeholder="例如：支付宝-主通道" />
           </n-form-item-gi>
@@ -533,14 +541,14 @@ onMounted(() => {
             <n-input-number v-model:value="form.weight" :min="1" :step="1" style="width: 100%" />
           </n-form-item-gi>
 
-          <n-form-item-gi :span="2" :show-label="false" :show-feedback="false">
+          <n-form-item-gi :span="isNarrow ? 1 : 2" :show-label="false" :show-feedback="false">
             <n-collapse :default-expanded-names="['plugin-config', 'upstream']" style="width: 100%">
               <n-collapse-item name="plugin-config">
                 <template #header>
                   插件配置（<n-text class="mono">{{ form.plugin_code }}</n-text>）
                 </template>
                 <n-empty v-if="configFields.length === 0" description="该插件没有额外配置项" size="small" />
-                <n-grid v-else :cols="2" :x-gap="16">
+                <n-grid v-else cols="1 s:2" responsive="screen" :x-gap="16" :y-gap="12">
                   <n-form-item-gi
                     v-for="field in configFields"
                     :key="field.key"
@@ -574,7 +582,7 @@ onMounted(() => {
 
               <n-collapse-item v-if="isEpay" name="upstream">
                 <template #header>上游参数（epay 兼容字段，同时写入 config）</template>
-                <n-grid :cols="2" :x-gap="16">
+                <n-grid cols="1 s:2" responsive="screen" :x-gap="16" :y-gap="12">
                   <n-form-item-gi label="接口地址" path="api_url">
                     <n-input v-model:value="form.api_url" placeholder="上游网关地址，例如 https://epay.example.com" />
                   </n-form-item-gi>
@@ -597,7 +605,7 @@ onMounted(() => {
       </n-form>
 
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="showForm = false">取消</n-button>
           <n-button type="primary" :loading="submitting" @click="submit">
             <template #icon>
@@ -612,7 +620,7 @@ onMounted(() => {
     <n-modal v-model:show="showTest" preset="card" title="渠道测试结果" style="width: 680px; max-width: 94vw">
       <n-empty v-if="!testResult" description="暂无测试结果" />
       <template v-else>
-        <n-descriptions :column="2" bordered size="small" label-placement="left">
+        <n-descriptions :column="isNarrow ? 1 : 2" bordered size="small" label-placement="left">
           <n-descriptions-item label="渠道">{{ testResult.channelName }}</n-descriptions-item>
           <n-descriptions-item label="结果">
             <n-tag :type="testResult.ok ? 'success' : 'error'" size="small" :bordered="false">
@@ -632,7 +640,7 @@ onMounted(() => {
       </template>
 
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="showTest = false">关闭</n-button>
         </n-space>
       </template>

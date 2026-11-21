@@ -29,4 +29,17 @@ withDefaults(
   width: 100%;
   min-width: 0;
 }
+/* 手机上标题会被副标题挤成两行（「订单 / 管理」），副标题这时只是噪音，直接收掉。 */
+@media (max-width: 768px) {
+  .admin-page :deep(.n-page-header__subtitle) {
+    display: none;
+  }
+  .admin-page :deep(.n-page-header) {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .admin-page :deep(.n-page-header__extra) {
+    width: 100%;
+  }
+}
 </style>

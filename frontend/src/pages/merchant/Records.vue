@@ -7,8 +7,10 @@ import { financeApi, type LedgerRecord, type RecordsQuery } from '@/api/merchant
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { formatDateTime, formatMoney } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const TYPE_LABELS: Record<string, string> = {
   payment: '订单支付',
@@ -192,7 +194,7 @@ onMounted(() => {
 <template>
   <admin-page title="资金明细" subtitle="账本分录逐笔可查，支持按时间与类型筛选">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -209,37 +211,43 @@ onMounted(() => {
     </template>
 
     <n-card size="small" :bordered="false">
-      <n-form inline :show-feedback="false">
-        <n-form-item label="分录类型">
-          <n-select
-            v-model:value="filters.type"
-            :options="typeOptions"
-            placeholder="全部类型"
-            clearable
-            style="width: 170px"
-          />
-        </n-form-item>
-        <n-form-item label="时间区间">
-          <n-date-picker
-            v-model:value="filters.range"
-            type="daterange"
-            clearable
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            style="width: 260px"
-          />
-        </n-form-item>
-        <n-form-item>
-          <n-space>
-            <n-button type="primary" :loading="loading" @click="handleSearch">
-              <template #icon>
-                <n-icon :component="SearchOutline" />
-              </template>
-              查询
-            </n-button>
-            <n-button @click="handleReset">重置</n-button>
-          </n-space>
-        </n-form-item>
+      <n-form :show-feedback="false">
+        <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12">
+          <n-gi>
+            <n-form-item label="分录类型">
+              <n-select
+                v-model:value="filters.type"
+                :options="typeOptions"
+                placeholder="全部类型"
+                clearable
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="时间区间">
+              <n-date-picker
+                v-model:value="filters.range"
+                type="daterange"
+                clearable
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-space :wrap="true">
+              <n-button type="primary" :loading="loading" @click="handleSearch">
+                <template #icon>
+                  <n-icon :component="SearchOutline" />
+                </template>
+                查询
+              </n-button>
+              <n-button @click="handleReset">重置</n-button>
+            </n-space>
+          </n-gi>
+        </n-grid>
       </n-form>
 
       <n-data-table
@@ -251,7 +259,7 @@ onMounted(() => {
         :bordered="false"
         :row-key="rowKey"
         :scroll-x="1060"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       >

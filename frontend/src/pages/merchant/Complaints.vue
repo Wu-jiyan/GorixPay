@@ -8,8 +8,10 @@ import { errorMessage } from '@/api/client';
 import { downloadMerchantCsv } from '@/api/merchantExports';
 import AdminPage from '@/components/AdminPage.vue';
 import { formatDateTime, formatMoney, paymentTypeText } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const loading = ref(true);
 const exporting = ref(false);
@@ -201,7 +203,7 @@ onMounted(() => {
 <template>
   <admin-page title="我的投诉" subtitle="查看渠道投诉的处理进度与平台回复（只读）">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -231,7 +233,7 @@ onMounted(() => {
         :bordered="false"
         :row-key="rowKey"
         :scroll-x="1200"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       >
@@ -241,11 +243,11 @@ onMounted(() => {
       </n-data-table>
     </n-card>
 
-    <n-drawer v-model:show="detailVisible" :width="560" placement="right">
+    <n-drawer v-model:show="detailVisible" :width="isNarrow ? '92vw' : 560" placement="right">
       <n-drawer-content title="投诉详情" closable>
         <n-spin :show="detailLoading">
           <template v-if="detail">
-            <n-descriptions :column="2" bordered size="small" label-placement="left" :label-width="96">
+            <n-descriptions :column="isNarrow ? 1 : 2" bordered size="small" label-placement="left" :label-width="96">
               <n-descriptions-item label="投诉单号" :span="2">
                 <n-text class="mono" style="word-break: break-all">{{ detail.complaint_no || detail.id }}</n-text>
               </n-descriptions-item>
@@ -286,7 +288,7 @@ onMounted(() => {
             </n-card>
 
             <n-card size="small" :bordered="false" title="回复投诉" style="margin-top: 16px">
-              <n-form label-placement="left" label-width="160">
+              <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
                 <n-form-item label="回复内容">
                   <n-input
                     type="textarea"

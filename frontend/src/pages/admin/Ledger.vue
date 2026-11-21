@@ -31,6 +31,7 @@ import {
   prettyJson,
   textOf,
   usePendingAction,
+  useNarrow,
   useServerPaging,
 } from './shared';
 import type { LedgerAccountRow } from './shared';
@@ -38,6 +39,7 @@ import type { LedgerAccountRow } from './shared';
 type Row = Record<string, unknown>;
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const tab = ref('accounts');
 
@@ -528,7 +530,7 @@ onMounted(() => {
 <template>
   <admin-page title="资金账本" subtitle="复式记账账户、交易流水与人工资金操作">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="accountsLoading || transactionsLoading || operationsLoading" @click="reloadCurrent">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -560,7 +562,7 @@ onMounted(() => {
             :pagination="accountsPagination"
             :row-key="(row: LedgerAccountRow) => row.id"
             :scroll-x="1600"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
             remote
             @update:page="onAccountsPage"
             @update:page-size="onAccountsPageSize"
@@ -586,7 +588,7 @@ onMounted(() => {
             :row-key="(row: Row) => String(row.id ?? '')"
             :row-props="rowProps"
             :scroll-x="1200"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
             remote
             @update:page="onTransactionsPage"
             @update:page-size="onTransactionsPageSize"
@@ -614,7 +616,7 @@ onMounted(() => {
             :pagination="operationsPagination"
             :row-key="(row: Row) => String(row.id ?? '')"
             :scroll-x="1600"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
             remote
             @update:page="onOperationsPage"
             @update:page-size="onOperationsPageSize"
@@ -627,10 +629,10 @@ onMounted(() => {
       </n-tabs>
     </n-card>
 
-    <n-drawer v-model:show="showAccount" :width="640" placement="right">
+    <n-drawer v-model:show="showAccount" :width="isNarrow ? '92vw' : 640" placement="right">
       <n-drawer-content :title="`账户 ${accountId}`" closable>
         <n-spin :show="accountLoading">
-          <n-descriptions :column="2" bordered label-placement="left" size="small">
+          <n-descriptions :column="isNarrow ? 1 : 2" bordered label-placement="left" size="small">
             <n-descriptions-item label="账户 ID">
               <span class="mono">{{ accountId }}</span>
             </n-descriptions-item>
@@ -675,7 +677,7 @@ onMounted(() => {
             :pagination="entryPagination"
             :row-key="(row: LedgerEntryRow) => String(row.id ?? row.sequence ?? '')"
             :scroll-x="900"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
             remote
             @update:page="accountEntriesPaging.onPage"
             @update:page-size="accountEntriesPaging.onPageSize"
@@ -688,10 +690,10 @@ onMounted(() => {
       </n-drawer-content>
     </n-drawer>
 
-    <n-drawer v-model:show="showTransaction" :width="640" placement="right">
+    <n-drawer v-model:show="showTransaction" :width="isNarrow ? '92vw' : 640" placement="right">
       <n-drawer-content title="交易明细" closable>
         <n-spin :show="transactionLoading">
-          <n-descriptions :column="2" bordered label-placement="left" size="small">
+          <n-descriptions :column="isNarrow ? 1 : 2" bordered label-placement="left" size="small">
             <n-descriptions-item label="交易 ID">
               <span class="mono">{{ fieldText(transactionDetail, 'id') }}</span>
             </n-descriptions-item>
@@ -704,10 +706,10 @@ onMounted(() => {
             <n-descriptions-item label="关联单号">
               <span class="mono">{{ fieldText(transactionDetail, 'reference_id') }}</span>
             </n-descriptions-item>
-            <n-descriptions-item label="摘要" :span="2">
+            <n-descriptions-item label="摘要" :span="isNarrow ? 1 : 2">
               {{ fieldText(transactionDetail, 'description') }}
             </n-descriptions-item>
-            <n-descriptions-item label="创建时间" :span="2">
+            <n-descriptions-item label="创建时间" :span="isNarrow ? 1 : 2">
               {{ formatDateTime(textOf(pick(transactionDetail, 'created_at'), '')) }}
             </n-descriptions-item>
           </n-descriptions>
@@ -721,7 +723,7 @@ onMounted(() => {
             :row-key="(row: LedgerEntryRow) => String(row.id ?? row.sequence ?? '')"
             :scroll-x="900"
             :pagination="false"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
           >
             <template #empty>
               <n-empty description="这笔交易没有分录" size="small" />
@@ -748,10 +750,10 @@ onMounted(() => {
       </n-drawer-content>
     </n-drawer>
 
-    <n-drawer v-model:show="showOperation" :width="640" placement="right">
+    <n-drawer v-model:show="showOperation" :width="isNarrow ? '92vw' : 640" placement="right">
       <n-drawer-content title="资金操作审批" closable>
         <n-spin :show="operationLoading">
-          <n-descriptions :column="2" bordered label-placement="left" size="small">
+          <n-descriptions :column="isNarrow ? 1 : 2" bordered label-placement="left" size="small">
             <n-descriptions-item label="操作 ID">
               <span class="mono">{{ fieldText(operationDetail, 'id') }}</span>
             </n-descriptions-item>
@@ -781,7 +783,7 @@ onMounted(() => {
               <span class="mono">{{ fieldText(operationDetail, 'reference_id') }}</span>
             </n-descriptions-item>
             <n-descriptions-item label="摘要">{{ fieldText(operationDetail, 'description') }}</n-descriptions-item>
-            <n-descriptions-item label="驳回原因" :span="2">
+            <n-descriptions-item label="驳回原因" :span="isNarrow ? 1 : 2">
               {{ fieldText(operationDetail, 'rejection_reason') }}
             </n-descriptions-item>
           </n-descriptions>
@@ -804,7 +806,7 @@ onMounted(() => {
             <n-divider title-placement="left">
               审批
             </n-divider>
-            <n-form label-placement="left" label-width="90" :show-feedback="false">
+            <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 90" :show-feedback="false">
               <n-form-item label="驳回原因">
                 <n-input v-model:value="operationReason" placeholder="驳回时必填，通过可留空" />
               </n-form-item>
@@ -830,7 +832,7 @@ onMounted(() => {
         </n-spin>
 
         <template #footer>
-          <n-space justify="end">
+          <n-space justify="end" :wrap="true">
             <n-button @click="showOperation = false">关闭</n-button>
             <template v-if="operationPending">
               <n-button

@@ -9,9 +9,10 @@ import type { Order } from '@/api';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { formatDateTime, formatMoney, orderStatus, paymentTypeText } from '@/utils/format';
-import { toISOString, useServerPaging } from './shared';
+import { toISOString, useNarrow, useServerPaging } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<Order[]>([]);
 const loading = ref(false);
@@ -229,7 +230,7 @@ onMounted(load);
 <template>
   <admin-page title="订单管理" subtitle="全平台支付订单查询、明细查看与未支付关单">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -246,59 +247,71 @@ onMounted(load);
     </template>
 
     <n-card size="small" :bordered="false">
-      <n-form inline :show-feedback="false">
-        <n-form-item label="关键字">
-          <n-input
-            v-model:value="keyword"
-            placeholder="订单号 / 商品名"
-            clearable
-            style="width: 210px"
-            @keyup.enter="search"
-          >
-            <template #prefix>
-              <n-icon :component="SearchOutline" />
-            </template>
-          </n-input>
-        </n-form-item>
-        <n-form-item label="状态">
-          <n-select
-            v-model:value="status"
-            :options="statusOptions"
-            placeholder="全部状态"
-            clearable
-            style="width: 140px"
-          />
-        </n-form-item>
-        <n-form-item label="支付方式">
-          <n-select
-            v-model:value="paymentType"
-            :options="paymentTypeOptions"
-            placeholder="全部支付方式"
-            clearable
-            style="width: 150px"
-          />
-        </n-form-item>
-        <n-form-item label="创建时间">
-          <n-date-picker
-            v-model:value="dateRange"
-            type="daterange"
-            clearable
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            style="width: 260px"
-          />
-        </n-form-item>
-        <n-form-item>
-          <n-space>
-            <n-button type="primary" @click="search">
-              <template #icon>
-                <n-icon :component="SearchOutline" />
-              </template>
-              查询
-            </n-button>
-            <n-button @click="resetFilters">重置</n-button>
-          </n-space>
-        </n-form-item>
+      <n-form :show-feedback="false" style="margin-bottom: 12px">
+        <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12">
+          <n-gi>
+            <n-form-item label="关键字">
+              <n-input
+                v-model:value="keyword"
+                placeholder="订单号 / 商品名"
+                clearable
+                style="width: 100%"
+                @keyup.enter="search"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchOutline" />
+                </template>
+              </n-input>
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="状态">
+              <n-select
+                v-model:value="status"
+                :options="statusOptions"
+                placeholder="全部状态"
+                clearable
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="支付方式">
+              <n-select
+                v-model:value="paymentType"
+                :options="paymentTypeOptions"
+                placeholder="全部支付方式"
+                clearable
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="创建时间">
+              <n-date-picker
+                v-model:value="dateRange"
+                type="daterange"
+                clearable
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item>
+              <n-space align="center" :wrap="true">
+                <n-button type="primary" @click="search">
+                  <template #icon>
+                    <n-icon :component="SearchOutline" />
+                  </template>
+                  查询
+                </n-button>
+                <n-button @click="resetFilters">重置</n-button>
+              </n-space>
+            </n-form-item>
+          </n-gi>
+        </n-grid>
       </n-form>
 
       <n-data-table
@@ -309,13 +322,14 @@ onMounted(load);
         :pagination="pagination"
         :row-key="(row: Order) => row.id"
         :scroll-x="1200"
+        :size="isNarrow ? 'small' : 'medium'"
         @update:page="onPage"
         @update:page-size="onPageSize"
       />
     </n-card>
 
     <n-modal v-model:show="showDetail" preset="card" title="订单详情" style="width: 760px; max-width: 94vw">
-      <n-descriptions v-if="detail" :column="2" bordered size="small" label-placement="left">
+      <n-descriptions v-if="detail" :column="isNarrow ? 1 : 2" bordered size="small" label-placement="left">
         <n-descriptions-item v-for="field in detailFields" :key="field.label" :label="field.label">
           <n-text :class="{ mono: field.mono }" style="word-break: break-all">{{ field.value }}</n-text>
         </n-descriptions-item>

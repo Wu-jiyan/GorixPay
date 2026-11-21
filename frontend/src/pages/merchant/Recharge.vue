@@ -8,6 +8,7 @@ import type { DepositInfo, Order } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { copyText, formatDateTime, formatMoney, orderStatus, yuanToCents } from '@/utils/format';
+import { useNarrow } from './shared';
 
 interface FundingResult {
   trade_no: string;
@@ -16,6 +17,7 @@ interface FundingResult {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const activeTab = ref<'recharge' | 'deposit'>('recharge');
 
@@ -275,7 +277,7 @@ onMounted(() => {
             <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16">
               <n-gi>
                 <n-card size="small" :bordered="false" title="充值金额">
-                  <n-form label-placement="left" label-width="160">
+                  <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
                     <n-form-item label="充值金额（元）">
                       <n-input-number
                         v-model:value="rechargeAmount"
@@ -288,7 +290,7 @@ onMounted(() => {
                       </n-input-number>
                     </n-form-item>
                     <n-form-item label="快捷金额">
-                      <n-space>
+                      <n-space :wrap="true">
                         <n-button
                           v-for="item in quickAmounts"
                           :key="item"
@@ -325,7 +327,7 @@ onMounted(() => {
                         </n-button>
                       </template>
                     </n-input>
-                    <n-space>
+                    <n-space :wrap="true">
                       <n-button
                         type="primary"
                         tag="a"
@@ -366,7 +368,7 @@ onMounted(() => {
                 :bordered="false"
                 :row-key="rowKey"
                 :scroll-x="940"
-                size="small"
+                :size="isNarrow ? 'small' : 'medium'"
                 @update:page="handleRechargePageChange"
                 @update:page-size="handleRechargePageSizeChange"
               >
@@ -431,7 +433,7 @@ onMounted(() => {
             <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16" style="margin-top: 16px">
               <n-gi>
                 <n-card size="small" :bordered="false" title="缴纳保证金">
-                  <n-form label-placement="left" label-width="160">
+                  <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
                     <n-form-item label="缴纳金额（元）">
                       <n-input-number
                         v-model:value="depositAmount"
@@ -465,7 +467,7 @@ onMounted(() => {
                         </n-button>
                       </template>
                     </n-input>
-                    <n-space>
+                    <n-space :wrap="true">
                       <n-button
                         type="primary"
                         tag="a"
@@ -506,7 +508,7 @@ onMounted(() => {
                 :bordered="false"
                 :row-key="rowKey"
                 :scroll-x="940"
-                size="small"
+                :size="isNarrow ? 'small' : 'medium'"
                 @update:page="handleDepositPageChange"
                 @update:page-size="handleDepositPageSizeChange"
               >

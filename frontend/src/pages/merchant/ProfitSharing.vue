@@ -20,8 +20,10 @@ import { errorMessage } from '@/api/client';
 import { downloadMerchantCsv } from '@/api/merchantExports';
 import AdminPage from '@/components/AdminPage.vue';
 import { activeStatus, financeStatus, formatDateTime, formatMoney } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const activeTab = ref<'receivers' | 'orders'>('receivers');
 
@@ -314,7 +316,7 @@ onMounted(() => {
 <template>
   <admin-page title="分账管理" subtitle="维护分账接收方，查看每笔订单的分账流水">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="receiverLoading" @click="handleRefresh">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -350,7 +352,7 @@ onMounted(() => {
             :row-key="receiverRowKey"
             :pagination="false"
             :scroll-x="980"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
           >
             <template #empty>
               <n-empty description="还没有添加分账接收方" size="small" />
@@ -368,7 +370,7 @@ onMounted(() => {
             :bordered="false"
             :row-key="orderRowKey"
             :scroll-x="760"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
             @update:page="handleOrderPageChange"
             @update:page-size="handleOrderPageSizeChange"
           >
@@ -384,11 +386,11 @@ onMounted(() => {
       v-model:show="receiverModalVisible"
       preset="card"
       :title="editingId ? '编辑接收方' : '新增接收方'"
-      style="width: 620px"
+      style="width: 620px; max-width: 94vw"
     >
-      <n-form label-placement="left" label-width="160">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-form-item label="接收方类型">
-          <n-select v-model:value="form.receiver_type" :options="receiverTypeOptions" style="width: 240px" />
+          <n-select v-model:value="form.receiver_type" :options="receiverTypeOptions" style="width: 100%" />
         </n-form-item>
         <n-form-item label="账号">
           <n-input v-model:value="form.account" placeholder="支付宝账号 / 银行卡号 / 商户号" :maxlength="128" />
@@ -403,7 +405,7 @@ onMounted(() => {
             :min="0.01"
             :max="100"
             placeholder="例如 5.00"
-            style="width: 200px"
+            style="width: 100%"
           >
             <template #suffix>%</template>
           </n-input-number>
@@ -413,7 +415,7 @@ onMounted(() => {
         比例按订单金额计算、向下取整到分；平台手续费先扣，再按比例分账。
       </n-alert>
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="receiverModalVisible = false">取消</n-button>
           <n-button type="primary" :loading="receiverSaving" @click="saveReceiver">保存</n-button>
         </n-space>

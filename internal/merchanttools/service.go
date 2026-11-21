@@ -30,6 +30,7 @@ type Service struct {
 	db        *gorm.DB
 	orders    *paymentservice.Service
 	starter   PaymentStarter
+	channels  ChannelSelector
 	publicURL string
 	now       func() time.Time
 }

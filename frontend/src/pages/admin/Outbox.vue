@@ -13,12 +13,14 @@ import {
   pick,
   previewJson,
   prettyJson,
+  useNarrow,
   useServerPaging,
 } from './shared';
 
 type Row = Record<string, unknown>;
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<Row[]>([]);
 const loading = ref(false);
@@ -236,7 +238,7 @@ onMounted(() => {
 <template>
   <admin-page title="消息队列" subtitle="商户通知 Outbox：投递状态、重试与死信重投">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading || statsLoading" @click="refreshAll">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -269,18 +271,26 @@ onMounted(() => {
     </n-spin>
 
     <n-card size="small" :bordered="false">
-      <n-space :size="10" align="center" style="margin-bottom: 12px">
-        <n-select
-          v-model:value="status"
-          :options="statusOptions"
-          placeholder="全部状态"
-          clearable
-          style="width: 160px"
-        />
-        <n-button type="primary" @click="search">查询</n-button>
-        <n-button @click="resetFilters">重置</n-button>
-        <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
-      </n-space>
+      <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">
+        <n-gi>
+          <n-select
+            v-model:value="status"
+            :options="statusOptions"
+            placeholder="全部状态"
+            clearable
+            style="width: 100%"
+          />
+        </n-gi>
+        <n-gi>
+          <n-space :wrap="true">
+            <n-button type="primary" @click="search">查询</n-button>
+            <n-button @click="resetFilters">重置</n-button>
+          </n-space>
+        </n-gi>
+        <n-gi>
+          <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
+        </n-gi>
+      </n-grid>
 
       <n-data-table
         :columns="columns"
@@ -289,7 +299,7 @@ onMounted(() => {
         :pagination="pagination"
         :row-key="(row: Row) => String(row.id ?? row.ID ?? '')"
         :scroll-x="1500"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         remote
         @update:page="onPage"
         @update:page-size="onPageSize"
@@ -300,9 +310,9 @@ onMounted(() => {
       </n-data-table>
     </n-card>
 
-    <n-drawer v-model:show="showDetail" :width="640" placement="right">
+    <n-drawer v-model:show="showDetail" :width="isNarrow ? '92vw' : 640" placement="right">
       <n-drawer-content title="消息详情" closable>
-        <n-descriptions :column="2" bordered label-placement="left" size="small">
+        <n-descriptions :column="isNarrow ? 1 : 2" bordered label-placement="left" size="small">
           <n-descriptions-item label="消息 ID">
             <span class="mono">{{ fieldText(detailRow, 'id', 'ID') }}</span>
           </n-descriptions-item>
@@ -321,7 +331,7 @@ onMounted(() => {
           <n-descriptions-item label="创建时间">
             {{ detailCreatedAt }}
           </n-descriptions-item>
-          <n-descriptions-item label="最近错误" :span="2">
+          <n-descriptions-item label="最近错误" :span="isNarrow ? 1 : 2">
             <span style="color: #b91c1c">{{ fieldText(detailRow, 'last_error', 'LastError') }}</span>
           </n-descriptions-item>
         </n-descriptions>

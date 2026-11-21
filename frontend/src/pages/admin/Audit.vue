@@ -8,7 +8,7 @@ import { adminApi } from '@/api';
 import type { PageQuery } from '@/api';
 import { errorMessage } from '@/api/client';
 import { formatDateTime } from '@/utils/format';
-import { prettyJson, useServerPaging } from './shared';
+import { prettyJson, useNarrow, useServerPaging } from './shared';
 
 interface AuditRow {
   id: string;
@@ -20,6 +20,7 @@ interface AuditRow {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<AuditRow[]>([]);
 const loading = ref(false);
@@ -123,33 +124,43 @@ onMounted(load);
     </template>
 
     <n-card size="small" :bordered="false">
-      <n-space :size="10" align="center" style="margin-bottom: 12px">
-        <n-input
-          v-model:value="keyword"
-          placeholder="关键字（路径 / 资源 ID）"
-          clearable
-          style="width: 260px"
-          @keyup.enter="search"
-        >
-          <template #prefix>
-            <n-icon :component="SearchOutline" />
-          </template>
-        </n-input>
-        <n-input
-          v-model:value="eventType"
-          placeholder="事件类型，例如 admin.http.patch"
-          clearable
-          style="width: 260px"
-          @keyup.enter="search"
-        >
-          <template #prefix>
-            <n-icon :component="FunnelOutline" />
-          </template>
-        </n-input>
-        <n-button type="primary" @click="search">查询</n-button>
-        <n-button @click="resetFilters">重置</n-button>
-        <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
-      </n-space>
+      <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">
+        <n-gi>
+          <n-input
+            v-model:value="keyword"
+            placeholder="关键字（路径 / 资源 ID）"
+            clearable
+            style="width: 100%"
+            @keyup.enter="search"
+          >
+            <template #prefix>
+              <n-icon :component="SearchOutline" />
+            </template>
+          </n-input>
+        </n-gi>
+        <n-gi>
+          <n-input
+            v-model:value="eventType"
+            placeholder="事件类型，例如 admin.http.patch"
+            clearable
+            style="width: 100%"
+            @keyup.enter="search"
+          >
+            <template #prefix>
+              <n-icon :component="FunnelOutline" />
+            </template>
+          </n-input>
+        </n-gi>
+        <n-gi>
+          <n-space :wrap="true">
+            <n-button type="primary" @click="search">查询</n-button>
+            <n-button @click="resetFilters">重置</n-button>
+          </n-space>
+        </n-gi>
+        <n-gi>
+          <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
+        </n-gi>
+      </n-grid>
 
       <n-text depth="3" style="display: block; font-size: 12px; margin-bottom: 10px">
         点行首箭头展开完整 payload；解析失败时展示原始文本。
@@ -162,7 +173,7 @@ onMounted(load);
         :pagination="pagination"
         :row-key="(row: AuditRow) => row.id"
         :scroll-x="1400"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         remote
         @update:page="onPage"
         @update:page-size="onPageSize"

@@ -261,6 +261,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			PublicURL: cfg.HTTP.PublicURL,
 			Orders:    orders,
 			Starter:   orchestrator,
+			Channels:  channels,
 		})
 		oauthService := oauth.Register(router.Group("/api/v1"), db, sessions, cipher, cfg.HTTP.PublicURL)
 		finance := financeservice.New(db, ledgerWriter, time.Now)

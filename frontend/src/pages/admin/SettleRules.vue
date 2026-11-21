@@ -9,7 +9,7 @@ import AdminPage from '@/components/AdminPage.vue';
 import MoneyText from '@/components/MoneyText.vue';
 import StatusTag from '@/components/StatusTag.vue';
 import { formatDateTime } from '@/utils/format';
-import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
+import { asRow, itemsOf, numberOr, useNarrow, useServerPaging } from './shared';
 
 interface RuleForm {
   name: string;
@@ -21,6 +21,7 @@ interface RuleForm {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<SettleRule[]>([]);
 const loading = ref(false);
@@ -328,7 +329,8 @@ onMounted(load);
         :row-key="(row: SettleRule) => row.id"
         :bordered="false"
         :single-line="false"
-        size="small"
+        :scroll-x="1350"
+        :size="isNarrow ? 'small' : 'medium'"
         remote
         @update:page="onPage"
         @update:page-size="onPageSize"
@@ -345,7 +347,7 @@ onMounted(load);
       :title="isEditing ? '编辑结算规则' : '新建结算规则'"
       style="width: 680px; max-width: 94vw"
     >
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="140">
+      <n-form ref="formRef" :model="form" :rules="rules" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 140">
         <n-form-item label="规则名称" path="name">
           <n-input v-model:value="form.name" placeholder="例如：T+1 自动结算" />
         </n-form-item>

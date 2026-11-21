@@ -8,9 +8,10 @@ import { groupPurchasesApi } from '@/api/groupPurchases';
 import type { GroupPurchase } from '@/api/groupPurchases';
 import { errorMessage } from '@/api/client';
 import { formatDateTime, formatMoney } from '@/utils/format';
-import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
+import { asRow, itemsOf, numberOr, useNarrow, useServerPaging } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<GroupPurchase[]>([]);
 const loading = ref(false);
@@ -160,31 +161,41 @@ onMounted(load);
     </template>
 
     <n-card size="small" :bordered="false">
-      <n-space align="center" :size="12" style="margin-bottom: 12px">
-        <n-input
-          v-model:value="merchantId"
-          placeholder="商户 ID"
-          clearable
-          style="width: 280px"
-          @keyup.enter="search"
-        />
-        <n-select
-          v-model:value="status"
-          :options="statusOptions"
-          placeholder="全部状态"
-          clearable
-          style="width: 160px"
-        />
-        <n-button type="primary" @click="search">
-          <template #icon><n-icon><SearchOutline /></n-icon></template>
-          查询
-        </n-button>
-        <n-button @click="resetFilters">
-          <template #icon><n-icon><ReloadOutline /></n-icon></template>
-          重置
-        </n-button>
-        <n-text depth="3">共 {{ total }} 条</n-text>
-      </n-space>
+      <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">
+        <n-gi>
+          <n-input
+            v-model:value="merchantId"
+            placeholder="商户 ID"
+            clearable
+            style="width: 100%"
+            @keyup.enter="search"
+          />
+        </n-gi>
+        <n-gi>
+          <n-select
+            v-model:value="status"
+            :options="statusOptions"
+            placeholder="全部状态"
+            clearable
+            style="width: 100%"
+          />
+        </n-gi>
+        <n-gi>
+          <n-space :wrap="true">
+            <n-button type="primary" @click="search">
+              <template #icon><n-icon><SearchOutline /></n-icon></template>
+              查询
+            </n-button>
+            <n-button @click="resetFilters">
+              <template #icon><n-icon><ReloadOutline /></n-icon></template>
+              重置
+            </n-button>
+          </n-space>
+        </n-gi>
+        <n-gi>
+          <n-text depth="3">共 {{ total }} 条</n-text>
+        </n-gi>
+      </n-grid>
 
       <n-data-table
         :columns="columns"
@@ -195,7 +206,7 @@ onMounted(load);
         :bordered="false"
         :single-line="false"
         :scroll-x="1200"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         remote
         @update:page="onPage"
         @update:page-size="onPageSize"

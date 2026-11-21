@@ -18,9 +18,10 @@ import { securityApi } from '@/api/security';
 import type { LoginAttempt, TotpSetup, TotpStatus } from '@/api/security';
 import { errorMessage } from '@/api/client';
 import { copyText, formatDateTime } from '@/utils/format';
-import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
+import { asRow, itemsOf, numberOr, useNarrow, useServerPaging } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const totp = ref<TotpStatus | null>(null);
 const totpLoading = ref(false);
@@ -243,7 +244,7 @@ onMounted(reloadAll);
             <n-text depth="3">
               改完密码后，除当前设备外的登录会话会立即失效；忘记当前密码只能由运维在服务器上重置。
             </n-text>
-            <n-space align="center" :size="12">
+            <n-space align="center" :wrap="true" :size="12">
               <n-button type="primary" @click="passwordVisible = true">修改登录密码</n-button>
               <n-text depth="3" style="font-size: 12.5px">也可以点右上角头像 → 修改登录密码</n-text>
             </n-space>
@@ -255,7 +256,7 @@ onMounted(reloadAll);
         <n-card size="small" :bordered="false" title="登录图形验证码" style="height: 100%">
           <n-spin :show="captchaLoading">
             <n-space vertical :size="12">
-              <n-space align="center" :size="12">
+              <n-space align="center" :wrap="true" :size="12">
                 <n-switch
                   :value="captchaRequired"
                   :loading="captchaSaving"
@@ -287,7 +288,7 @@ onMounted(reloadAll);
 
       <n-spin :show="totpLoading">
         <template v-if="totp?.enabled">
-          <n-descriptions :column="2" label-placement="left" bordered size="small">
+          <n-descriptions :column="isNarrow ? 1 : 2" label-placement="left" bordered size="small">
             <n-descriptions-item label="状态">
               <n-tag size="small" round type="success" :bordered="false">已开启</n-tag>
             </n-descriptions-item>
@@ -300,14 +301,14 @@ onMounted(reloadAll);
             关闭后登录只校验密码，建议只在换绑设备时临时关闭。
           </n-text>
 
-          <n-form label-placement="left" label-width="180">
+          <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 180">
             <n-form-item label="验证码">
-              <n-space align="center" :size="10">
+              <n-space align="center" :wrap="true" :size="10">
                 <n-input
                   v-model:value="disableCode"
                   placeholder="输入 6 位验证码"
                   maxlength="6"
-                  style="width: 200px"
+                  style="width: 100%; max-width: 200px"
                 />
                 <n-button type="error" secondary :loading="totpBusy" @click="disableTotp">
                   <template #icon><n-icon><CloseOutline /></n-icon></template>
@@ -344,7 +345,7 @@ onMounted(reloadAll);
             <n-gi>
               <n-descriptions :column="1" label-placement="left" bordered size="small">
                 <n-descriptions-item label="密钥">
-                  <n-space align="center" :size="8">
+                  <n-space align="center" :size="8" :wrap="true">
                     <n-text code>{{ setup.secret }}</n-text>
                     <n-button text type="primary" @click="copy(setup.secret)">
                       <template #icon><n-icon><CopyOutline /></n-icon></template>
@@ -352,7 +353,7 @@ onMounted(reloadAll);
                   </n-space>
                 </n-descriptions-item>
                 <n-descriptions-item label="otpauth 地址">
-                  <n-space align="center" :size="8">
+                  <n-space align="center" :size="8" :wrap="true">
                     <n-text code style="word-break: break-all">{{ setup.otpauth_url }}</n-text>
                     <n-button text type="primary" @click="copy(setup.otpauth_url)">
                       <template #icon><n-icon><CopyOutline /></n-icon></template>
@@ -366,14 +367,14 @@ onMounted(reloadAll);
             </n-gi>
           </n-grid>
 
-          <n-form v-if="setup" label-placement="left" label-width="180" style="margin-top: 16px">
+          <n-form v-if="setup" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 180" style="margin-top: 16px">
             <n-form-item label="验证码">
-              <n-space align="center" :size="10">
+              <n-space align="center" :wrap="true" :size="10">
                 <n-input
                   v-model:value="enableCode"
                   placeholder="输入 App 上的 6 位验证码"
                   maxlength="6"
-                  style="width: 220px"
+                  style="width: 100%; max-width: 220px"
                 />
                 <n-button type="primary" :loading="totpBusy" @click="enableTotp">
                   <template #icon><n-icon><CheckmarkOutline /></n-icon></template>
@@ -392,31 +393,41 @@ onMounted(reloadAll);
         <n-text depth="3">当前页失败 {{ failedCount }} 条</n-text>
       </template>
 
-      <n-space align="center" :size="12" style="margin-bottom: 12px">
-        <n-input
-          v-model:value="identifier"
-          placeholder="账号标识（管理员用户名 / 商户邮箱）"
-          clearable
-          style="width: 280px"
-          @keyup.enter="searchAttempts"
-        />
-        <n-select
-          v-model:value="success"
-          :options="successOptions"
-          placeholder="全部结果"
-          clearable
-          style="width: 160px"
-        />
-        <n-button type="primary" @click="searchAttempts">
-          <template #icon><n-icon><SearchOutline /></n-icon></template>
-          查询
-        </n-button>
-        <n-button @click="resetAttempts">
-          <template #icon><n-icon><ReloadOutline /></n-icon></template>
-          重置
-        </n-button>
-        <n-text depth="3">共 {{ total }} 条</n-text>
-      </n-space>
+      <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">
+        <n-gi>
+          <n-input
+            v-model:value="identifier"
+            placeholder="账号标识（管理员用户名 / 商户邮箱）"
+            clearable
+            style="width: 100%"
+            @keyup.enter="searchAttempts"
+          />
+        </n-gi>
+        <n-gi>
+          <n-select
+            v-model:value="success"
+            :options="successOptions"
+            placeholder="全部结果"
+            clearable
+            style="width: 100%"
+          />
+        </n-gi>
+        <n-gi>
+          <n-space :wrap="true" :size="12">
+            <n-button type="primary" @click="searchAttempts">
+              <template #icon><n-icon><SearchOutline /></n-icon></template>
+              查询
+            </n-button>
+            <n-button @click="resetAttempts">
+              <template #icon><n-icon><ReloadOutline /></n-icon></template>
+              重置
+            </n-button>
+          </n-space>
+        </n-gi>
+        <n-gi>
+          <n-text depth="3">共 {{ total }} 条</n-text>
+        </n-gi>
+      </n-grid>
 
       <n-data-table
         :columns="attemptColumns"
@@ -427,7 +438,7 @@ onMounted(reloadAll);
         :bordered="false"
         :single-line="false"
         :scroll-x="900"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         remote
         @update:page="onPage"
         @update:page-size="onPageSize"

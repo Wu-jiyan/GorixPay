@@ -8,8 +8,10 @@ import type { PageQuery, Settlement } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { financeStatus, formatDateTime, formatMoney, yuanToCents } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const loading = ref(false);
 const items = ref<Settlement[]>([]);
@@ -167,7 +169,7 @@ onMounted(() => {
 <template>
   <admin-page title="结算记录" subtitle="提交结算申请并跟踪审核、出款进度">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -193,7 +195,7 @@ onMounted(() => {
         :bordered="false"
         :row-key="rowKey"
         :scroll-x="1160"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       >
@@ -203,7 +205,7 @@ onMounted(() => {
       </n-data-table>
     </n-card>
 
-    <n-modal v-model:show="modalVisible" preset="card" title="申请结算" style="width: 620px">
+    <n-modal v-model:show="modalVisible" preset="card" title="申请结算" style="width: 620px; max-width: 94vw">
       <n-space vertical :size="16">
         <n-alert type="info" :bordered="false">
           <template v-if="balanceLoaded">
@@ -213,14 +215,14 @@ onMounted(() => {
           <template v-else>暂时无法获取可用余额，最终可结算金额以平台审核结果为准。</template>
         </n-alert>
 
-        <n-form label-placement="left" label-width="160">
+        <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
           <n-form-item label="结算金额（元）">
             <n-input-number
               v-model:value="form.amountYuan"
               :precision="2"
               :min="0.01"
               placeholder="0.00"
-              style="width: 240px"
+              style="width: 100%"
             >
               <template #prefix>¥</template>
             </n-input-number>
@@ -242,7 +244,7 @@ onMounted(() => {
         </n-form>
       </n-space>
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="modalVisible = false">取消</n-button>
           <n-button type="primary" :loading="submitting" @click="submit">提交申请</n-button>
         </n-space>

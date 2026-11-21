@@ -18,7 +18,7 @@ import { wechatMpApi } from '@/api/payTypes';
 import type { WechatMpConfig } from '@/api/payTypes';
 import { errorMessage } from '@/api/client';
 import { formatDateTime } from '@/utils/format';
-import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
+import { asRow, itemsOf, numberOr, useNarrow, useServerPaging } from './shared';
 
 interface MpForm {
   merchant_id: string;
@@ -30,6 +30,7 @@ interface MpForm {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<WechatMpConfig[]>([]);
 const loading = ref(false);
@@ -367,7 +368,7 @@ onMounted(load);
 <template>
   <admin-page title="公众号配置" subtitle="微信 JSAPI 支付用的公众号 AppID、Token 与 EncodingAESKey">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -391,7 +392,7 @@ onMounted(load);
         :pagination="pagination"
         :row-key="(row: WechatMpConfig) => row.id"
         :scroll-x="1280"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         remote
         @update:page="onPage"
         @update:page-size="onPageSize"
@@ -402,12 +403,18 @@ onMounted(load);
       </n-data-table>
     </n-card>
 
-    <n-drawer v-model:show="showForm" :width="560">
+    <n-drawer v-model:show="showForm" :width="isNarrow ? '92vw' : 560">
       <n-drawer-content :title="isEditing ? '编辑公众号配置' : '新建公众号配置'" closable>
         <n-alert v-if="isEditing" type="warning" :bordered="false" style="margin-bottom: 16px">
           后端不回显 AppSecret 与 EncodingAESKey，留空表示保持原值，只有填写才会覆盖。
         </n-alert>
-        <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="150">
+        <n-form
+          ref="formRef"
+          :model="form"
+          :rules="rules"
+          :label-placement="isNarrow ? 'top' : 'left'"
+          :label-width="isNarrow ? undefined : 150"
+        >
           <n-form-item label="适用商户">
             <n-input v-model:value="form.merchant_id" placeholder="留空表示全局配置，或填商户 ID" />
           </n-form-item>
@@ -415,12 +422,12 @@ onMounted(load);
             <n-input v-model:value="form.app_id" placeholder="公众号 AppID，例如 wx1234567890" />
           </n-form-item>
           <n-form-item label="AppSecret">
-            <n-space align="center" :size="8">
+            <n-space align="center" :wrap="true" :size="8">
               <n-input
                 v-model:value="form.app_secret"
                 type="password"
                 show-password-on="click"
-                style="width: 240px"
+                style="width: 100%; max-width: 240px"
                 :placeholder="isEditing ? '留空表示不修改' : '公众号 AppSecret'"
               />
               <n-tag :type="secretConfigured ? 'success' : 'warning'" size="small" :bordered="false">
@@ -432,12 +439,12 @@ onMounted(load);
             <n-input v-model:value="form.token" placeholder="服务器配置里的 Token" />
           </n-form-item>
           <n-form-item label="EncodingAESKey">
-            <n-space align="center" :size="8">
+            <n-space align="center" :wrap="true" :size="8">
               <n-input
                 v-model:value="form.aes_key"
                 type="password"
                 show-password-on="click"
-                style="width: 240px"
+                style="width: 100%; max-width: 240px"
                 :placeholder="isEditing ? '留空表示不修改' : '43 位 EncodingAESKey'"
               />
               <n-tag :type="aesKeyConfigured ? 'success' : 'warning'" size="small" :bordered="false">
@@ -461,7 +468,12 @@ onMounted(load);
       </n-drawer-content>
     </n-drawer>
 
-    <n-modal v-model:show="showTest" preset="card" title="发送公众号测试消息" style="width: 640px">
+    <n-modal
+      v-model:show="showTest"
+      preset="card"
+      title="发送公众号测试消息"
+      style="width: 640px; max-width: 94vw"
+    >
       <n-alert type="info" :bordered="false" style="margin-bottom: 16px">
         后端会用这条配置的 AppID/AppSecret 调用微信接口，给指定 openid 发一条模板测试消息；配置不完整时会直接报错。
       </n-alert>
@@ -472,7 +484,11 @@ onMounted(load);
         </n-descriptions-item>
         <n-descriptions-item label="AppID">{{ testTarget.app_id || '-' }}</n-descriptions-item>
       </n-descriptions>
-      <n-form label-placement="left" label-width="120" style="margin-top: 16px">
+      <n-form
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 120"
+        style="margin-top: 16px"
+      >
         <n-form-item label="接收 openid">
           <n-input v-model:value="testOpenid" placeholder="微信 openid，测试用" />
         </n-form-item>

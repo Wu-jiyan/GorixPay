@@ -11,7 +11,7 @@ import type { Complaint } from '@/api/adminComplaints';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { activeStatus, formatDateTime, formatMoney } from '@/utils/format';
-import { asRow, itemsOf, numberOr, useServerPaging } from './shared';
+import { asRow, itemsOf, numberOr, useNarrow, useServerPaging } from './shared';
 
 interface ComplaintForm {
   merchant_id: string;
@@ -24,6 +24,7 @@ interface ComplaintForm {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<Complaint[]>([]);
 const loading = ref(false);
@@ -474,7 +475,7 @@ onMounted(load);
 <template>
   <admin-page title="投诉管理" subtitle="渠道投诉登记、回复与关闭，超期未处理会标红">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -497,44 +498,60 @@ onMounted(load);
     </template>
 
     <n-card size="small" :bordered="false">
-      <n-form inline :show-feedback="false">
-        <n-form-item label="状态">
-          <n-select
-            v-model:value="status"
-            :options="statusOptions"
-            placeholder="全部状态"
-            clearable
-            style="width: 140px"
-          />
-        </n-form-item>
-        <n-form-item label="渠道">
-          <n-select
-            v-model:value="channel"
-            :options="channelOptions"
-            placeholder="全部渠道"
-            clearable
-            style="width: 140px"
-          />
-        </n-form-item>
-        <n-form-item label="商户 ID">
-          <n-input v-model:value="merchantId" placeholder="按商户筛选" clearable style="width: 240px" @keyup.enter="search">
-            <template #prefix>
-              <n-icon :component="SearchOutline" />
-            </template>
-          </n-input>
-        </n-form-item>
-        <n-form-item>
-          <n-space align="center">
-            <n-button type="primary" @click="search">
-              <template #icon>
-                <n-icon :component="SearchOutline" />
-              </template>
-              查询
-            </n-button>
-            <n-button @click="resetFilters">重置</n-button>
-            <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
-          </n-space>
-        </n-form-item>
+      <n-form :show-feedback="false" style="margin-bottom: 12px">
+        <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12">
+          <n-gi>
+            <n-form-item label="状态">
+              <n-select
+                v-model:value="status"
+                :options="statusOptions"
+                placeholder="全部状态"
+                clearable
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="渠道">
+              <n-select
+                v-model:value="channel"
+                :options="channelOptions"
+                placeholder="全部渠道"
+                clearable
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="商户 ID">
+              <n-input
+                v-model:value="merchantId"
+                placeholder="按商户筛选"
+                clearable
+                style="width: 100%; max-width: 240px"
+                @keyup.enter="search"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchOutline" />
+                </template>
+              </n-input>
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item>
+              <n-space align="center" :wrap="true">
+                <n-button type="primary" @click="search">
+                  <template #icon>
+                    <n-icon :component="SearchOutline" />
+                  </template>
+                  查询
+                </n-button>
+                <n-button @click="resetFilters">重置</n-button>
+                <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
+              </n-space>
+            </n-form-item>
+          </n-gi>
+        </n-grid>
       </n-form>
 
       <n-data-table
@@ -544,18 +561,19 @@ onMounted(load);
         :data="rows"
         :pagination="pagination"
         :row-key="(row: Complaint) => row.id"
+        :size="isNarrow ? 'small' : 'medium'"
         :scroll-x="1500"
         @update:page="onPage"
         @update:page-size="onPageSize"
       />
     </n-card>
 
-    <n-drawer v-model:show="showDetail" :width="680" placement="right">
+    <n-drawer v-model:show="showDetail" :width="isNarrow ? '92vw' : 680" placement="right">
       <n-drawer-content :title="detail?.complaint_no || '投诉详情'" closable>
         <n-spin :show="detailLoading">
           <n-empty v-if="!detail && !detailLoading" description="暂无数据" />
           <template v-else-if="detail">
-            <n-descriptions :column="2" bordered size="small" label-placement="left">
+            <n-descriptions :column="isNarrow ? 1 : 2" bordered size="small" label-placement="left">
               <n-descriptions-item label="投诉单号">
                 <n-text class="mono">{{ detail.complaint_no || '-' }}</n-text>
               </n-descriptions-item>
@@ -581,7 +599,7 @@ onMounted(load);
               </n-descriptions-item>
               <n-descriptions-item label="截止时间">{{ formatDateTime(detail.deadline_at) }}</n-descriptions-item>
               <n-descriptions-item label="创建时间">{{ formatDateTime(detail.created_at) }}</n-descriptions-item>
-              <n-descriptions-item label="投诉原因" :span="2">{{ detail.reason || '-' }}</n-descriptions-item>
+              <n-descriptions-item label="投诉原因" :span="isNarrow ? 1 : 2">{{ detail.reason || '-' }}</n-descriptions-item>
             </n-descriptions>
 
             <n-divider title-placement="left">沟通记录</n-divider>
@@ -612,7 +630,7 @@ onMounted(load);
               :disabled="detail?.status === 'closed'"
               placeholder="填写回复内容，会记录到投诉沟通记录"
             />
-            <n-space justify="end">
+            <n-space justify="end" :wrap="true">
               <n-button type="error" secondary :disabled="detail?.status === 'closed'" @click="showClose = true">
                 关闭投诉
               </n-button>
@@ -634,13 +652,13 @@ onMounted(load);
     </n-drawer>
 
     <n-modal v-model:show="showClose" preset="card" title="关闭投诉" style="width: 520px; max-width: 94vw">
-      <n-form label-placement="left" label-width="110">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 110">
         <n-form-item label="关闭原因">
           <n-input v-model:value="closeReason" placeholder="例如：已退款完成 / 双方协商一致" />
         </n-form-item>
       </n-form>
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="showClose = false">取消</n-button>
           <n-button type="error" :loading="closing" @click="closeComplaint">确认关闭</n-button>
         </n-space>
@@ -648,7 +666,13 @@ onMounted(load);
     </n-modal>
 
     <n-modal v-model:show="showCreate" preset="card" title="手工登记投诉" style="width: 660px; max-width: 94vw">
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="130">
+      <n-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 130"
+      >
         <n-form-item label="商户 ID" path="merchant_id">
           <n-input v-model:value="form.merchant_id" placeholder="投诉所属商户" />
         </n-form-item>
@@ -670,28 +694,39 @@ onMounted(load);
           />
         </n-form-item>
         <n-form-item label="投诉金额（元）">
-          <n-input-number v-model:value="form.amount_yuan" :min="0" :precision="2" :step="1" style="width: 180px" />
+          <n-input-number
+            v-model:value="form.amount_yuan"
+            :min="0"
+            :precision="2"
+            :step="1"
+            style="width: 100%; max-width: 180px"
+          />
         </n-form-item>
         <n-form-item label="截止时间">
-          <n-date-picker v-model:value="form.deadline" type="datetime" clearable style="width: 220px" />
+          <n-date-picker
+            v-model:value="form.deadline"
+            type="datetime"
+            clearable
+            style="width: 100%; max-width: 220px"
+          />
         </n-form-item>
       </n-form>
 
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="showCreate = false">取消</n-button>
           <n-button type="primary" :loading="submitting" @click="submitCreate">登记</n-button>
         </n-space>
       </template>
     </n-modal>
 
-    <n-drawer v-model:show="showRules" :width="760" placement="right">
+    <n-drawer v-model:show="showRules" :width="isNarrow ? '92vw' : 760" placement="right">
       <n-drawer-content title="客诉自动规则" closable>
         <n-alert type="info" :bordered="false" style="margin-bottom: 14px">
           规则按渠道匹配：命中渠道的新投诉会自动回复，并按设定小时数自动关闭（填 0 表示只回复不关闭）。
         </n-alert>
 
-        <n-space align="center" justify="space-between" style="margin-bottom: 12px">
+        <n-space align="center" justify="space-between" :wrap="true" style="margin-bottom: 12px">
           <n-button size="small" type="primary" @click="openRuleCreate">
             <template #icon>
               <n-icon :component="AddOutline" />
@@ -712,6 +747,7 @@ onMounted(load);
           :data="autoRules"
           :pagination="{ pageSize: 10 }"
           :row-key="(row: ComplaintAutoRule) => row.id"
+          :size="isNarrow ? 'small' : 'medium'"
           :scroll-x="900"
         />
       </n-drawer-content>
@@ -723,7 +759,7 @@ onMounted(load);
       :title="ruleEditingId ? '编辑自动规则' : '新建自动规则'"
       style="width: 580px; max-width: 94vw"
     >
-      <n-form ref="ruleFormRef" :model="ruleForm" label-placement="left" label-width="130">
+      <n-form ref="ruleFormRef" :model="ruleForm" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 130">
         <n-form-item label="适用渠道">
           <n-select v-model:value="ruleForm.channel" :options="channelOptions" tag filterable />
         </n-form-item>
@@ -736,7 +772,12 @@ onMounted(load);
           />
         </n-form-item>
         <n-form-item label="几小时后关闭">
-          <n-input-number v-model:value="ruleForm.close_after_hours" :min="0" :step="1" style="width: 160px" />
+          <n-input-number
+            v-model:value="ruleForm.close_after_hours"
+            :min="0"
+            :step="1"
+            style="width: 100%; max-width: 160px"
+          />
           <n-text depth="3" style="margin-left: 10px; font-size: 12px">0 表示不自动关闭</n-text>
         </n-form-item>
         <n-form-item label="状态">
@@ -751,7 +792,7 @@ onMounted(load);
       </n-form>
 
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="showRuleForm = false">取消</n-button>
           <n-button type="primary" :loading="ruleSubmitting" @click="submitRule">保存</n-button>
         </n-space>

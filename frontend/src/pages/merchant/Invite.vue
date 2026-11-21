@@ -8,8 +8,10 @@ import type { InviteInfo, InviteRecord, PageQuery } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { copyText, formatDateTime, formatMoney } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const infoLoading = ref(true);
 const info = ref<InviteInfo | null>(null);
@@ -202,7 +204,7 @@ onMounted(() => {
     </n-spin>
 
     <n-card size="small" :bordered="false" title="邀请链接" style="margin-top: 16px">
-      <n-form label-placement="left" label-width="160">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-form-item label="邀请码">
           <n-input :value="info?.invite_code || ''" readonly placeholder="暂未生成邀请码">
             <template #prefix>
@@ -249,7 +251,7 @@ onMounted(() => {
         :bordered="false"
         :row-key="rowKey"
         :scroll-x="980"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       >

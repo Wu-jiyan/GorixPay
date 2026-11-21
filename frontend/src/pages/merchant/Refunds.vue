@@ -7,8 +7,10 @@ import type { PageQuery, Refund } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { financeStatus, formatDateTime, formatMoney } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const loading = ref(false);
 const items = ref<Refund[]>([]);
@@ -135,27 +137,31 @@ onMounted(() => {
     </template>
 
     <n-card size="small" :bordered="false">
-      <n-form inline :show-feedback="false">
-        <n-form-item label="退款状态">
-          <n-select
-            v-model:value="filters.status"
-            :options="statusOptions"
-            placeholder="全部状态"
-            clearable
-            style="width: 160px"
-          />
-        </n-form-item>
-        <n-form-item>
-          <n-space>
-            <n-button type="primary" :loading="loading" @click="handleSearch">
-              <template #icon>
-                <n-icon :component="SearchOutline" />
-              </template>
-              查询
-            </n-button>
-            <n-button @click="handleReset">重置</n-button>
-          </n-space>
-        </n-form-item>
+      <n-form :show-feedback="false">
+        <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12">
+          <n-gi>
+            <n-form-item label="退款状态">
+              <n-select
+                v-model:value="filters.status"
+                :options="statusOptions"
+                placeholder="全部状态"
+                clearable
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-space :wrap="true">
+              <n-button type="primary" :loading="loading" @click="handleSearch">
+                <template #icon>
+                  <n-icon :component="SearchOutline" />
+                </template>
+                查询
+              </n-button>
+              <n-button @click="handleReset">重置</n-button>
+            </n-space>
+          </n-gi>
+        </n-grid>
       </n-form>
 
       <n-data-table
@@ -167,7 +173,7 @@ onMounted(() => {
         :bordered="false"
         :row-key="rowKey"
         :scroll-x="1140"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       >

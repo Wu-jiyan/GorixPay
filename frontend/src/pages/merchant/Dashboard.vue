@@ -18,9 +18,11 @@ import type { Announcement, MerchantDashboard, Order } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { formatDateTime, formatMoney, orderStatus } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const router = useRouter();
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const statsLoading = ref(true);
 const ordersLoading = ref(true);
@@ -112,7 +114,7 @@ onMounted(reload);
 <template>
   <admin-page title="商户概览" subtitle="今日经营数据、最近订单与平台公告">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="statsLoading" @click="reload">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -194,7 +196,7 @@ onMounted(reload);
       </n-grid>
     </n-card>
 
-    <n-grid cols="1 m:3" responsive="screen" :x-gap="16" :y-gap="16" style="margin-top: 16px">
+    <n-grid cols="1 m:3" responsive="screen" item-responsive :x-gap="16" :y-gap="16" style="margin-top: 16px">
       <n-gi span="1 m:2">
         <n-card size="small" :bordered="false" title="最近订单">
           <template #header-extra>
@@ -205,7 +207,7 @@ onMounted(reload);
             :data="orders"
             :loading="ordersLoading"
             :bordered="false"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
             :row-key="rowKey"
             :pagination="false"
             :scroll-x="760"

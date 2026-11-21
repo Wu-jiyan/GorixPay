@@ -10,9 +10,10 @@ import { exportCsvUrl } from '@/api/reports';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { financeStatus, formatDateTime, formatMoney } from '@/utils/format';
-import { asRow, fieldText, usePendingAction, useServerPaging } from './shared';
+import { asRow, fieldText, useNarrow, usePendingAction, useServerPaging } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<Settlement[]>([]);
 const loading = ref(false);
@@ -316,7 +317,7 @@ onMounted(load);
 <template>
   <admin-page title="结算管理" subtitle="商户结算申请审核，支持批量审批与审核后自动打款">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -350,54 +351,64 @@ onMounted(load);
     </template>
 
     <n-card size="small" :bordered="false">
-      <n-form inline :show-feedback="false">
-        <n-form-item label="关键字">
-          <n-input
-            v-model:value="keyword"
-            placeholder="结算单号 / 商户单号"
-            clearable
-            style="width: 230px"
-            @keyup.enter="search"
-          >
-            <template #prefix>
-              <n-icon :component="SearchOutline" />
-            </template>
-          </n-input>
-        </n-form-item>
-        <n-form-item label="商户 ID">
-          <n-input
-            v-model:value="merchantId"
-            placeholder="按商户筛选"
-            clearable
-            style="width: 230px"
-            @keyup.enter="search"
-          >
-            <template #prefix>
-              <n-icon :component="SearchOutline" />
-            </template>
-          </n-input>
-        </n-form-item>
-        <n-form-item label="状态">
-          <n-select
-            v-model:value="status"
-            :options="statusOptions"
-            placeholder="全部状态"
-            clearable
-            style="width: 140px"
-          />
-        </n-form-item>
-        <n-form-item>
-          <n-space align="center">
-            <n-button type="primary" @click="search">
-              <template #icon>
-                <n-icon :component="SearchOutline" />
-              </template>
-              查询
-            </n-button>
-            <n-button @click="resetFilters">重置</n-button>
-            <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
-          </n-space>
-        </n-form-item>
+      <n-form :show-feedback="false" :label-placement="isNarrow ? 'top' : 'left'">
+        <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12">
+          <n-gi>
+            <n-form-item label="关键字">
+              <n-input
+                v-model:value="keyword"
+                placeholder="结算单号 / 商户单号"
+                clearable
+                style="width: 100%"
+                @keyup.enter="search"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchOutline" />
+                </template>
+              </n-input>
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="商户 ID">
+              <n-input
+                v-model:value="merchantId"
+                placeholder="按商户筛选"
+                clearable
+                style="width: 100%"
+                @keyup.enter="search"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchOutline" />
+                </template>
+              </n-input>
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="状态">
+              <n-select
+                v-model:value="status"
+                :options="statusOptions"
+                placeholder="全部状态"
+                clearable
+                style="width: 100%"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item :show-label="false">
+              <n-space :wrap="true" align="center">
+                <n-button type="primary" @click="search">
+                  <template #icon>
+                    <n-icon :component="SearchOutline" />
+                  </template>
+                  查询
+                </n-button>
+                <n-button @click="resetFilters">重置</n-button>
+                <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
+              </n-space>
+            </n-form-item>
+          </n-gi>
+        </n-grid>
       </n-form>
 
       <n-data-table
@@ -420,7 +431,7 @@ onMounted(load);
       :title="batchReject ? `批量驳回 ${selectedCount} 笔结算单` : '驳回结算申请'"
       style="width: 560px; max-width: 94vw"
     >
-      <n-descriptions v-if="rejectTarget" :column="2" bordered size="small" label-placement="left">
+      <n-descriptions v-if="rejectTarget" :column="isNarrow ? 1 : 2" bordered size="small" label-placement="left">
         <n-descriptions-item label="结算单号">
           <n-text class="mono">{{ rejectTarget.settlement_no }}</n-text>
         </n-descriptions-item>
@@ -429,7 +440,7 @@ onMounted(load);
         </n-descriptions-item>
       </n-descriptions>
 
-      <n-form label-placement="left" label-width="120" style="margin-top: 16px">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120" style="margin-top: 16px">
         <n-form-item label="驳回原因">
           <n-input
             v-model:value="rejectionReason"

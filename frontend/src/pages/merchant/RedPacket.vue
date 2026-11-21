@@ -7,8 +7,10 @@ import { financeApi, type RedPacketBatch } from '@/api/merchantFinance';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { financeStatus, formatDateTime, formatMoney, yuanToCents } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const creating = ref(false);
 const form = reactive({
@@ -256,8 +258,8 @@ onMounted(() => {
     </template>
 
     <n-card size="small" :bordered="false" title="创建红包">
-      <n-form label-placement="left" label-width="160">
-        <n-grid cols="1 m:2" responsive="screen" :x-gap="16">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
+        <n-grid cols="1 m:2" responsive="screen" item-responsive :x-gap="16">
           <n-gi>
             <n-form-item label="红包总额（元）">
               <n-input-number
@@ -283,7 +285,7 @@ onMounted(() => {
           </n-gi>
         </n-grid>
         <n-form-item>
-          <n-space align="center">
+          <n-space align="center" :wrap="true">
             <n-button type="primary" :loading="creating" @click="handleCreate">
               <template #icon>
                 <n-icon :component="GiftOutline" />
@@ -312,7 +314,7 @@ onMounted(() => {
         :bordered="false"
         :row-key="rowKey"
         :scroll-x="1040"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       >
@@ -322,12 +324,12 @@ onMounted(() => {
       </n-data-table>
     </n-card>
 
-    <n-modal v-model:show="cancelVisible" preset="card" title="撤销红包批次" style="width: 620px">
+    <n-modal v-model:show="cancelVisible" preset="card" title="撤销红包批次" style="width: 620px; max-width: 94vw">
       <n-space vertical :size="16">
         <n-alert type="warning" :bordered="false">
           将撤销该批次里所有待审核的红包，冻结金额会退回可用余额；已经审核或领取的红包不会被撤销。
         </n-alert>
-        <n-descriptions :column="1" label-placement="left" :label-width="120" size="small" bordered>
+        <n-descriptions :column="1" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120" size="small" bordered>
           <n-descriptions-item label="批次号">
             <n-text class="mono" style="word-break: break-all">{{ cancelTarget?.batch_no || '-' }}</n-text>
           </n-descriptions-item>
@@ -335,7 +337,7 @@ onMounted(() => {
             {{ cancelTarget ? `${formatMoney(cancelTarget.amount)} / ${cancelTarget.count} 个` : '-' }}
           </n-descriptions-item>
         </n-descriptions>
-        <n-form label-placement="left" label-width="160">
+        <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
           <n-form-item label="撤销原因（可选）">
             <n-input
               v-model:value="cancelReason"
@@ -348,7 +350,7 @@ onMounted(() => {
         </n-form>
       </n-space>
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="cancelVisible = false">取消</n-button>
           <n-button type="error" :loading="cancelling" @click="submitCancel">确认撤销</n-button>
         </n-space>

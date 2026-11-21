@@ -15,7 +15,17 @@ import { groupsApi } from '@/api/groups';
 import type { MerchantGroup } from '@/api/groups';
 import { errorMessage } from '@/api/client';
 import { activeStatus, formatDateTime, paymentTypeText } from '@/utils/format';
-import { asRow, httpStatus, itemsOf, numberOr, stringList, textOf, usePendingAction, useServerPaging } from './shared';
+import {
+  asRow,
+  httpStatus,
+  itemsOf,
+  numberOr,
+  stringList,
+  textOf,
+  useNarrow,
+  usePendingAction,
+  useServerPaging,
+} from './shared';
 
 interface GroupForm {
   name: string;
@@ -34,6 +44,7 @@ interface MerchantOption {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<MerchantGroup[]>([]);
 const loading = ref(false);
@@ -499,7 +510,7 @@ onMounted(load);
 <template>
   <admin-page title="用户组与费率" subtitle="按用户组设置商户费率、可用支付方式与结算模式">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -523,7 +534,7 @@ onMounted(load);
         :pagination="pagination"
         :row-key="(row: MerchantGroup) => row.id"
         :scroll-x="1350"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         remote
         @update:page="onPage"
         @update:page-size="onPageSize"
@@ -540,19 +551,25 @@ onMounted(load);
       :title="isEditing ? '编辑用户组' : '新建用户组'"
       style="width: 640px; max-width: 94vw"
     >
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="120">
+      <n-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 120"
+      >
         <n-form-item label="用户组名称" path="name">
           <n-input v-model:value="form.name" placeholder="例如：普通商户 / 大客户" />
         </n-form-item>
         <n-form-item label="费率" path="rate_percent">
-          <n-space align="center" :size="10">
+          <n-space align="center" :wrap="true" :size="10">
             <n-input-number
               v-model:value="form.rate_percent"
               :min="0"
               :max="100"
               :step="0.01"
               :precision="2"
-              style="width: 180px"
+              style="width: 100%; max-width: 180px"
             />
             <n-text depth="3" style="font-size: 12px">
               按百分比填（100 = 1%），保存为万分比 {{ rateBpPreview }}bp
@@ -571,13 +588,13 @@ onMounted(load);
           <n-select v-model:value="form.settle_mode" :options="settleModeOptions" />
         </n-form-item>
         <n-form-item label="买断价（元）">
-          <n-space align="center" :size="10">
+          <n-space align="center" :wrap="true" :size="10">
             <n-input-number
               v-model:value="form.price_yuan"
               :min="0"
               :step="10"
               :precision="2"
-              style="width: 180px"
+              style="width: 100%; max-width: 180px"
             />
             <n-text depth="3" style="font-size: 12px">
               0 表示不单独售卖；保存走 PATCH /admin/groups/:id/price
@@ -598,20 +615,24 @@ onMounted(load);
         归组后该商户的费率、可用支付方式与结算模式按用户组生效，会覆盖商户原有设置。
       </n-alert>
 
-      <n-space :size="10" align="center" style="margin-bottom: 10px">
-        <n-input
-          v-model:value="merchantKeyword"
-          placeholder="按商户名称 / ID / 邮箱过滤"
-          clearable
-          size="small"
-          style="width: 280px"
-        >
-          <template #prefix>
-            <n-icon :component="SearchOutline" />
-          </template>
-        </n-input>
-        <n-text depth="3" style="font-size: 12px">共 {{ filteredMerchants.length }} 个商户</n-text>
-      </n-space>
+      <n-grid cols="1 s:2" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 10px">
+        <n-gi>
+          <n-input
+            v-model:value="merchantKeyword"
+            placeholder="按商户名称 / ID / 邮箱过滤"
+            clearable
+            size="small"
+            style="width: 100%"
+          >
+            <template #prefix>
+              <n-icon :component="SearchOutline" />
+            </template>
+          </n-input>
+        </n-gi>
+        <n-gi>
+          <n-text depth="3" style="font-size: 12px">共 {{ filteredMerchants.length }} 个商户</n-text>
+        </n-gi>
+      </n-grid>
 
       <n-data-table
         :columns="merchantColumns"
@@ -622,16 +643,21 @@ onMounted(load);
         :pagination="false"
         :row-key="(row: MerchantOption) => row.id"
         :scroll-x="700"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
       >
         <template #empty>
           <n-empty description="没有匹配到商户" size="small" />
         </template>
       </n-data-table>
 
-      <n-form label-placement="left" label-width="110" style="margin-top: 16px" :show-feedback="false">
+      <n-form
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 110"
+        style="margin-top: 16px"
+        :show-feedback="false"
+      >
         <n-form-item label="当前所属组">
-          <n-space align="center" :size="8">
+          <n-space align="center" :wrap="true" :size="8">
             <n-tag v-if="assignMerchantId" size="small" round :bordered="false" :type="currentGroupText === '未分组' ? 'default' : 'success'">
               {{ currentGroupText }}
             </n-tag>
@@ -644,7 +670,7 @@ onMounted(load);
             v-model:value="assignGroupId"
             :options="assignGroupOptions"
             placeholder="选择要归入的用户组"
-            style="width: 320px"
+            style="width: 100%; max-width: 320px"
           />
         </n-form-item>
       </n-form>
@@ -652,14 +678,14 @@ onMounted(load);
       <n-text v-if="assignResult" depth="3" style="font-size: 12px">{{ assignResult }}</n-text>
 
       <template #footer>
-        <n-space justify="space-between" align="center">
-          <n-space :size="6" align="center">
+        <n-space justify="space-between" align="center" :wrap="true">
+          <n-space :size="6" align="center" :wrap="true">
             <n-icon :component="PeopleOutline" />
             <n-text depth="3" style="font-size: 12px">
               {{ assignMerchantId ? `已选商户 ${assignMerchantId}` : '未选择商户' }}
             </n-text>
           </n-space>
-          <n-space>
+          <n-space :wrap="true">
             <n-button @click="showAssign = false">取消</n-button>
             <n-button
               type="error"

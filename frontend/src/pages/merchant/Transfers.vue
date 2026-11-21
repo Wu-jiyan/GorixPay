@@ -9,8 +9,10 @@ import type { PageQuery, Transfer } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { financeStatus, formatDateTime, formatMoney, yuanToCents } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const loading = ref(false);
 const items = ref<Transfer[]>([]);
@@ -198,7 +200,7 @@ onMounted(() => {
     </n-alert>
 
     <n-card v-if="!notEnabled" size="small" :bordered="false" title="申请代付">
-      <n-form label-placement="left" label-width="160" @submit.prevent="submit">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160" @submit.prevent="submit">
         <n-grid cols="1 m:2" responsive="screen" :x-gap="16">
           <n-gi>
             <n-form-item label="代付金额（元）">
@@ -240,7 +242,7 @@ onMounted(() => {
           </n-gi>
         </n-grid>
         <n-form-item>
-          <n-space>
+          <n-space :wrap="true">
             <n-button type="primary" :loading="submitting" @click="submit">
               <template #icon>
                 <n-icon :component="PaperPlaneOutline" />
@@ -263,7 +265,7 @@ onMounted(() => {
         :bordered="false"
         :row-key="rowKey"
         :scroll-x="1240"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       >

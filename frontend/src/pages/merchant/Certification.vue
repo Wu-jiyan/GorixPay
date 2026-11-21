@@ -8,8 +8,10 @@ import type { Certification } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { formatDateTime, formatMoney } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const loading = ref(true);
 const saving = ref(false);
@@ -227,7 +229,7 @@ onMounted(() => {
         title="提交认证资料"
         style="margin-top: 16px"
       >
-        <n-form label-placement="left" label-width="160">
+        <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
           <n-form-item label="认证类型">
             <n-radio-group v-model:value="form.cert_type">
               <n-radio-button value="person">个人认证</n-radio-button>
@@ -260,7 +262,7 @@ onMounted(() => {
             提交后由平台运营审核，请确保姓名、身份证号与证件完全一致，否则会被驳回。
           </n-alert>
           <n-form-item>
-            <n-button type="primary" :loading="saving" @click="handleSubmit">
+            <n-button type="primary" :block="isNarrow" :loading="saving" @click="handleSubmit">
               <template #icon>
                 <n-icon :component="IdCardOutline" />
               </template>

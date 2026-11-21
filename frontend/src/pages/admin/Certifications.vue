@@ -23,6 +23,7 @@ import {
   numberOr,
   pick,
   textOf,
+  useNarrow,
   usePendingAction,
   useServerPaging,
 } from './shared';
@@ -47,6 +48,7 @@ interface CertRow {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<CertRow[]>([]);
 const loading = ref(false);
@@ -352,31 +354,41 @@ onMounted(load);
     </n-alert>
 
     <n-card size="small" :bordered="false">
-      <n-space align="center" :size="12" style="margin-bottom: 12px">
-        <n-input
-          v-model:value="keyword"
-          placeholder="商户名称 / 邮箱 / 手机号"
-          clearable
-          style="width: 260px"
-          @keyup.enter="search"
-        />
-        <n-select
-          v-model:value="status"
-          :options="statusOptions"
-          placeholder="全部状态"
-          clearable
-          style="width: 160px"
-        />
-        <n-button type="primary" @click="search">
-          <template #icon><n-icon><SearchOutline /></n-icon></template>
-          查询
-        </n-button>
-        <n-button @click="resetFilters">
-          <template #icon><n-icon><ReloadOutline /></n-icon></template>
-          重置
-        </n-button>
-        <n-text depth="3">共 {{ total }} 条</n-text>
-      </n-space>
+      <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">
+        <n-gi>
+          <n-input
+            v-model:value="keyword"
+            placeholder="商户名称 / 邮箱 / 手机号"
+            clearable
+            style="width: 100%"
+            @keyup.enter="search"
+          />
+        </n-gi>
+        <n-gi>
+          <n-select
+            v-model:value="status"
+            :options="statusOptions"
+            placeholder="全部状态"
+            clearable
+            style="width: 100%"
+          />
+        </n-gi>
+        <n-gi>
+          <n-space align="center" :wrap="true">
+            <n-button type="primary" @click="search">
+              <template #icon><n-icon><SearchOutline /></n-icon></template>
+              查询
+            </n-button>
+            <n-button @click="resetFilters">
+              <template #icon><n-icon><ReloadOutline /></n-icon></template>
+              重置
+            </n-button>
+          </n-space>
+        </n-gi>
+        <n-gi>
+          <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
+        </n-gi>
+      </n-grid>
 
       <n-data-table
         :columns="columns"
@@ -387,7 +399,7 @@ onMounted(load);
         :bordered="false"
         :single-line="false"
         :scroll-x="1600"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
         remote
         @update:page="onPage"
         @update:page-size="onPageSize"
@@ -405,10 +417,10 @@ onMounted(load);
       </n-data-table>
     </n-card>
 
-    <n-drawer v-model:show="showDetail" :width="640" placement="right">
+    <n-drawer v-model:show="showDetail" :width="isNarrow ? '92vw' : 640" placement="right">
       <n-drawer-content :title="detail?.displayName || '实名认证详情'" closable>
         <n-empty v-if="!detail" description="暂无数据" size="small" />
-        <n-descriptions v-else :column="2" label-placement="left" bordered size="small">
+        <n-descriptions v-else :column="isNarrow ? 1 : 2" label-placement="left" bordered size="small">
           <n-descriptions-item label="商户 ID">
             <n-text code>{{ detail.merchantId || '-' }}</n-text>
           </n-descriptions-item>
@@ -453,7 +465,7 @@ onMounted(load);
         </n-descriptions>
 
         <template #footer>
-          <n-space justify="end">
+          <n-space justify="end" :wrap="true">
             <n-button
               v-if="detail?.status === 'pending'"
               type="primary"
@@ -485,7 +497,7 @@ onMounted(load);
       title="驳回实名认证"
       style="width: 560px; max-width: 94vw"
     >
-      <n-descriptions v-if="rejectTarget" :column="2" label-placement="left" bordered size="small">
+      <n-descriptions v-if="rejectTarget" :column="isNarrow ? 1 : 2" label-placement="left" bordered size="small">
         <n-descriptions-item label="商户">
           {{ rejectTarget.displayName || rejectTarget.merchantId }}
         </n-descriptions-item>
@@ -498,7 +510,11 @@ onMounted(load);
         </n-descriptions-item>
       </n-descriptions>
 
-      <n-form label-placement="left" label-width="180" style="margin-top: 16px">
+      <n-form
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 180"
+        style="margin-top: 16px"
+      >
         <n-form-item label="驳回原因">
           <n-input
             v-model:value="rejectionReason"
@@ -510,7 +526,7 @@ onMounted(load);
       </n-form>
 
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="showReject = false">取消</n-button>
           <n-button type="error" :loading="processing" @click="submitReject">
             <template #icon><n-icon><CloseOutline /></n-icon></template>

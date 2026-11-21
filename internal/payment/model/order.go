@@ -30,32 +30,32 @@ const (
 )
 
 type Order struct {
-	ID          string `gorm:"type:varchar(36);primaryKey"`
-	TradeNo     string `gorm:"type:varchar(32);uniqueIndex;not null"`
-	MerchantID  string `gorm:"type:varchar(36);not null;uniqueIndex:idx_merchant_out_trade"`
-	OutTradeNo  string `gorm:"type:varchar(64);not null;uniqueIndex:idx_merchant_out_trade"`
-	PaymentType string `gorm:"type:varchar(32);not null;index"`
-	Name        string `gorm:"type:varchar(255);not null"`
-	Amount      int64  `gorm:"not null"`
-	Currency    string `gorm:"type:char(3);not null"`
-	Status      Status `gorm:"type:varchar(20);not null;index"`
-	Kind        Kind   `gorm:"type:varchar(20);not null;default:'sale';index"`
+	ID          string `gorm:"type:varchar(36);primaryKey" json:"id"`
+	TradeNo     string `gorm:"type:varchar(32);uniqueIndex;not null" json:"trade_no"`
+	MerchantID  string `gorm:"type:varchar(36);not null;uniqueIndex:idx_merchant_out_trade" json:"merchant_id"`
+	OutTradeNo  string `gorm:"type:varchar(64);not null;uniqueIndex:idx_merchant_out_trade" json:"out_trade_no"`
+	PaymentType string `gorm:"type:varchar(32);not null;index" json:"payment_type"`
+	Name        string `gorm:"type:varchar(255);not null" json:"name"`
+	Amount      int64  `gorm:"not null" json:"amount"`
+	Currency    string `gorm:"type:char(3);not null" json:"currency"`
+	Status      Status `gorm:"type:varchar(20);not null;index" json:"status"`
+	Kind        Kind   `gorm:"type:varchar(20);not null;default:'sale';index" json:"kind"`
 	// Version is the protocol generation that created the order: 0 for the
 	// legacy V1 endpoints, 1 for the V2 API. It selects the notification format
 	// exactly like upstream's order.version column.
-	Version   int     `gorm:"not null;default:0"`
-	NotifyURL string  `gorm:"type:text;not null"`
-	ReturnURL *string `gorm:"type:text"`
-	ClientIP  *string `gorm:"type:varchar(45)"`
+	Version   int     `gorm:"not null;default:0" json:"version"`
+	NotifyURL string  `gorm:"type:text;not null" json:"notify_url"`
+	ReturnURL *string `gorm:"type:text" json:"return_url"`
+	ClientIP  *string `gorm:"type:varchar(45)" json:"client_ip"`
 	// Buyer carries the payer identity a channel needs to start the payment
 	// (sub_openid for JSAPI). Upstream keeps the same value in pre_order.buyer.
-	Buyer          *string    `gorm:"type:varchar(128);index"`
-	Attach         *string    `gorm:"type:text"`
-	ChannelTradeNo *string    `gorm:"type:varchar(128);index"`
-	PaidAt         *time.Time `gorm:"index"`
-	ExpiresAt      time.Time  `gorm:"not null;index"`
-	CreatedAt      time.Time  `gorm:"not null"`
-	UpdatedAt      time.Time  `gorm:"not null"`
+	Buyer          *string    `gorm:"type:varchar(128);index" json:"buyer"`
+	Attach         *string    `gorm:"type:text" json:"attach"`
+	ChannelTradeNo *string    `gorm:"type:varchar(128);index" json:"channel_trade_no"`
+	PaidAt         *time.Time `gorm:"index" json:"paid_at"`
+	ExpiresAt      time.Time  `gorm:"not null;index" json:"expires_at"`
+	CreatedAt      time.Time  `gorm:"not null" json:"created_at"`
+	UpdatedAt      time.Time  `gorm:"not null" json:"updated_at"`
 }
 
 func (Order) TableName() string {

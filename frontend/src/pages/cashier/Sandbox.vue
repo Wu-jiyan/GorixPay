@@ -6,8 +6,9 @@ import { useMessage } from 'naive-ui';
 import { cashierApi } from '@/api';
 import type { CashierOrder } from '@/api/types';
 import { errorMessage } from '@/api/client';
-import { siteLogo, siteName } from '@/stores/site';
-import { formatDateTime, formatMoney, orderStatus, paymentTypeText } from '@/utils/format';
+import BrandMark from '@/components/BrandMark.vue';
+import PaymentBrandIcon from '@/components/PaymentBrandIcon.vue';
+import { copyText, formatDateTime, formatMoney, orderStatus, paymentTypeText } from '@/utils/format';
 
 const route = useRoute();
 const router = useRouter();
@@ -20,6 +21,12 @@ const order = ref<CashierOrder | null>(null);
 const submitting = ref(false);
 
 const statusInfo = computed(() => orderStatus(order.value?.status));
+
+const BRAND_PAY_TYPES = new Set(['alipay', 'wxpay', 'qqpay', 'usdt', 'bank', 'cashier', 'sandbox']);
+const payTypeBrand = computed(() => {
+  const type = order.value?.payment_type ?? '';
+  return BRAND_PAY_TYPES.has(type) ? type : '';
+});
 
 async function loadOrder() {
   if (!tradeNo) {
@@ -64,6 +71,13 @@ async function handleComplete() {
   }
 }
 
+async function handleCopy(text?: string) {
+  if (!text) return;
+  const ok = await copyText(text);
+  if (ok) message.success('已复制');
+  else message.error('复制失败，请手动选择文本复制');
+}
+
 onMounted(() => {
   void loadOrder();
 });
@@ -71,96 +85,98 @@ onMounted(() => {
 
 <template>
   <div class="sandbox-page">
-    <div class="sandbox-card">
-      <div class="sandbox-brand">
-        <img v-if="siteLogo" :src="siteLogo" class="brand-logo" alt="" />
-        <span v-else class="brand-mark">G</span>
-        <div>
-          <div class="brand-name">{{ siteName }}</div>
-          <div class="brand-sub">沙箱支付</div>
+    <div class="sandbox-shell">
+      <header class="sandbox-head">
+        <brand-mark :size="30" subtitle="沙箱支付" />
+        <n-tag size="small" round :bordered="false" type="warning">测试环境</n-tag>
+      </header>
+
+      <n-card class="sandbox-card" :bordered="false">
+        <n-alert type="warning" :bordered="false" title="沙箱支付环境" class="sandbox-alert">
+          仅用于开发联调，不会产生真实扣款，也不会触发上游渠道。点击「模拟支付成功」将按订单金额入账并推送异步通知。
+        </n-alert>
+
+        <div v-if="loading" class="state-loading">
+          <n-spin size="large" />
+          <n-text depth="3">正在加载订单信息…</n-text>
         </div>
-      </div>
 
-      <n-alert type="warning" :bordered="false" class="sandbox-alert" title="沙箱支付环境">
-        仅用于开发联调，不会产生真实扣款，也不会触发上游渠道。点击「模拟支付成功」将按订单金额入账并推送异步通知。
-      </n-alert>
+        <n-result
+          v-else-if="errorMsg"
+          status="error"
+          title="无法进入沙箱支付"
+          :description="errorMsg"
+        >
+          <template #footer>
+            <div class="result-body">
+              <n-button type="primary" block @click="loadOrder">重新加载</n-button>
+              <n-button block tag="a" href="/">返回首页</n-button>
+            </div>
+          </template>
+        </n-result>
 
-      <div v-if="loading" class="sandbox-loading">
-        <n-spin size="large" />
-        <p class="loading-text">正在加载订单信息…</p>
-      </div>
+        <template v-else>
+          <div class="order-head">
+            <n-text depth="2" class="order-name">{{ order?.name || '沙箱测试商品' }}</n-text>
+            <n-statistic :value="formatMoney(order?.amount)" class="order-amount">
+              <template #label>订单金额</template>
+            </n-statistic>
+            <n-space align="center" justify="center" :size="8">
+              <n-tag size="small" round :bordered="false" :type="statusInfo.type">{{ statusInfo.text }}</n-tag>
+              <n-space align="center" :size="6">
+                <payment-brand-icon v-if="payTypeBrand" :type="payTypeBrand" :size="16" />
+                <n-text depth="3" class="order-type">{{ paymentTypeText(order?.payment_type) }}</n-text>
+              </n-space>
+            </n-space>
+          </div>
 
-      <n-result
-        v-else-if="errorMsg"
-        status="error"
-        title="无法进入沙箱支付"
-        :description="errorMsg"
-      >
-        <template #footer>
-          <n-button @click="loadOrder">重新加载</n-button>
+          <n-descriptions :column="1" size="small" label-placement="left" class="order-meta">
+            <n-descriptions-item label="订单号">
+              <n-space align="center" :size="6">
+                <span class="mono order-no">{{ order?.trade_no }}</span>
+                <n-button text type="primary" size="tiny" @click="handleCopy(order?.trade_no)">复制</n-button>
+              </n-space>
+            </n-descriptions-item>
+            <n-descriptions-item label="金额（分）">
+              <span class="mono">{{ order?.amount }}</span>
+            </n-descriptions-item>
+            <n-descriptions-item label="币种">{{ order?.currency }}</n-descriptions-item>
+            <n-descriptions-item label="过期时间">{{ formatDateTime(order?.expires_at) }}</n-descriptions-item>
+          </n-descriptions>
+
+          <n-alert v-if="order?.status === 'paid'" type="success" :bordered="false" class="sandbox-alert">
+            该订单已支付，可返回收银台查看支付结果。
+          </n-alert>
+          <n-alert
+            v-else-if="order?.status === 'closed' || order?.status === 'failed'"
+            type="error"
+            :bordered="false"
+            class="sandbox-alert"
+          >
+            订单当前状态为「{{ statusInfo.text }}」，无法模拟支付。
+          </n-alert>
+
+          <div class="submit-box">
+            <n-button
+              type="primary"
+              size="large"
+              block
+              :loading="submitting"
+              :disabled="!order || order.status !== 'pending'"
+              @click="handleComplete"
+            >
+              模拟支付成功
+            </n-button>
+            <n-text depth="3" class="sandbox-tip">完成后会跳回收银台，由收银台轮询确认最终状态。</n-text>
+          </div>
         </template>
-      </n-result>
+      </n-card>
 
-      <template v-else>
-        <div class="order-box">
-          <div class="order-name">{{ order?.name || '沙箱测试商品' }}</div>
-          <div class="order-amount">{{ formatMoney(order?.amount) }}</div>
-          <div class="order-status">
-            <n-tag :type="statusInfo.type" size="small" round>{{ statusInfo.text }}</n-tag>
-            <span class="order-type">{{ paymentTypeText(order?.payment_type) }}</span>
-          </div>
-        </div>
-
-        <div class="order-meta">
-          <div class="meta-row">
-            <span class="meta-label">订单号</span>
-            <span class="meta-value mono">{{ order?.trade_no }}</span>
-          </div>
-          <div class="meta-row">
-            <span class="meta-label">金额（分）</span>
-            <span class="meta-value mono">{{ order?.amount }}</span>
-          </div>
-          <div class="meta-row">
-            <span class="meta-label">币种</span>
-            <span class="meta-value">{{ order?.currency }}</span>
-          </div>
-          <div class="meta-row">
-            <span class="meta-label">过期时间</span>
-            <span class="meta-value">{{ formatDateTime(order?.expires_at) }}</span>
-          </div>
-        </div>
-
-        <n-alert v-if="order?.status === 'paid'" type="success" :bordered="false" class="sandbox-alert">
-          该订单已支付，可返回收银台查看支付结果。
-        </n-alert>
-        <n-alert
-          v-else-if="order?.status === 'closed' || order?.status === 'failed'"
-          type="error"
-          :bordered="false"
-          class="sandbox-alert"
-        >
-          订单当前状态为「{{ statusInfo.text }}」，无法模拟支付。
-        </n-alert>
-
-        <n-button
-          type="primary"
-          size="large"
-          block
-          class="submit-btn"
-          :loading="submitting"
-          :disabled="!order || order.status !== 'pending'"
-          @click="handleComplete"
-        >
-          模拟支付成功
-        </n-button>
-        <p class="sandbox-tip">完成后会跳回收银台，由收银台轮询确认最终状态。</p>
-      </template>
-
-      <div class="sandbox-foot">
-        <router-link to="/">返回首页</router-link>
-        <span class="sep">·</span>
-        <router-link to="/doc">开发文档</router-link>
-      </div>
+      <footer class="sandbox-foot">
+        <router-link to="/" class="foot-link">返回首页</router-link>
+        <span class="foot-sep">·</span>
+        <router-link to="/doc" class="foot-link">开发文档</router-link>
+      </footer>
     </div>
   </div>
 </template>
@@ -168,160 +184,132 @@ onMounted(() => {
 <style scoped>
 .sandbox-page {
   min-height: 100vh;
+  background: var(--gp-bg);
+  padding: 40px var(--gp-gutter) 32px;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 48px 16px;
-  background: radial-gradient(900px 420px at 15% 0%, #fef3c7 0%, transparent 62%),
-    linear-gradient(160deg, #fffdf5 0%, #f8fafc 55%, #f5f7fb 100%);
 }
-.sandbox-card {
+.sandbox-shell {
   width: 100%;
   max-width: 480px;
-  background: #fff;
-  border-radius: 18px;
-  box-shadow: 0 20px 56px rgba(15, 23, 42, 0.12);
-  padding: 26px 26px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
-.sandbox-brand {
+.sandbox-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid #eef2f7;
+  padding: 0 2px;
 }
-.brand-mark {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-weight: 700;
-  background: linear-gradient(135deg, #d97706, #f59e0b);
+.sandbox-card {
+  border-radius: var(--gp-radius-lg);
+  box-shadow: var(--gp-shadow);
 }
-.brand-logo {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  object-fit: cover;
-  display: block;
-  flex: none;
-}
-.brand-name {
-  font-weight: 700;
-  color: #0f172a;
-  font-size: 16px;
-}
-.brand-sub {
-  font-size: 11.5px;
-  color: #94a3b8;
+.sandbox-card :deep(.n-card__content) {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 .sandbox-alert {
-  margin-top: 16px;
+  margin: 0;
 }
-.sandbox-loading {
-  padding: 48px 0;
+.state-loading {
+  padding: 44px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 14px;
-}
-.loading-text {
-  margin: 0;
   font-size: 13px;
-  color: #64748b;
 }
-.order-box {
-  text-align: center;
-  padding: 22px 0 18px;
-  border-bottom: 1px dashed #e2e8f0;
+.result-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.order-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--gp-line-soft);
 }
 .order-name {
-  font-size: 15px;
-  color: #334155;
-  margin-bottom: 10px;
+  font-size: 14px;
+  max-width: 100%;
+  text-align: center;
+  word-break: break-word;
+}
+.order-amount :deep(.n-statistic-label) {
+  font-size: 12.5px;
+  color: var(--gp-text-3);
+  text-align: center;
+}
+.order-amount :deep(.n-statistic-value__content),
+.order-amount :deep(.n-statistic-value) {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--gp-text-1);
+  font-variant-numeric: tabular-nums;
+}
+.order-type {
+  font-size: 12.5px;
+}
+.order-meta {
+  margin: 0;
+}
+.order-no {
+  font-size: 12.5px;
+  color: var(--gp-text-2);
   word-break: break-all;
 }
-.order-amount {
-  font-size: 36px;
-  font-weight: 700;
-  color: #0f172a;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.5px;
+.submit-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-.order-status {
-  margin-top: 10px;
+.sandbox-tip {
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: center;
+}
+.sandbox-foot {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  font-size: 12.5px;
-  color: #64748b;
-}
-.order-type {
-  color: #94a3b8;
-}
-.order-meta {
-  padding: 16px 0;
-  border-bottom: 1px dashed #e2e8f0;
-}
-.meta-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 13px;
-  padding: 5px 0;
-}
-.meta-label {
-  color: #94a3b8;
-  flex: none;
-}
-.meta-value {
-  color: #334155;
-  text-align: right;
-  word-break: break-all;
-}
-.meta-value.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px;
-}
-.submit-btn {
-  margin-top: 20px;
-}
-.sandbox-tip {
-  margin: 12px 0 0;
-  font-size: 12px;
-  color: #94a3b8;
-  text-align: center;
-  line-height: 1.7;
-}
-.sandbox-foot {
-  margin-top: 20px;
-  padding-top: 14px;
-  border-top: 1px solid #eef2f7;
-  font-size: 11.5px;
-  color: #94a3b8;
-  display: flex;
   gap: 6px;
-  justify-content: center;
+  font-size: 11.5px;
+  color: var(--gp-text-3);
 }
-.sandbox-foot a:hover {
-  color: #2563eb;
+.foot-link {
+  color: var(--gp-accent);
 }
-.sep {
-  color: #cbd5e1;
+.foot-sep {
+  color: var(--gp-text-3);
 }
 @media (max-width: 768px) {
   .sandbox-page {
-    padding: 20px 12px;
+    padding: 18px var(--gp-gutter) 24px;
   }
-  .sandbox-card {
-    padding: 20px 16px 16px;
-    border-radius: 14px;
+  .sandbox-shell {
+    gap: 12px;
   }
-  .order-amount {
-    font-size: 30px;
+  .sandbox-card :deep(.n-card__content) {
+    padding: 16px;
+    gap: 14px;
+  }
+  .order-amount :deep(.n-statistic-value__content),
+  .order-amount :deep(.n-statistic-value) {
+    font-size: 28px;
+  }
+  .state-loading {
+    padding: 32px 0;
   }
 }
 </style>

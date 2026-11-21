@@ -19,7 +19,7 @@ import { payTypesApi } from '@/api/payTypes';
 import type { PayType } from '@/api/payTypes';
 import { errorMessage } from '@/api/client';
 import { formatDateTime } from '@/utils/format';
-import { itemsOf } from './shared';
+import { itemsOf, useNarrow } from './shared';
 
 interface PayTypeForm {
   code: string;
@@ -30,6 +30,7 @@ interface PayTypeForm {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const rows = ref<PayType[]>([]);
 const loading = ref(false);
@@ -264,7 +265,7 @@ onMounted(load);
 <template>
   <admin-page title="支付方式" subtitle="收银台展示的支付方式与排序，可上传图标地址">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -288,7 +289,7 @@ onMounted(load);
         :pagination="{ pageSize: 10 }"
         :row-key="(row: PayType) => row.id"
         :scroll-x="1000"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
       >
         <template #empty>
           <n-empty description="暂无支付方式，点击右上角新建" size="small" />
@@ -300,9 +301,15 @@ onMounted(load);
       v-model:show="showForm"
       preset="card"
       :title="isEditing ? '编辑支付方式' : '新建支付方式'"
-      style="width: 640px"
+      style="width: 640px; max-width: 94vw"
     >
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="left" label-width="120">
+      <n-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 120"
+      >
         <n-form-item label="编码" path="code">
           <n-input v-model:value="form.code" placeholder="例如 alipay / wxpay，创建后尽量别改" />
         </n-form-item>
@@ -323,7 +330,7 @@ onMounted(load);
         </n-form-item>
       </n-form>
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="end" :wrap="true">
           <n-button @click="showForm = false">取消</n-button>
           <n-button type="primary" :loading="submitting" @click="submit">保存</n-button>
         </n-space>

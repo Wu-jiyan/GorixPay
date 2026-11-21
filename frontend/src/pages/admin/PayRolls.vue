@@ -21,7 +21,7 @@ import type { PayRoll } from '@/api/payTypes';
 import type { PageQuery } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import { activeStatus } from '@/utils/format';
-import { asRow, itemsOf } from './shared';
+import { asRow, itemsOf, useNarrow } from './shared';
 
 /** 后端 pay-rolls 支持 from / to 日期过滤，但 PageQuery 类型里没有这两个字段 */
 type RollQuery = PageQuery & { from?: string; to?: string };
@@ -37,6 +37,7 @@ interface RollRow {
 }
 
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const day = ref<number>(dayjs().valueOf());
 const channels = ref<Channel[]>([]);
@@ -410,7 +411,7 @@ onMounted(() => {
 <template>
   <admin-page title="按日轮询" subtitle="按日期给渠道分配权重，收银台据此轮询可用通道">
     <template #actions>
-      <n-space>
+      <n-space :wrap="true">
         <n-button :loading="loading" @click="load">
           <template #icon>
             <n-icon :component="RefreshOutline" />
@@ -432,18 +433,22 @@ onMounted(() => {
 
     <n-card size="small" :bordered="false">
       <template #header>
-        <n-space align="center">
-          <n-date-picker
-            v-model:value="day"
-            type="date"
-            :clearable="false"
-            style="width: 160px"
-            @update:value="reloadDay"
-          />
-          <n-text depth="3" style="font-size: 12px">
-            当日已配置 {{ configuredCount }} 个渠道，权重合计 {{ totalWeight }}
-          </n-text>
-        </n-space>
+        <n-grid cols="1 s:2" responsive="screen" :x-gap="12" :y-gap="8" style="width: 100%">
+          <n-gi>
+            <n-date-picker
+              v-model:value="day"
+              type="date"
+              :clearable="false"
+              style="width: 100%; max-width: 200px"
+              @update:value="reloadDay"
+            />
+          </n-gi>
+          <n-gi>
+            <n-text depth="3" style="font-size: 12px">
+              当日已配置 {{ configuredCount }} 个渠道，权重合计 {{ totalWeight }}
+            </n-text>
+          </n-gi>
+        </n-grid>
       </template>
 
       <n-data-table
@@ -453,7 +458,7 @@ onMounted(() => {
         :pagination="{ pageSize: 20 }"
         :row-key="(row: RollRow) => row.channel_id"
         :scroll-x="1100"
-        size="small"
+        :size="isNarrow ? 'small' : 'medium'"
       >
         <template #empty>
           <n-empty description="暂无轮询配置" size="small" />
@@ -461,8 +466,8 @@ onMounted(() => {
       </n-data-table>
     </n-card>
 
-    <n-modal v-model:show="showGenerate" preset="card" title="批量生成轮询" style="width: 640px">
-      <n-form label-placement="left" label-width="110">
+    <n-modal v-model:show="showGenerate" preset="card" title="批量生成轮询" style="width: 640px; max-width: 94vw">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 110">
         <n-form-item label="支付渠道">
           <n-select
             v-model:value="generateForm.channel_ids"
@@ -473,7 +478,7 @@ onMounted(() => {
           />
         </n-form-item>
         <n-form-item label="日期区间">
-          <n-date-picker v-model:value="generateForm.range" type="daterange" clearable style="width: 260px" />
+          <n-date-picker v-model:value="generateForm.range" type="daterange" clearable style="width: 100%; max-width: 320px" />
         </n-form-item>
       </n-form>
       <n-alert type="info" :bordered="false">
