@@ -15,8 +15,13 @@ import (
 type Getter func(name string) string
 
 // Options normalises device and method the way Pay.php:296-310 does: the device
-// defaults to pc, a jump device forces the jump method, and the
-// qq/wechat/alipay/app devices are mobile clients.
+// defaults to pc and a jump device forces the jump method.
+//
+// The in-app devices (qq/wechat/alipay/app) keep their own name instead of being
+// flattened into "mobile": upstream keeps $mdevice next to $device for exactly
+// this reason, and a plugin needs it to decide whether a JSAPI trade type can run
+// (T_JSAPI only works inside the WeChat browser). Everything that only cares
+// "phone or desktop" treats anything but "pc" as mobile.
 func Options(get Getter) paymentorchestrator.StartOptions {
 	device := strings.ToLower(strings.TrimSpace(get("device")))
 	if device == "" {
@@ -25,10 +30,6 @@ func Options(get Getter) paymentorchestrator.StartOptions {
 	method := strings.ToLower(strings.TrimSpace(get("method")))
 	if device == "jump" {
 		method = "jump"
-	}
-	switch device {
-	case "qq", "wechat", "alipay", "app":
-		device = "mobile"
 	}
 	return paymentorchestrator.StartOptions{
 		Method:    method,
