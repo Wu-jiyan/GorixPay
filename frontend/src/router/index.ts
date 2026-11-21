@@ -67,6 +67,12 @@ const routes: RouteRecordRaw[] = [
       { path: '', component: () => import('@/pages/merchant/Dashboard.vue'), meta: { title: '商户概览' } },
       { path: 'orders', component: () => import('@/pages/merchant/Orders.vue'), meta: { title: '我的订单' } },
       { path: 'refunds', component: () => import('@/pages/merchant/Refunds.vue'), meta: { title: '退款记录' } },
+      { path: 'risk', component: () => import('@/pages/merchant/Risk.vue'), meta: { title: '风险记录' } },
+      {
+        path: 'notifications',
+        component: () => import('@/pages/merchant/Notifications.vue'),
+        meta: { title: '通知设置' },
+      },
       { path: 'complaints', component: () => import('@/pages/merchant/Complaints.vue'), meta: { title: '我的投诉' } },
       {
         path: 'settlements',
