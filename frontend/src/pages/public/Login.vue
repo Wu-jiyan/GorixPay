@@ -8,6 +8,7 @@ import { accountSecurityApi } from '@/api/accountSecurity';
 import { qrLoginApi, type QrTicket } from '@/api/publicQrLogin';
 import { errorMessage } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
+import { loadSite, siteInfo } from '@/stores/site';
 import BrandMark from '@/components/BrandMark.vue';
 
 const route = useRoute();
@@ -63,6 +64,14 @@ async function loadCaptcha() {
   if (captchaLoading.value) return;
   captchaLoading.value = true;
   try {
+    // 平台没开验证码就别去取图，省得每次都让人多填一格。
+    await loadSite();
+    if (siteInfo.value.captcha_required !== true) {
+      captchaEnabled.value = false;
+      captchaId.value = '';
+      captchaSvg.value = '';
+      return;
+    }
     const challenge = await accountSecurityApi.captcha();
     if (!challenge.svg) {
       captchaEnabled.value = false;

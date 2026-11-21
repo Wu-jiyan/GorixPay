@@ -51,4 +51,25 @@ export const accountSecurityApi = {
     });
     return data;
   },
+  /**
+   * 运营登录：带上图形验证码与动态口令（未开启的项后端会忽略）。
+   * 后台一旦在「安全设置」里打开验证码或 TOTP，这两个字段就是必填——
+   * 之前登录页只发账号密码，开关一开就再也登不进去。
+   */
+  async loginAdministratorWithSecurity(
+    identifier: string,
+    password: string,
+    captchaId?: string,
+    captchaCode?: string,
+    totpCode?: string,
+  ) {
+    const { data } = await http.post<LoginResult>('/auth/administrator/login', {
+      identifier,
+      password,
+      captcha_id: captchaId || undefined,
+      captcha_code: captchaCode || undefined,
+      totp_code: totpCode || undefined,
+    });
+    return data;
+  },
 };

@@ -194,6 +194,8 @@ export interface SiteInfo {
   skin?: string;
   announcement?: Announcement | null;
   payment_types: string[];
+  /** 平台是否要求登录图形验证码（security.captcha_required） */
+  captcha_required?: boolean;
 }
 
 export interface AdminDashboard {

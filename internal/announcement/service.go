@@ -17,6 +17,9 @@ const (
 	settingSiteLogo   = "site.logo_url"
 	settingSiteFooter = "site.footer_text"
 	settingSiteSkin   = "site.skin"
+	// settingCaptchaRequired is owned by internal/security; the public site payload
+	// only mirrors it so the login pages know whether to show a captcha box.
+	settingCaptchaRequired = "security.captcha_required"
 )
 
 type Service struct {
@@ -36,6 +39,9 @@ type Site struct {
 	Skin         string   `json:"skin"`
 	Announcement any      `json:"announcement"`
 	PaymentTypes []string `json:"payment_types"`
+	// CaptchaRequired mirrors security.captcha_required so the login pages only show
+	// a captcha box when the platform actually asks for one.
+	CaptchaRequired bool `json:"captcha_required"`
 }
 
 type systemSetting struct {
@@ -176,6 +182,9 @@ func (service *Service) Site(ctx context.Context) (Site, error) {
 	if value := decodeSetting(settings[settingSiteSkin]); value != "" {
 		site.Skin = value
 	}
+	// security.captcha_required is stored as a JSON boolean, so it needs its own
+	// decoder: decodeSetting only understands JSON strings and would answer "" here.
+	site.CaptchaRequired = decodeBoolSetting(settings["security.captcha_required"])
 	latest, err := service.LatestPublished(ctx)
 	if err != nil {
 		return Site{}, err
@@ -202,7 +211,7 @@ func (service *Service) paymentTypes(ctx context.Context) []string {
 }
 
 func (service *Service) settings(ctx context.Context) (map[string]string, error) {
-	keys := []string{settingSiteName, settingSiteLogo, settingSiteFooter, settingSiteSkin}
+	keys := []string{settingSiteName, settingSiteLogo, settingSiteFooter, settingSiteSkin, settingCaptchaRequired}
 	var records []systemSetting
 	if err := service.db.WithContext(ctx).Where("setting_key IN ?", keys).Find(&records).Error; err != nil {
 		return nil, err
@@ -223,6 +232,25 @@ func decodeSetting(raw string) string {
 		return strings.TrimSpace(decoded)
 	}
 	return strings.TrimSpace(raw)
+}
+
+// decodeBoolSetting reads a JSON boolean setting. The admin console stores
+// booleans as real JSON booleans, but an older row could hold the string "true",
+// so both shapes are accepted.
+func decodeBoolSetting(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return false
+	}
+	var flag bool
+	if err := json.Unmarshal([]byte(trimmed), &flag); err == nil {
+		return flag
+	}
+	var text string
+	if err := json.Unmarshal([]byte(trimmed), &text); err == nil {
+		return strings.EqualFold(strings.TrimSpace(text), "true")
+	}
+	return strings.EqualFold(trimmed, "true")
 }
 
 func validate(title, content string, status Status) (string, string, Status, error) {

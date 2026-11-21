@@ -39,6 +39,7 @@ export function loadSite(): Promise<void> {
         footer_text: site?.footer_text || '',
         payment_types: site?.payment_types ?? [],
         announcement: site?.announcement ?? null,
+        captcha_required: site?.captcha_required === true,
       };
       applySkin();
       if (lastPageTitle) setPageTitle(lastPageTitle);
