@@ -31,6 +31,9 @@ const filters = reactive({
 const detailVisible = ref(false);
 const detailOrder = ref<Order | null>(null);
 
+/** 补发通知的 in-flight 锁：同一个订单请求未回时按钮显示 loading */
+const notifyingId = ref('');
+
 const refundVisible = ref(false);
 const refundSubmitting = ref(false);
 const refundTarget = ref<Order | null>(null);
@@ -58,6 +61,21 @@ const rowKey = (row: Order) => row.id;
 function openDetail(row: Order) {
   detailOrder.value = row;
   detailVisible.value = true;
+}
+
+/** 补发异步通知：POST /merchant/orders/:id/notify，requeued=0 表示没有待重发的消息 */
+async function resendNotify(row: Order) {
+  notifyingId.value = row.id;
+  try {
+    const result = await merchantApi.resendOrderNotify(row.id);
+    const count = typeof result.requeued === 'number' ? result.requeued : Number(result.requeued) || 0;
+    if (count === 0) message.warning('该订单没有待重发的通知');
+    else message.success(`已重新排队 ${count} 条通知`);
+  } catch (err) {
+    message.error(errorMessage(err));
+  } finally {
+    notifyingId.value = '';
+  }
 }
 
 function generateOutRefundNo(): string {
@@ -176,7 +194,7 @@ const columns: DataTableColumns<Order> = [
   {
     title: '操作',
     key: 'actions',
-    width: 150,
+    width: 220,
     fixed: 'right',
     render: (row) =>
       h(NSpace, { size: 8, wrap: false }, () => [
@@ -190,6 +208,20 @@ const columns: DataTableColumns<Order> = [
               NButton,
               { size: 'small', text: true, type: 'warning', onClick: () => void openRefund(row) },
               () => '申请退款',
+            )
+          : null,
+        row.status === 'paid'
+          ? h(
+              NButton,
+              {
+                size: 'small',
+                text: true,
+                type: 'info',
+                loading: notifyingId.value === row.id,
+                disabled: notifyingId.value === row.id,
+                onClick: () => resendNotify(row),
+              },
+              () => '补发通知',
             )
           : null,
       ]),

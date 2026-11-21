@@ -43,7 +43,7 @@ func (*Plugin) Metadata() pluginpayment.Metadata {
 	return pluginpayment.Metadata{
 		Code:         "qqpay",
 		Name:         "QQ 钱包",
-		Capabilities: []pluginpayment.Capability{pluginpayment.CapabilityPayment},
+		Capabilities: []pluginpayment.Capability{pluginpayment.CapabilityPayment, pluginpayment.CapabilityRefund},
 	}
 }
 

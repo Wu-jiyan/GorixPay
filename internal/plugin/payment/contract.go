@@ -61,10 +61,13 @@ type Plugin interface {
 // TradeNo is the channel's own reference for the original payment (req_seq_id at
 // most acquirers), RefundNo the new reference for this refund.
 type RefundRequest struct {
-	TradeNo       string
-	OrgTradeNo    string
-	RefundNo      string
-	Amount        int64
+	TradeNo    string
+	OrgTradeNo string
+	RefundNo   string
+	Amount     int64
+	// OrgAmount is the original paid amount. Acquirers such as QQ Pay require it
+	// next to the refund amount; the ones that do not simply ignore it.
+	OrgAmount     int64
 	Currency      string
 	Description   string
 	Configuration map[string]string

@@ -34,7 +34,9 @@ type Handler struct {
 	finance      *financeservice.Service
 	// channelRefund sends the money back through the channel that captured it.
 	channelRefund refundReconciler
-	outbox        *outbox.QueryService
+	// completions marks an order paid by hand through the callback path.
+	completions completionService
+	outbox      *outbox.QueryService
 	// cipher encrypts credential settings (api secrets, SMTP password, SMS token)
 	// at rest. Nil means the deployment runs without a master key, and credential
 	// settings are refused instead of being stored in the clear.
@@ -159,6 +161,11 @@ func Register(group *gin.RouterGroup, db *gorm.DB, sessions gin.HandlerFunc, con
 	admin.GET("/orders/:id", handler.order)
 	admin.POST("/orders/:id/close", handler.closeOrder)
 	admin.POST("/orders/:id/refund", handler.refundOrder)
+	admin.POST("/orders/:id/notify", handler.orderNotify)
+	admin.POST("/orders/:id/complete", handler.completeOrder)
+	admin.POST("/orders/:id/freeze", handler.freezeOrder)
+	admin.POST("/orders/:id/unfreeze", handler.unfreezeOrder)
+	admin.POST("/orders/batch-close", handler.batchCloseOrders)
 	admin.GET("/channels", handler.channels)
 	admin.POST("/channels", handler.createChannel)
 	admin.PUT("/channels/:id", handler.updateChannel)

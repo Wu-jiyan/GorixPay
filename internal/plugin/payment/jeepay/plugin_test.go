@@ -192,7 +192,7 @@ func TestVerifyCallbackRejectsBadSignatureAndAmounts(t *testing.T) {
 
 func TestMetadataAndConfigFields(t *testing.T) {
 	plugin := New(nil)
-	if metadata := plugin.Metadata(); metadata.Code != "jeepay" || len(metadata.Capabilities) != 1 {
+	if metadata := plugin.Metadata(); metadata.Code != "jeepay" || len(metadata.Capabilities) != 2 {
 		t.Fatalf("metadata=%+v", metadata)
 	}
 	wanted := map[string]bool{"api_url": true, "mch_no": true, "app_id": true, "key": true}

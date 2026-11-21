@@ -10,7 +10,7 @@ admin_routes:
 plugins:
   - code: alipay
     name: 支付宝当面付
-    capabilities: [payment]
+    capabilities: [payment, refund]
     callback_verifier: true
     upstream:
       create_path: gateway (alipay.trade.precreate)
@@ -25,7 +25,7 @@ plugins:
     amount_unit: fen from total_amount
   - code: wechatpayv3
     name: 微信支付 V3
-    capabilities: [payment]
+    capabilities: [payment, refund]
     callback_verifier: true
     upstream:
       create_path: /v3/pay/transactions/{native,jsapi,h5}
@@ -44,7 +44,7 @@ plugins:
     amount_unit: fen (amount.total)
   - code: jeepay
     name: Jeepay 聚合支付
-    capabilities: [payment]
+    capabilities: [payment, refund]
     callback_verifier: true
     upstream:
       create_path: /api/pay/unifiedOrder
@@ -91,7 +91,7 @@ plugins:
     amount_unit: fen (amount string with two decimals)
   - code: epay
     name: Epay
-    capabilities: [payment]
+    capabilities: [payment, refund]
     # The epay notification is handled by the dedicated /callback/epay/:channel
     # handler, not through the CallbackVerifier interface.
     callback_verifier: false
@@ -104,7 +104,7 @@ plugins:
     amount_unit: fen (money)
   - code: qqpay
     name: QQ 钱包
-    capabilities: [payment]
+    capabilities: [payment, refund]
     callback_verifier: true
     upstream:
       create_path: /cgi-bin/pay/qpay_unified_order.cgi (flat XML body)
@@ -137,7 +137,7 @@ plugins:
     amount_unit: fen (txnAmt)
   - code: huifu
     name: 汇付斗拱
-    capabilities: [payment]
+    capabilities: [payment, refund]
     callback_verifier: true
     upstream:
       create_path: /v3/trade/payment/jspay (native) | /v2/trade/hosting/payment/preorder (托管)

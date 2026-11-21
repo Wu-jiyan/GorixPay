@@ -111,3 +111,53 @@ func (handler *Handler) refundChannel(ctx *gin.Context, order paymentmodel.Order
 }
 
 var _ = errors.Is
+
+// freezeOrder moves an order's credited money into the merchant's frozen bucket.
+// Upstream Epay offers the same button on the order list (lib\Order::freeze) for
+// disputed orders; the order stays paid, so callback and refund paths keep working.
+func (handler *Handler) freezeOrder(ctx *gin.Context) {
+	handler.setFreeze(ctx, true)
+}
+
+func (handler *Handler) unfreezeOrder(ctx *gin.Context) {
+	handler.setFreeze(ctx, false)
+}
+
+func (handler *Handler) setFreeze(ctx *gin.Context, freeze bool) {
+	if handler.finance == nil {
+		internalError(ctx)
+		return
+	}
+	order, err := handler.finance.SetOrderFreeze(ctx.Request.Context(), ctx.Param("id"), freeze)
+	if err != nil {
+		if errors.Is(err, financeservice.ErrOrderNotFreezable) {
+			ctx.JSON(http.StatusConflict, gin.H{"code": "order_not_freezable", "message": "只有已支付的订单可以冻结/解冻"})
+			return
+		}
+		internalError(ctx)
+		return
+	}
+	ctx.JSON(http.StatusOK, order)
+}
+
+// orderNotify re-arms the asynchronous notification of one order, the same manual
+// resend upstream Epay puts on its admin order page. It answers how many messages
+// were put back in the queue; zero means the merchant had already acknowledged
+// every notification for this order.
+func (handler *Handler) orderNotify(ctx *gin.Context) {
+	var order paymentmodel.Order
+	if err := handler.db.WithContext(ctx.Request.Context()).First(&order, "id = ?", ctx.Param("id")).Error; err != nil {
+		notFound(ctx)
+		return
+	}
+	if handler.outbox == nil {
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"code": "outbox_unavailable", "message": "消息队列未启用"})
+		return
+	}
+	count, err := handler.outbox.RequeueByAggregate(ctx.Request.Context(), order.ID)
+	if err != nil {
+		internalError(ctx)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"requeued": count})
+}

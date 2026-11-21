@@ -57,6 +57,8 @@ export interface Order {
   attach?: string | null;
   channel_trade_no?: string | null;
   paid_at?: string | null;
+  /** 有值时表示该订单已入账金额被转入商户冻结余额（订单仍是已支付） */
+  frozen_at?: string | null;
   expires_at: string;
   created_at: string;
   updated_at: string;
@@ -73,6 +75,7 @@ export interface OrderStatistics {
 
 export type FinanceStatus = 'pending' | 'approved' | 'rejected' | string;
 
+/** 字段对齐 internal/finance/model/model.go 的 Refund json tag */
 export interface Refund {
   id: string;
   refund_no: string;
@@ -83,11 +86,15 @@ export interface Refund {
   currency: string;
   reason: string;
   status: FinanceStatus;
+  ledger_transaction_id?: string | null;
   rejection_reason?: string | null;
+  processed_by?: string | null;
+  processed_at?: string | null;
   created_at: string;
   updated_at: string;
 }
 
+/** 字段对齐 internal/finance/model/model.go 的 Settlement json tag */
 export interface Settlement {
   id: string;
   settlement_no: string;
@@ -97,11 +104,21 @@ export interface Settlement {
   currency: string;
   destination: string;
   status: FinanceStatus;
+  /** manual / auto，表示结算单是商户手提交还是规则自动生成 */
+  source?: string;
+  fee_cents?: number;
+  /** none / pending / done / failed */
+  transfer_status?: string;
+  transfer_at?: string | null;
+  ledger_transaction_id?: string | null;
   rejection_reason?: string | null;
+  processed_by?: string | null;
+  processed_at?: string | null;
   created_at: string;
   updated_at: string;
 }
 
+/** 字段对齐 internal/transfer/http.go 的 transferResponse */
 export interface Transfer {
   id: string;
   transfer_no: string;
@@ -112,8 +129,16 @@ export interface Transfer {
   account_name: string;
   account_no: string;
   bank_name: string;
+  branch_name?: string | null;
   status: FinanceStatus;
+  /** bank / alipay / red 等 */
+  kind?: string | null;
+  batch_no?: string | null;
+  remark?: string | null;
+  ledger_transaction_id?: string | null;
   rejection_reason?: string | null;
+  processed_by?: string | null;
+  processed_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -188,6 +213,27 @@ export interface DailyStat {
   date: string;
   order_count: number;
   paid_count: number;
+  paid_amount: number;
+}
+
+/** GET /admin/stats/summary：internal/admin/httpapi/extras.go 的 summaryStat */
+export interface AdminSummary {
+  merchant_count: number;
+  order_count: number;
+  paid_order_count: number;
+  paid_amount: number;
+  today_paid_amount: number;
+  pending_refunds: number;
+  pending_settlements: number;
+}
+
+/**
+ * GET /merchant/stats/daily：internal/reporting/stats.go 的 merchantDailyStat。
+ * 注意商户版没有 paid_count，只有订单数与成交金额。
+ */
+export interface MerchantDailyStat {
+  date: string;
+  order_count: number;
   paid_amount: number;
 }
 

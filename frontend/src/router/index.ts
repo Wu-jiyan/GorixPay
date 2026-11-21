@@ -119,6 +119,7 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '结算管理' },
       },
       { path: 'transfers', component: () => import('@/pages/admin/Transfers.vue'), meta: { title: '代付管理' } },
+      { path: 'funding', component: () => import('@/pages/admin/Funding.vue'), meta: { title: '资金单据' } },
       { path: 'settle-rules', component: () => import('@/pages/admin/SettleRules.vue'), meta: { title: '结算规则' } },
       { path: 'profit-sharing', component: () => import('@/pages/admin/ProfitSharing.vue'), meta: { title: '分账' } },
       {

@@ -1,6 +1,7 @@
 import http from './client';
 import type {
   AdminDashboard,
+  AdminSummary,
   Announcement,
   BlacklistEntry,
   CashierOrder,
@@ -14,6 +15,7 @@ import type {
   LedgerAccount,
   LoginResult,
   Merchant,
+  MerchantDailyStat,
   MerchantDashboard,
   MerchantDomain,
   Order,
@@ -118,9 +120,29 @@ export const merchantApi = {
     const { data } = await http.get<OrderStatistics>('/merchant/orders/statistics', { params: clean(query) });
     return data;
   },
+  /**
+   * 补发异步通知：POST /merchant/orders/:id/notify。
+   * 回 {requeued}，0 表示这条订单的通知商户都已经确认过，没有可重发的。
+   */
+  async resendOrderNotify(id: string) {
+    const { data } = await http.post<{ requeued: number }>(`/merchant/orders/${encodeURIComponent(id)}/notify`);
+    return data;
+  },
   async refunds(query: PageQuery = {}) {
     const { data } = await http.get<Paginated<Refund>>('/merchant/refunds', { params: clean(query) });
     return data;
+  },
+  /** 退款单详情：GET /merchant/refunds/:id */
+  async refund(id: string) {
+    const { data } = await http.get<Refund>(`/merchant/refunds/${encodeURIComponent(id)}`);
+    return data;
+  },
+  /** 商户按日统计：GET /merchant/stats/daily，后端固定回 {items, days} */
+  async dailyStats(days = 7) {
+    const { data } = await http.get<{ items: MerchantDailyStat[]; days?: number }>('/merchant/stats/daily', {
+      params: { days },
+    });
+    return data.items;
   },
   async createRefund(payload: {
     payment_order_id: string;
@@ -133,6 +155,11 @@ export const merchantApi = {
   },
   async settlements(query: PageQuery = {}) {
     const { data } = await http.get<Paginated<Settlement>>('/merchant/settlements', { params: clean(query) });
+    return data;
+  },
+  /** 结算单详情：GET /merchant/settlements/:id */
+  async settlement(id: string) {
+    const { data } = await http.get<Settlement>(`/merchant/settlements/${encodeURIComponent(id)}`);
     return data;
   },
   async createSettlement(payload: {
@@ -257,6 +284,11 @@ export const adminApi = {
     const { data } = await http.get<{ items: DailyStat[] }>('/admin/stats/daily', { params: { days } });
     return data.items;
   },
+  /** 汇总卡片：GET /admin/stats/summary（internal/admin/httpapi/extras.go 的 summaryStat） */
+  async statsSummary() {
+    const { data } = await http.get<AdminSummary>('/admin/stats/summary');
+    return data;
+  },
   async merchants(query: PageQuery = {}) {
     const { data } = await http.get<Paginated<Merchant>>('/admin/merchants', { params: clean(query) });
     return data;
@@ -280,6 +312,42 @@ export const adminApi = {
   },
   async closeOrder(id: string) {
     await http.post(`/admin/orders/${id}/close`);
+  },
+  /** 批量关单：POST /admin/orders/batch-close，只关 pending/processing，一次最多 200 笔 */
+  async batchCloseOrders(ids: string[]) {
+    const { data } = await http.post<{ closed: number; requested: number }>('/admin/orders/batch-close', { ids });
+    return data;
+  },
+  /**
+   * 手动补单：POST /admin/orders/:id/complete。
+   * 走的是和渠道回调完全相同的完成路径（账本 + 钩子 + 通知）；
+   * applied=false 表示这笔订单此前已经完成，没有重复记账。
+   */
+  async completeOrder(id: string, channelTradeNo = '') {
+    const { data } = await http.post<{ order: Order; applied: boolean }>(
+      `/admin/orders/${encodeURIComponent(id)}/complete`,
+      { channel_trade_no: channelTradeNo },
+    );
+    return data;
+  },
+  /** 补发异步通知：POST /admin/orders/:id/notify，回 {requeued} */
+  async resendOrderNotify(id: string) {
+    const { data } = await http.post<{ requeued: number }>(`/admin/orders/${encodeURIComponent(id)}/notify`);
+    return data;
+  },
+  /**
+   * 冻结订单：POST /admin/orders/:id/freeze。
+   * 把该订单已入账的金额从商户可用余额挪到冻结余额，订单仍是已支付（争议订单用）。
+   * 返回订单对象（含 frozen_at）；非已支付订单回 409 order_not_freezable。
+   */
+  async freezeOrder(id: string) {
+    const { data } = await http.post<Order>(`/admin/orders/${encodeURIComponent(id)}/freeze`);
+    return data;
+  },
+  /** 解冻订单：POST /admin/orders/:id/unfreeze，金额退回可用余额，frozen_at 清空 */
+  async unfreezeOrder(id: string) {
+    const { data } = await http.post<Order>(`/admin/orders/${encodeURIComponent(id)}/unfreeze`);
+    return data;
   },
   // 退款：先在账务里落一条退款单，execute=true 时再让捕获这笔钱的那条通道退回去。
   async refundOrder(
@@ -344,8 +412,18 @@ export const adminApi = {
     });
     return data;
   },
+  /** 退款单详情：GET /admin/refunds/:id */
+  async refund(id: string) {
+    const { data } = await http.get<Refund>(`/admin/refunds/${encodeURIComponent(id)}`);
+    return data;
+  },
   async settlements(query: PageQuery & { merchant_id?: string } = {}) {
     const { data } = await http.get<Paginated<Settlement>>('/admin/settlements', { params: clean(query) });
+    return data;
+  },
+  /** 结算单详情：GET /admin/settlements/:id */
+  async settlement(id: string) {
+    const { data } = await http.get<Settlement>(`/admin/settlements/${encodeURIComponent(id)}`);
     return data;
   },
   async processSettlement(id: string, action: 'approve' | 'reject', rejectionReason = '') {
@@ -364,6 +442,11 @@ export const adminApi = {
       action,
       rejection_reason: rejectionReason,
     });
+    return data;
+  },
+  /** 代付单详情：GET /admin/transfers/:id */
+  async transfer(id: string) {
+    const { data } = await http.get<Transfer>(`/admin/transfers/${encodeURIComponent(id)}`);
     return data;
   },
   async announcements() {

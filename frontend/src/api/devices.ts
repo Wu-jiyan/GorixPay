@@ -39,7 +39,8 @@ export const devicesApi = {
     return data;
   },
   async createVoiceDevice(payload: VoiceDeviceInput) {
-    const { data } = await http.post<VoiceDevice>('/admin/voice-devices', payload);
+    // 后端回 {device, secret}，secret 只在这里出现一次
+    const { data } = await http.post<{ device: VoiceDevice; secret: string }>('/admin/voice-devices', payload);
     return data;
   },
   async updateVoiceDevice(id: string, payload: VoiceDeviceInput) {
@@ -53,13 +54,19 @@ export const devicesApi = {
     const { data } = await http.post<{ ok?: boolean; message?: string }>(`/admin/voice-devices/${id}/test`, { text });
     return data;
   },
+  /** 重置语音设备密钥：POST /admin/voice-devices/:id/reset-secret，回 {secret} 只显示一次 */
+  async resetVoiceDeviceSecret(id: string) {
+    const { data } = await http.post<{ secret: string }>(`/admin/voice-devices/${id}/reset-secret`);
+    return data;
+  },
 
   async printers() {
     const { data } = await http.get<{ items: Printer[] } | Printer[]>('/admin/printers');
     return data;
   },
   async createPrinter(payload: PrinterInput) {
-    const { data } = await http.post<Printer>('/admin/printers', payload);
+    // 后端回 {printer, secret}，secret 只在这里出现一次
+    const { data } = await http.post<{ printer: Printer; secret: string }>('/admin/printers', payload);
     return data;
   },
   async updatePrinter(id: string, payload: PrinterInput) {
@@ -71,6 +78,11 @@ export const devicesApi = {
   },
   async testPrinter(id: string) {
     const { data } = await http.post<{ ok?: boolean; message?: string }>(`/admin/printers/${id}/test`);
+    return data;
+  },
+  /** 重置打印机密钥：POST /admin/printers/:id/reset-secret，回 {secret} 只显示一次 */
+  async resetPrinterSecret(id: string) {
+    const { data } = await http.post<{ secret: string }>(`/admin/printers/${id}/reset-secret`);
     return data;
   },
 };

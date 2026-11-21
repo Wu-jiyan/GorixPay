@@ -2,15 +2,22 @@
 import { computed, h, onMounted, ref } from 'vue';
 import { NButton, NPopconfirm, NSpace, NTag, NText, useMessage } from 'naive-ui';
 import type { DataTableColumns, DataTableRowKey, SelectOption } from 'naive-ui';
-import { CheckmarkOutline, CloseOutline, DownloadOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5';
+import {
+  CheckmarkOutline,
+  CloseOutline,
+  CopyOutline,
+  DownloadOutline,
+  RefreshOutline,
+  SearchOutline,
+} from '@vicons/ionicons5';
 import { adminApi } from '@/api';
 import type { Settlement } from '@/api';
 import { adminSettlementsApi } from '@/api/adminSettlements';
 import { exportCsvUrl } from '@/api/reports';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
-import { financeStatus, formatDateTime, formatMoney } from '@/utils/format';
-import { asRow, fieldText, useNarrow, usePendingAction, useServerPaging } from './shared';
+import { copyText, financeStatus, formatDateTime, formatMoney } from '@/utils/format';
+import { asRow, fieldText, prettyJson, useNarrow, usePendingAction, useServerPaging } from './shared';
 
 const message = useMessage();
 const isNarrow = useNarrow();
@@ -28,6 +35,10 @@ const rejectTarget = ref<Settlement | null>(null);
 const rejectionReason = ref('');
 const batchReject = ref(false);
 const rejectSubmitting = ref(false);
+
+const showDetail = ref(false);
+const detail = ref<Settlement | null>(null);
+const detailLoading = ref(false);
 
 const actions = usePendingAction();
 const batchAction = usePendingAction();
@@ -135,6 +146,26 @@ function openReject(row: Settlement) {
   showReject.value = true;
 }
 
+/** 详情抽屉：先用行数据铺底，再取 GET /admin/settlements/:id 拿全字段 */
+async function openDetail(row: Settlement) {
+  detail.value = row;
+  showDetail.value = true;
+  detailLoading.value = true;
+  try {
+    detail.value = await adminApi.settlement(row.id);
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    detailLoading.value = false;
+  }
+}
+
+async function copyDetail() {
+  const ok = await copyText(prettyJson(detail.value));
+  if (ok) message.success('已复制到剪贴板');
+  else message.error('复制失败，请手动选择文本复制');
+}
+
 function openBatchReject() {
   if (checkedKeys.value.length === 0) {
     message.warning('先勾选要驳回的结算单');
@@ -199,6 +230,12 @@ function transferCell(row: Settlement) {
   return h(NTag, { size: 'small', bordered: false, type: meta.type }, () => meta.text);
 }
 
+/** 详情抽屉里用纯文本展示打款状态（表格里已经有同源的 tag 渲染） */
+function transferText(status?: string): string {
+  const meta = transferLabels[status ?? ''];
+  return meta ? meta.text : status || '-';
+}
+
 const columns = computed<DataTableColumns<Settlement>>(() => {
   const pendingSet = actions.pending.value;
   const batchBusy = batchAction.pending.value.has('batch:approve');
@@ -251,13 +288,19 @@ const columns = computed<DataTableColumns<Settlement>>(() => {
     {
       title: '操作',
       key: 'actions',
-      width: 200,
+      width: 250,
       fixed: 'right',
       render: (row) => {
         const approving = pendingSet.has(`approve:${row.id}`);
         const transferring = pendingSet.has(`auto:${row.id}`);
+        const detailButton = h(
+          NButton,
+          { size: 'small', text: true, type: 'primary', onClick: () => openDetail(row) },
+          () => '详情',
+        );
         if (row.status === 'pending') {
           return h(NSpace, { size: 8, wrap: false }, () => [
+            detailButton,
             h(
               NPopconfirm,
               { onPositiveClick: () => approve(row) },
@@ -285,27 +328,30 @@ const columns = computed<DataTableColumns<Settlement>>(() => {
           ]);
         }
         if (row.status === 'approved') {
-          return h(
-            NPopconfirm,
-            { onPositiveClick: () => autoTransfer(row) },
-            {
-              trigger: () =>
-                h(
-                  NButton,
-                  {
-                    size: 'small',
-                    text: true,
-                    type: 'primary',
-                    loading: transferring,
-                    disabled: transferring || fieldText(row, 'transfer_status') === 'done',
-                  },
-                  () => '自动打款',
-                ),
-              default: () => '为该结算单创建代付单？需要商户已配置结算资料且存在自动打款规则。',
-            },
-          );
+          return h(NSpace, { size: 8, wrap: false }, () => [
+            detailButton,
+            h(
+              NPopconfirm,
+              { onPositiveClick: () => autoTransfer(row) },
+              {
+                trigger: () =>
+                  h(
+                    NButton,
+                    {
+                      size: 'small',
+                      text: true,
+                      type: 'primary',
+                      loading: transferring,
+                      disabled: transferring || fieldText(row, 'transfer_status') === 'done',
+                    },
+                    () => '自动打款',
+                  ),
+                default: () => '为该结算单创建代付单？需要商户已配置结算资料且存在自动打款规则。',
+              },
+            ),
+          ]);
         }
-        return h(NText, { depth: 3 }, () => '已处理');
+        return detailButton;
       },
     },
   ];
@@ -458,5 +504,75 @@ onMounted(load);
         </n-space>
       </template>
     </n-modal>
+
+    <n-drawer v-model:show="showDetail" :width="isNarrow ? '92vw' : 640" placement="right">
+      <n-drawer-content title="结算单详情" closable>
+        <n-spin :show="detailLoading">
+          <template v-if="detail">
+            <n-descriptions :column="isNarrow ? 1 : 2" bordered label-placement="left" size="small">
+              <n-descriptions-item label="结算单号">
+                <span class="mono">{{ detail.settlement_no || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="状态">
+                <n-tag size="small" round :bordered="false" :type="financeStatus(detail.status).type">
+                  {{ financeStatus(detail.status).text }}
+                </n-tag>
+              </n-descriptions-item>
+              <n-descriptions-item label="商户结算单号">
+                <span class="mono">{{ detail.out_settlement_no || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="结算金额">
+                <span class="amount">{{ formatMoney(detail.amount) }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="币种">{{ detail.currency || '-' }}</n-descriptions-item>
+              <n-descriptions-item label="手续费">
+                <span class="amount">{{ formatMoney(detail.fee_cents ?? 0) }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="商户 ID">
+                <span class="mono">{{ detail.merchant_id || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="来源">{{ detail.source || '-' }}</n-descriptions-item>
+              <n-descriptions-item label="打款状态">{{ transferText(detail.transfer_status) }}</n-descriptions-item>
+              <n-descriptions-item label="打款时间">{{ formatDateTime(detail.transfer_at) }}</n-descriptions-item>
+              <n-descriptions-item label="收款去向" :span="isNarrow ? 1 : 2">
+                {{ detail.destination || '-' }}
+              </n-descriptions-item>
+              <n-descriptions-item label="驳回原因" :span="isNarrow ? 1 : 2">
+                <span :class="{ 'danger-text': !!detail.rejection_reason }">{{ detail.rejection_reason || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="账本交易 ID" :span="isNarrow ? 1 : 2">
+                <span class="mono">{{ detail.ledger_transaction_id || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="审核人">
+                <span class="mono">{{ detail.processed_by || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="审核时间">{{ formatDateTime(detail.processed_at) }}</n-descriptions-item>
+              <n-descriptions-item label="创建时间">{{ formatDateTime(detail.created_at) }}</n-descriptions-item>
+              <n-descriptions-item label="更新时间">{{ formatDateTime(detail.updated_at) }}</n-descriptions-item>
+              <n-descriptions-item label="记录 ID" :span="isNarrow ? 1 : 2">
+                <span class="mono">{{ detail.id }}</span>
+              </n-descriptions-item>
+            </n-descriptions>
+
+            <n-space justify="end" style="margin-top: 12px">
+              <n-button size="small" text type="primary" @click="copyDetail">
+                <template #icon>
+                  <n-icon :component="CopyOutline" />
+                </template>
+                复制 JSON
+              </n-button>
+            </n-space>
+            <n-code :code="prettyJson(detail)" language="json" word-wrap />
+          </template>
+          <n-empty v-else description="暂无数据" size="small" />
+        </n-spin>
+      </n-drawer-content>
+    </n-drawer>
   </admin-page>
 </template>
+
+<style scoped>
+.danger-text {
+  color: var(--gp-danger);
+}
+</style>

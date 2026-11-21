@@ -18,7 +18,7 @@ import { devicesApi } from '@/api/devices';
 import type { Printer, VoiceDevice } from '@/api/devices';
 import { errorMessage } from '@/api/client';
 import { activeStatus, copyText, formatDateTime } from '@/utils/format';
-import { asRow, itemsOf, useNarrow } from './shared';
+import { itemsOf, useNarrow } from './shared';
 
 interface DeviceForm {
   device_no: string;
@@ -64,6 +64,8 @@ const voiceTesting = ref(false);
 const printerTestingId = ref('');
 const removingDeviceId = ref('');
 const removingPrinterId = ref('');
+const resettingDeviceId = ref('');
+const resettingPrinterId = ref('');
 
 const deviceRules: FormRules = {
   device_no: { required: true, message: '请输入设备号', trigger: ['blur', 'input'] },
@@ -169,8 +171,7 @@ async function submitDevice() {
     } else {
       const created = await devicesApi.createVoiceDevice(payload);
       message.success('语音设备已创建');
-      const secret = asRow(created).secret;
-      openSecret('设备密钥', typeof secret === 'string' ? secret : '');
+      openSecret('设备密钥', created.secret);
     }
     showDeviceForm.value = false;
     await loadDevices();
@@ -191,6 +192,21 @@ async function removeDevice(row: VoiceDevice) {
     message.error(errorMessage(error));
   } finally {
     removingDeviceId.value = '';
+  }
+}
+
+/** 重置语音设备密钥：POST /admin/voice-devices/:id/reset-secret，回 {secret} 只显示这一次 */
+async function resetDeviceSecret(row: VoiceDevice) {
+  resettingDeviceId.value = row.id;
+  try {
+    const result = await devicesApi.resetVoiceDeviceSecret(row.id);
+    message.success('设备密钥已重置');
+    openSecret(`设备密钥 · ${row.device_no}`, result.secret);
+    await loadDevices();
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    resettingDeviceId.value = '';
   }
 }
 
@@ -249,8 +265,7 @@ async function submitPrinter() {
     } else {
       const created = await devicesApi.createPrinter(payload);
       message.success('打印机已创建');
-      const secret = asRow(created).secret;
-      openSecret('打印机密钥', typeof secret === 'string' ? secret : '');
+      openSecret('打印机密钥', created.secret);
     }
     showPrinterForm.value = false;
     await loadPrinters();
@@ -286,6 +301,21 @@ async function testPrinter(row: Printer) {
   }
 }
 
+/** 重置打印机密钥：POST /admin/printers/:id/reset-secret，回 {secret} 只显示这一次 */
+async function resetPrinterSecret(row: Printer) {
+  resettingPrinterId.value = row.id;
+  try {
+    const result = await devicesApi.resetPrinterSecret(row.id);
+    message.success('打印机密钥已重置');
+    openSecret(`打印机密钥 · ${row.name || row.id}`, result.secret);
+    await loadPrinters();
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    resettingPrinterId.value = '';
+  }
+}
+
 function statusTag(status?: string) {
   const meta = activeStatus(status);
   return h(
@@ -314,7 +344,7 @@ const deviceColumns = computed<DataTableColumns<VoiceDevice>>(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 200,
+    width: 280,
     fixed: 'right',
     render: (row) =>
       h(
@@ -331,6 +361,25 @@ const deviceColumns = computed<DataTableColumns<VoiceDevice>>(() => [
               NButton,
               { text: true, size: 'small', type: 'info', onClick: () => openVoiceTest(row) },
               { default: () => '测试播报' },
+            ),
+            h(
+              NPopconfirm,
+              { positiveText: '确定', negativeText: '取消', onPositiveClick: () => resetDeviceSecret(row) },
+              {
+                trigger: () =>
+                  h(
+                    NButton,
+                    {
+                      text: true,
+                      size: 'small',
+                      type: 'warning',
+                      loading: resettingDeviceId.value === row.id,
+                      disabled: resettingDeviceId.value === row.id,
+                    },
+                    { default: () => '重置密钥' },
+                  ),
+                default: () => '重置后旧密钥立即失效，设备需要用新 secret 才能继续轮询。',
+              },
             ),
             h(
               NPopconfirm,
@@ -368,7 +417,7 @@ const printerColumns = computed<DataTableColumns<Printer>>(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 200,
+    width: 280,
     fixed: 'right',
     render: (row) =>
       h(
@@ -391,6 +440,25 @@ const printerColumns = computed<DataTableColumns<Printer>>(() => [
                 onClick: () => testPrinter(row),
               },
               { default: () => '测试打印' },
+            ),
+            h(
+              NPopconfirm,
+              { positiveText: '确定', negativeText: '取消', onPositiveClick: () => resetPrinterSecret(row) },
+              {
+                trigger: () =>
+                  h(
+                    NButton,
+                    {
+                      text: true,
+                      size: 'small',
+                      type: 'warning',
+                      loading: resettingPrinterId.value === row.id,
+                      disabled: resettingPrinterId.value === row.id,
+                    },
+                    { default: () => '重置密钥' },
+                  ),
+                default: () => '重置后旧密钥立即失效，打印机需要用新 secret 才能继续拉单。',
+              },
             ),
             h(
               NPopconfirm,
@@ -447,7 +515,7 @@ onMounted(() => {
     </template>
 
     <n-alert type="info" :bordered="false" style="margin-bottom: 16px">
-      设备端用「device_no + secret」轮询取任务；支付成功钩子会把播报文案与打印小票写入队列。创建时返回的 secret 只显示一次，丢了只能删设备重建。
+      设备端用「device_no + secret」轮询取任务；支付成功钩子会把播报文案与打印小票写入队列。创建时返回的 secret 只显示一次，丢了用操作列的「重置密钥」换一个新的。
     </n-alert>
 
     <n-card size="small" :bordered="false">
@@ -557,7 +625,7 @@ onMounted(() => {
 
     <n-modal v-model:show="showSecret" preset="card" :title="secretTitle" style="width: 640px; max-width: 94vw">
       <n-alert type="warning" :bordered="false" style="margin-bottom: 16px">
-        secret 只显示这一次，关掉就查不到了；丢了只能删除设备重建。
+        secret 只显示这一次，关掉就查不到了；忘了就再重置一次密钥（旧密钥会立即失效）。
       </n-alert>
       <n-space align="center" :wrap="true" :size="12">
         <n-input

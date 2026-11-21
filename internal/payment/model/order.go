@@ -53,9 +53,12 @@ type Order struct {
 	Attach         *string    `gorm:"type:text" json:"attach"`
 	ChannelTradeNo *string    `gorm:"type:varchar(128);index" json:"channel_trade_no"`
 	PaidAt         *time.Time `gorm:"index" json:"paid_at"`
-	ExpiresAt      time.Time  `gorm:"not null;index" json:"expires_at"`
-	CreatedAt      time.Time  `gorm:"not null" json:"created_at"`
-	UpdatedAt      time.Time  `gorm:"not null" json:"updated_at"`
+	// FrozenAt marks an order whose credited money an operator moved to the frozen
+	// bucket; the order stays paid and only the merchant balance moves.
+	FrozenAt  *time.Time `gorm:"index" json:"frozen_at"`
+	ExpiresAt time.Time  `gorm:"not null;index" json:"expires_at"`
+	CreatedAt time.Time  `gorm:"not null" json:"created_at"`
+	UpdatedAt time.Time  `gorm:"not null" json:"updated_at"`
 }
 
 func (Order) TableName() string {

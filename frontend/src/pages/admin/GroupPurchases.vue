@@ -5,7 +5,7 @@ import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { RefreshOutline, ReloadOutline, SearchOutline } from '@vicons/ionicons5';
 import AdminPage from '@/components/AdminPage.vue';
 import { groupPurchasesApi } from '@/api/groupPurchases';
-import type { GroupPurchase } from '@/api/groupPurchases';
+import type { GroupPlan, GroupPurchase } from '@/api/groupPurchases';
 import { errorMessage } from '@/api/client';
 import { formatDateTime, formatMoney } from '@/utils/format';
 import { asRow, itemsOf, numberOr, useNarrow, useServerPaging } from './shared';
@@ -18,6 +18,9 @@ const loading = ref(false);
 const merchantId = ref('');
 const status = ref<string | null>(null);
 const refundingId = ref('');
+
+const plans = ref<GroupPlan[]>([]);
+const plansLoading = ref(false);
 
 const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } = useServerPaging(load);
 
@@ -87,6 +90,63 @@ function statusTag(value?: string) {
   );
 }
 
+/** 套餐目录：GET /admin/group-plans，只读；改价走「用户组与费率」页 */
+async function loadPlans() {
+  plansLoading.value = true;
+  try {
+    plans.value = itemsOf<GroupPlan>(await groupPurchasesApi.plans());
+  } catch (error) {
+    plans.value = [];
+    message.error(errorMessage(error));
+  } finally {
+    plansLoading.value = false;
+  }
+}
+
+/** rate_bp 是万分比，展示成百分比 */
+function rateText(rateBp?: number): string {
+  const value = numberOr(rateBp, 0);
+  return `${(value / 100).toFixed(2)}%`;
+}
+
+const planColumns: DataTableColumns<GroupPlan> = [
+  {
+    title: '套餐 ID',
+    key: 'id',
+    width: 240,
+    ellipsis: { tooltip: true },
+    render: (row) => h(NText, { class: 'mono' }, () => row.id || '-'),
+  },
+  { title: '名称', key: 'name', minWidth: 160, ellipsis: { tooltip: true }, render: (row) => row.name || '-' },
+  {
+    title: '费率',
+    key: 'rate_bp',
+    width: 110,
+    align: 'right',
+    render: (row) => rateText(row.rate_bp),
+  },
+  {
+    title: '买断价',
+    key: 'price_cents',
+    width: 130,
+    align: 'right',
+    render: (row) => h(NText, { class: 'amount' }, () => formatMoney(numberOr(row.price_cents, 0))),
+  },
+  {
+    title: '结算方式',
+    key: 'settle_mode',
+    width: 130,
+    render: (row) => row.settle_mode || '-',
+  },
+  { title: '状态', key: 'status', width: 110, render: (row) => statusTag(row.status) },
+  {
+    title: '更新时间',
+    key: 'updated_at',
+    width: 180,
+    render: (row) => formatDateTime(row.updated_at ?? row.created_at),
+  },
+];
+
 const columns = computed<DataTableColumns<GroupPurchase>>(() => {
   const refunding = refundingId.value;
   return [
@@ -148,17 +208,47 @@ const columns = computed<DataTableColumns<GroupPurchase>>(() => {
   ];
 });
 
-onMounted(load);
+onMounted(() => {
+  void load();
+  void loadPlans();
+});
 </script>
 
 <template>
   <admin-page title="用户组购买记录" subtitle="商户买断用户组的支付与退款记录">
     <template #actions>
-      <n-button :loading="loading" @click="load">
-        <template #icon><n-icon><RefreshOutline /></n-icon></template>
-        刷新
-      </n-button>
+      <n-space :wrap="true">
+        <n-button :loading="loading" @click="load">
+          <template #icon><n-icon><RefreshOutline /></n-icon></template>
+          刷新
+        </n-button>
+        <n-button :loading="plansLoading" secondary @click="loadPlans">
+          <template #icon><n-icon><ReloadOutline /></n-icon></template>
+          刷新套餐目录
+        </n-button>
+      </n-space>
     </template>
+
+    <n-card size="small" :bordered="false" class="gp-section-gap">
+      <template #header>套餐目录</template>
+      <template #header-extra>
+        <n-text depth="3" class="gp-hint">只读；改价请到「用户组与费率」页</n-text>
+      </template>
+      <n-data-table
+        :columns="planColumns"
+        :data="plans"
+        :loading="plansLoading"
+        :bordered="false"
+        :pagination="false"
+        :row-key="(row: GroupPlan) => row.id"
+        :scroll-x="1100"
+        :size="isNarrow ? 'small' : 'medium'"
+      >
+        <template #empty>
+          <n-empty description="暂无用户组套餐" size="small" />
+        </template>
+      </n-data-table>
+    </n-card>
 
     <n-card size="small" :bordered="false">
       <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">

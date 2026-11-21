@@ -53,7 +53,7 @@ func (*Plugin) Metadata() pluginpayment.Metadata {
 	return pluginpayment.Metadata{
 		Code:         "huifu",
 		Name:         "汇付斗拱",
-		Capabilities: []pluginpayment.Capability{pluginpayment.CapabilityPayment},
+		Capabilities: []pluginpayment.Capability{pluginpayment.CapabilityPayment, pluginpayment.CapabilityRefund},
 	}
 }
 

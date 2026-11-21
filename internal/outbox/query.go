@@ -76,3 +76,25 @@ func (qs *QueryService) RequeueDead(ctx context.Context) (int64, error) {
 	})
 	return result.RowsAffected, result.Error
 }
+
+// RequeueByAggregate re-arms every notification of one aggregate (an order) that
+// did not make it out: dead, queued or currently leased. Upstream Epay has the
+// same manual resend on the merchant order page (user/ajax2.php act=notify) and in
+// the admin order list, because a merchant whose endpoint was down for a while has
+// no other way to get the callback.
+//
+// Completed messages are left alone: the merchant already acknowledged those, and
+// resending would double-count on their side.
+func (qs *QueryService) RequeueByAggregate(ctx context.Context, aggregateID string) (int64, error) {
+	now := qs.db.NowFunc()
+	result := qs.db.WithContext(ctx).Model(&Message{}).
+		Where("aggregate_id = ? AND status IN ?", aggregateID, []Status{StatusDead, StatusPending, StatusProcessing}).
+		Updates(map[string]any{
+			"status":       StatusPending,
+			"attempts":     0,
+			"lease_until":  nil,
+			"available_at": now,
+			"updated_at":   now,
+		})
+	return result.RowsAffected, result.Error
+}

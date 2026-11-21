@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
 import dayjs from 'dayjs';
-import { NTag, NText, useMessage, type DataTableColumns } from 'naive-ui';
-import { AddOutline, RefreshOutline } from '@vicons/ionicons5';
+import { NButton, NTag, NText, useMessage, type DataTableColumns } from 'naive-ui';
+import { AddOutline, CopyOutline, RefreshOutline } from '@vicons/ionicons5';
 import { merchantApi } from '@/api';
 import type { PageQuery, Settlement } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
-import { financeStatus, formatDateTime, formatMoney, yuanToCents } from '@/utils/format';
+import { copyText, financeStatus, formatDateTime, formatMoney, yuanToCents } from '@/utils/format';
+import { prettyJson } from '../admin/shared';
 import { useNarrow } from './shared';
 
 const message = useMessage();
@@ -25,6 +26,22 @@ const modalVisible = ref(false);
 const submitting = ref(false);
 const form = reactive({ amountYuan: null as number | null, destination: '' });
 const generatedNo = ref('');
+
+const showDetail = ref(false);
+const detail = ref<Settlement | null>(null);
+const detailLoading = ref(false);
+
+/** 结算单的打款状态文案，和后台列表保持同一套词 */
+const transferLabels: Record<string, { text: string; type: 'default' | 'info' | 'success' | 'warning' | 'error' }> = {
+  none: { text: '未打款', type: 'default' },
+  pending: { text: '打款中', type: 'warning' },
+  done: { text: '已打款', type: 'success' },
+  failed: { text: '打款失败', type: 'error' },
+};
+
+function transferMeta(status?: string) {
+  return transferLabels[status ?? ''] ?? { text: status || '-', type: 'default' as const };
+}
 
 const rowKey = (row: Settlement) => row.id;
 
@@ -67,7 +84,35 @@ const columns: DataTableColumns<Settlement> = [
     width: 170,
     render: (row) => formatDateTime(row.created_at),
   },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 90,
+    fixed: 'right',
+    render: (row) =>
+      h(NButton, { size: 'small', text: true, type: 'primary', onClick: () => openDetail(row) }, () => '详情'),
+  },
 ];
+
+/** 结算单详情：GET /merchant/settlements/:id */
+async function openDetail(row: Settlement) {
+  detail.value = row;
+  showDetail.value = true;
+  detailLoading.value = true;
+  try {
+    detail.value = await merchantApi.settlement(row.id);
+  } catch (err) {
+    message.error(errorMessage(err));
+  } finally {
+    detailLoading.value = false;
+  }
+}
+
+async function copyDetail() {
+  const ok = await copyText(prettyJson(detail.value));
+  if (ok) message.success('已复制到剪贴板');
+  else message.error('复制失败，请手动选择文本复制');
+}
 
 const pagination = computed(() => ({
   page: page.value,
@@ -250,5 +295,67 @@ onMounted(() => {
         </n-space>
       </template>
     </n-modal>
+
+    <n-drawer v-model:show="showDetail" :width="isNarrow ? '92vw' : 560" placement="right">
+      <n-drawer-content title="结算单详情" closable>
+        <n-spin :show="detailLoading">
+          <template v-if="detail">
+            <n-descriptions :column="isNarrow ? 1 : 2" bordered label-placement="left" size="small">
+              <n-descriptions-item label="结算单号">
+                <span class="mono">{{ detail.settlement_no || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="状态">
+                <n-tag size="small" round :bordered="false" :type="financeStatus(detail.status).type">
+                  {{ financeStatus(detail.status).text }}
+                </n-tag>
+              </n-descriptions-item>
+              <n-descriptions-item label="商户结算单号">
+                <span class="mono">{{ detail.out_settlement_no || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="结算金额">
+                <span class="amount">{{ formatMoney(detail.amount) }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="币种">{{ detail.currency || '-' }}</n-descriptions-item>
+              <n-descriptions-item label="手续费">
+                <span class="amount">{{ formatMoney(detail.fee_cents ?? 0) }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="来源">{{ detail.source || '-' }}</n-descriptions-item>
+              <n-descriptions-item label="打款状态">
+                <n-tag size="small" round :bordered="false" :type="transferMeta(detail.transfer_status).type">
+                  {{ transferMeta(detail.transfer_status).text }}
+                </n-tag>
+              </n-descriptions-item>
+              <n-descriptions-item label="打款时间">{{ formatDateTime(detail.transfer_at) }}</n-descriptions-item>
+              <n-descriptions-item label="审核时间">{{ formatDateTime(detail.processed_at) }}</n-descriptions-item>
+              <n-descriptions-item label="收款账户" :span="isNarrow ? 1 : 2">
+                {{ detail.destination || '-' }}
+              </n-descriptions-item>
+              <n-descriptions-item label="驳回原因" :span="isNarrow ? 1 : 2">
+                <span :class="{ 'danger-text': !!detail.rejection_reason }">{{ detail.rejection_reason || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="创建时间">{{ formatDateTime(detail.created_at) }}</n-descriptions-item>
+              <n-descriptions-item label="更新时间">{{ formatDateTime(detail.updated_at) }}</n-descriptions-item>
+            </n-descriptions>
+
+            <n-space justify="end" style="margin-top: 12px">
+              <n-button size="small" text type="primary" @click="copyDetail">
+                <template #icon>
+                  <n-icon :component="CopyOutline" />
+                </template>
+                复制 JSON
+              </n-button>
+            </n-space>
+            <n-code :code="prettyJson(detail)" language="json" word-wrap />
+          </template>
+          <n-empty v-else description="暂无数据" size="small" />
+        </n-spin>
+      </n-drawer-content>
+    </n-drawer>
   </admin-page>
 </template>
+
+<style scoped>
+.danger-text {
+  color: var(--gp-danger);
+}
+</style>

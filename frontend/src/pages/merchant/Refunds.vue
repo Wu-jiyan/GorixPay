@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { NTag, NText, useMessage, type DataTableColumns, type SelectOption } from 'naive-ui';
-import { RefreshOutline, SearchOutline } from '@vicons/ionicons5';
+import { NButton, NTag, NText, useMessage, type DataTableColumns, type SelectOption } from 'naive-ui';
+import { CopyOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5';
 import { merchantApi } from '@/api';
 import type { PageQuery, Refund } from '@/api/types';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
-import { financeStatus, formatDateTime, formatMoney } from '@/utils/format';
+import { copyText, financeStatus, formatDateTime, formatMoney } from '@/utils/format';
+import { prettyJson } from '../admin/shared';
 import { useNarrow } from './shared';
 
 const message = useMessage();
@@ -18,6 +19,10 @@ const total = ref(0);
 const page = ref(1);
 const pageSize = ref(10);
 const filters = reactive({ status: null as string | null });
+
+const showDetail = ref(false);
+const detail = ref<Refund | null>(null);
+const detailLoading = ref(false);
 
 const statusOptions: SelectOption[] = [
   { label: '待审核', value: 'pending' },
@@ -72,7 +77,35 @@ const columns: DataTableColumns<Refund> = [
     ellipsis: { tooltip: true },
     render: (row) => row.rejection_reason || '-',
   },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 90,
+    fixed: 'right',
+    render: (row) =>
+      h(NButton, { size: 'small', text: true, type: 'primary', onClick: () => openDetail(row) }, () => '详情'),
+  },
 ];
+
+/** 退款单详情：GET /merchant/refunds/:id（列表不回 ledger / processed 字段） */
+async function openDetail(row: Refund) {
+  detail.value = row;
+  showDetail.value = true;
+  detailLoading.value = true;
+  try {
+    detail.value = await merchantApi.refund(row.id);
+  } catch (err) {
+    message.error(errorMessage(err));
+  } finally {
+    detailLoading.value = false;
+  }
+}
+
+async function copyDetail() {
+  const ok = await copyText(prettyJson(detail.value));
+  if (ok) message.success('已复制到剪贴板');
+  else message.error('复制失败，请手动选择文本复制');
+}
 
 const pagination = computed(() => ({
   page: page.value,
@@ -182,5 +215,51 @@ onMounted(() => {
         </template>
       </n-data-table>
     </n-card>
+
+    <n-drawer v-model:show="showDetail" :width="isNarrow ? '92vw' : 560" placement="right">
+      <n-drawer-content title="退款单详情" closable>
+        <n-spin :show="detailLoading">
+          <template v-if="detail">
+            <n-descriptions :column="isNarrow ? 1 : 2" bordered label-placement="left" size="small">
+              <n-descriptions-item label="退款单号">
+                <span class="mono">{{ detail.refund_no || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="状态">
+                <n-tag size="small" round :bordered="false" :type="financeStatus(detail.status).type">
+                  {{ financeStatus(detail.status).text }}
+                </n-tag>
+              </n-descriptions-item>
+              <n-descriptions-item label="商户退款单号">
+                <span class="mono">{{ detail.out_refund_no || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="退款金额">
+                <span class="amount">{{ formatMoney(detail.amount) }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="币种">{{ detail.currency || '-' }}</n-descriptions-item>
+              <n-descriptions-item label="原支付订单" :span="isNarrow ? 1 : 2">
+                <span class="mono">{{ detail.payment_order_id || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="退款原因" :span="isNarrow ? 1 : 2">{{ detail.reason || '-' }}</n-descriptions-item>
+              <n-descriptions-item label="审核备注" :span="isNarrow ? 1 : 2">
+                {{ detail.rejection_reason || '-' }}
+              </n-descriptions-item>
+              <n-descriptions-item label="创建时间">{{ formatDateTime(detail.created_at) }}</n-descriptions-item>
+              <n-descriptions-item label="更新时间">{{ formatDateTime(detail.updated_at) }}</n-descriptions-item>
+            </n-descriptions>
+
+            <n-space justify="end" style="margin-top: 12px">
+              <n-button size="small" text type="primary" @click="copyDetail">
+                <template #icon>
+                  <n-icon :component="CopyOutline" />
+                </template>
+                复制 JSON
+              </n-button>
+            </n-space>
+            <n-code :code="prettyJson(detail)" language="json" word-wrap />
+          </template>
+          <n-empty v-else description="暂无数据" size="small" />
+        </n-spin>
+      </n-drawer-content>
+    </n-drawer>
   </admin-page>
 </template>

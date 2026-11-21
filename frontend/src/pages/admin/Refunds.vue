@@ -2,14 +2,14 @@
 import { computed, h, onMounted, ref } from 'vue';
 import { NButton, NPopconfirm, NSpace, NTag, NText, useMessage } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
-import { DownloadOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5';
+import { CopyOutline, DownloadOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5';
 import { adminApi } from '@/api';
 import type { Refund } from '@/api';
 import { exportCsvUrl } from '@/api/reports';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
-import { financeStatus, formatDateTime, formatMoney } from '@/utils/format';
-import { useNarrow, usePendingAction, useServerPaging } from './shared';
+import { copyText, financeStatus, formatDateTime, formatMoney } from '@/utils/format';
+import { prettyJson, useNarrow, usePendingAction, useServerPaging } from './shared';
 
 const message = useMessage();
 const isNarrow = useNarrow();
@@ -24,6 +24,10 @@ const processing = ref(false);
 const showReject = ref(false);
 const rejectTarget = ref<Refund | null>(null);
 const rejectionReason = ref('');
+
+const showDetail = ref(false);
+const detail = ref<Refund | null>(null);
+const detailLoading = ref(false);
 
 const actions = usePendingAction();
 
@@ -94,6 +98,26 @@ function openReject(row: Refund) {
   rejectTarget.value = row;
   rejectionReason.value = '';
   showReject.value = true;
+}
+
+/** 详情抽屉：先拿列表行铺底，再用 GET /admin/refunds/:id 补全（列表不回 ledger/processed 字段） */
+async function openDetail(row: Refund) {
+  detail.value = row;
+  showDetail.value = true;
+  detailLoading.value = true;
+  try {
+    detail.value = await adminApi.refund(row.id);
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    detailLoading.value = false;
+  }
+}
+
+async function copyDetail() {
+  const ok = await copyText(prettyJson(detail.value));
+  if (ok) message.success('已复制到剪贴板');
+  else message.error('复制失败，请手动选择文本复制');
 }
 
 async function submitReject() {
@@ -172,12 +196,18 @@ const columns = computed<DataTableColumns<Refund>>(() => {
     {
       title: '操作',
       key: 'actions',
-      width: 140,
+      width: 190,
       fixed: 'right',
       render: (row) => {
-        if (row.status !== 'pending') return h(NText, { depth: 3 }, () => '已处理');
         const approving = pendingSet.has(`approve:${row.id}`);
+        const detailButton = h(
+          NButton,
+          { size: 'small', text: true, type: 'primary', onClick: () => openDetail(row) },
+          () => '详情',
+        );
+        if (row.status !== 'pending') return detailButton;
         return h(NSpace, { size: 8, wrap: false }, () => [
+          detailButton,
           h(
             NPopconfirm,
             { onPositiveClick: () => approve(row) },
@@ -332,5 +362,73 @@ onMounted(load);
         </n-space>
       </template>
     </n-modal>
+
+    <n-drawer v-model:show="showDetail" :width="isNarrow ? '92vw' : 620" placement="right">
+      <n-drawer-content title="退款单详情" closable>
+        <n-spin :show="detailLoading">
+          <template v-if="detail">
+            <n-descriptions :column="isNarrow ? 1 : 2" bordered label-placement="left" size="small">
+              <n-descriptions-item label="退款单号">
+                <span class="mono">{{ detail.refund_no || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="状态">
+                <n-tag size="small" round :bordered="false" :type="financeStatus(detail.status).type">
+                  {{ financeStatus(detail.status).text }}
+                </n-tag>
+              </n-descriptions-item>
+              <n-descriptions-item label="商户退款单号">
+                <span class="mono">{{ detail.out_refund_no || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="退款金额">
+                <span class="amount">{{ formatMoney(detail.amount) }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="币种">{{ detail.currency || '-' }}</n-descriptions-item>
+              <n-descriptions-item label="商户 ID">
+                <span class="mono">{{ detail.merchant_id || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="原支付订单 ID" :span="isNarrow ? 1 : 2">
+                <span class="mono">{{ detail.payment_order_id || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="退款原因" :span="isNarrow ? 1 : 2">
+                {{ detail.reason || '-' }}
+              </n-descriptions-item>
+              <n-descriptions-item label="驳回原因" :span="isNarrow ? 1 : 2">
+                <span :class="{ 'danger-text': !!detail.rejection_reason }">{{ detail.rejection_reason || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="账本交易 ID" :span="isNarrow ? 1 : 2">
+                <span class="mono">{{ detail.ledger_transaction_id || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="审核人">
+                <span class="mono">{{ detail.processed_by || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="审核时间">{{ formatDateTime(detail.processed_at) }}</n-descriptions-item>
+              <n-descriptions-item label="创建时间">{{ formatDateTime(detail.created_at) }}</n-descriptions-item>
+              <n-descriptions-item label="更新时间">{{ formatDateTime(detail.updated_at) }}</n-descriptions-item>
+              <n-descriptions-item label="记录 ID" :span="isNarrow ? 1 : 2">
+                <span class="mono">{{ detail.id }}</span>
+              </n-descriptions-item>
+            </n-descriptions>
+
+            <n-space justify="end" style="margin-top: 12px">
+              <n-button size="small" text type="primary" @click="copyDetail">
+                <template #icon>
+                  <n-icon :component="CopyOutline" />
+                </template>
+                复制 JSON
+              </n-button>
+            </n-space>
+            <n-code :code="prettyJson(detail)" language="json" word-wrap />
+          </template>
+          <n-empty v-else description="暂无数据" size="small" />
+        </n-spin>
+      </n-drawer-content>
+    </n-drawer>
   </admin-page>
 </template>
+
+<style scoped>
+/* 驳回原因、失败原因这类"要被人一眼看到"的字段统一走 danger 变量 */
+.danger-text {
+  color: var(--gp-danger);
+}
+</style>

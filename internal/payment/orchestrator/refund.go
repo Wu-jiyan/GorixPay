@@ -55,6 +55,7 @@ func (service *Service) Refund(ctx context.Context, order paymentmodel.Order, re
 		OrgTradeNo:    channelTradeNo(order),
 		RefundNo:      refundNo,
 		Amount:        amount,
+		OrgAmount:     order.Amount,
 		Currency:      order.Currency,
 		Description:   description,
 		Configuration: configuration,

@@ -115,6 +115,7 @@ const groups: Array<{ key: string; label: string; icon: Component; items: Array<
       ['/admin/settle-rules', '结算规则', OptionsOutline],
       ['/admin/profit-sharing', '分账', GitCompareOutline],
       ['/admin/transfers', '代付管理', PaperPlaneOutline],
+      ['/admin/funding', '资金单据', WalletOutline],
       ['/admin/ledger', '资金账本', LibraryOutline],
       ['/admin/invites', '返佣记录', LinkOutline],
       ['/admin/invite-codes', '邀请码', QrCodeOutline],

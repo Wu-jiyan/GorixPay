@@ -54,6 +54,7 @@
 | 订单 | `order.php`、`export.php`、`buyerstat.php`、`blacklist.php`、`ajax_order.php` | 订单列表、导出、支付用户统计、支付黑名单 | `/admin/orders` 与关单、`GET /admin/export/orders.csv`、`GET /admin/stats/buyers`、`/admin/blacklist`（`internal/reporting`、`internal/risk`） | 已实现 |
 | 分账 | `ps_receiver.php`、`ps_order.php`、`ajax_profitsharing.php` | 分账规则与分账记录 | `internal/profitsharing`：接收方增删改查、分账记录、重试；按 `rate_bp` 分账、手续费先扣、向下取整到分，内部接收方同事务走账本（幂等键 `split:{orderID}:{receiverID}`），费率合计超 100% 拒绝。渠道侧直清分账待渠道开通，见第 9 节 | 已实现 |
 | 结算 | `slist.php`、`settle.php`、`settle_batch.php`、`ajax_settle.php` | 结算列表、批量结算、批量转账 | `internal/settlement`：结算规则增删改查与手动触发、`/admin/settlements/batch-process`、`/admin/settlements/:id/auto-transfer`，每分钟巡检，同日幂等，审核通过自动建代付单，缺结算资料记 `failed` 并写原因 | 已实现 |
+| 订单操作 | `order.php` 的批量操作、`ajax_order.php` 的 `freeze`/`unfreeze`/`fillorder`/`notify` | 批量关单、冻结/解冻订单、手动补单、补发通知 | `POST /admin/orders/batch-close`（一次最多 200 笔，只关未支付）、`POST /admin/orders/:id/freeze|unfreeze`（把该订单已入账金额在可用/冻结桶之间搬，订单仍是已支付，幂等键 `order-freeze:<id>`）、`POST /admin/orders/:id/complete`（走与渠道回调完全相同的 `Complete` 事务，账本+钩子+通知各一次）、`POST /admin/orders/:id/notify` 与商户侧 `POST /merchant/orders/:id/notify`（按 aggregate 重排队，已完成的不重发）。上游的删除订单不实现：删掉订单等于毁掉账务与审计线索，需要清理测试数据走「数据清理」白名单 | 已实现 |
 | 付款与红包 | `transfer.php`、`transfer_add.php`、`transfer_red.php`、`transfer_batch.php`、`transfer_export.php`、`transfer_stat.php`、`ajax_transfer.php` | 付款记录、新增付款、创建红包、批量付款、导出、付款统计 | `internal/transfer`：后台手动付款 `POST /admin/transfers`（`kind=manual`，幂等键按 sha256 派生）、批量付款 `POST /admin/transfers/batch`（逐条创建，失败整批回滚）、红包批次与撤销、`GET /admin/export/transfers.csv`。红包领取待渠道开通，见第 9 节 | 已实现 |
 | 商户 | `ulist.php`、`uset.php`、`ustat.php`、`record.php`、`record_export.php`、`ajax_user.php` | 商户列表与详情、商户支付统计、资金明细与导出 | `/admin/merchants`、`/merchants/:id`、改状态、`/admin/stats/merchants`、`/admin/ledger/*`、`GET /admin/export/merchants.csv` 与 `/admin/export/ledger.csv` | 已实现 |
 | 用户组 | `glist.php`、`gedit.php`、`group.php` | 用户组设置、编辑、购买套餐 | `internal/merchantgroup`：组增删改查与启停、商户归组，组内 `rate_bp`、可用支付方式、`settle_mode`（normal/direct）；`internal/groupshop`：定价、套餐购买（余额扣款归组，退款反向入账并解组，幂等键带 attempts 后缀） | 已实现 |
@@ -134,6 +135,24 @@
 - 渠道侧分账（支付宝、微信直清）：`receiver_type=channel` 的行只记 pending 加原因，要等渠道插件提供分账接口。
 - 红包领取：批次能建、能撤销、超时会退回，领取要渠道真实的打款接口。
 - 投诉自动拉取：`internal/complaint` 的 `Puller` 是空的，插件侧没有拉取接口，现在靠运营登记加自动规则回复。
+
+## 9.1 渠道退款覆盖
+
+后台退款（`POST /admin/orders/:id/refund`，`execute=true`）会调用**捕获这笔钱的那条通道**退款，
+通道从成功的 attempt 取，不重新摇。已实现退款的插件：
+
+| 插件 | 退款接口 | 幂等键 |
+| --- | --- | --- |
+| `huifu` | `/v2/trade/hosting/payment/htRefund`（托管）、`/v3/trade/payment/scanpay/refund`（直连） | `req_seq_id` |
+| `alipay` | `alipay.trade.refund` | `out_request_no` |
+| `wechatpayv3` | `/v3/refund/domestic/refunds` | `out_refund_no` |
+| `epay` | 上游 `/api.php?act=refund` | `out_refund_no` |
+| `qqpay` | `qpay_refund.cgi` | `out_refund_no` |
+| `jeepay` | `/api/refund/refundOrder` | `mchRefundNo` |
+| `sandbox` | 本地直接成功（用来跑通整条退款链路） | — |
+
+`unionpay`、`usdt`、`generic` 没有退款实现：通道退款失败时退款单保持 `pending` 并原样回报错误，
+不会假装已退；这三种只能走账务退款 + 人工转账。
 
 ## 10. 口径与未核实
 

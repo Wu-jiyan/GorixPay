@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
 import { NButton, NForm, NFormItem, NInput, NInputNumber, NModal, NPopconfirm, NSpace, NSwitch, NTag, NText, useMessage } from 'naive-ui';
-import type { DataTableColumns, SelectOption } from 'naive-ui';
-import { DownloadOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5';
+import type { DataTableColumns, DataTableRowKey, SelectOption } from 'naive-ui';
+import { CloseOutline, DownloadOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5';
 import { adminApi } from '@/api';
 import { exportCsvUrl } from '@/api/reports';
 import type { Order } from '@/api';
 import { errorMessage } from '@/api/client';
 import AdminPage from '@/components/AdminPage.vue';
 import { formatDateTime, formatMoney, orderStatus, paymentTypeText } from '@/utils/format';
-import { toISOString, useNarrow, useServerPaging } from './shared';
+import { numberOr, toISOString, useNarrow, useServerPaging } from './shared';
 
 const message = useMessage();
 const isNarrow = useNarrow();
@@ -24,6 +24,23 @@ const dateRange = ref<[number, number] | null>(null);
 
 const showDetail = ref(false);
 const detail = ref<Order | null>(null);
+
+/* 批量关单：勾选行 + 二次确认 */
+const checkedKeys = ref<DataTableRowKey[]>([]);
+const batchClosing = ref(false);
+const selectedCount = computed(() => checkedKeys.value.length);
+
+/* 手动补单：走渠道回调同一条完成路径 */
+const showComplete = ref(false);
+const completeTarget = ref<Order | null>(null);
+const completeChannelTradeNo = ref('');
+const completing = ref(false);
+
+/* 补发通知：行级 in-flight 锁 */
+const notifyingId = ref('');
+
+/* 冻结/解冻：同一时刻只允许一行在飞 */
+const freezingId = ref('');
 
 const { page, pageSize, total, pagination, onPage, onPageSize, resetPage } = useServerPaging(load);
 
@@ -59,6 +76,9 @@ async function load() {
     });
     rows.value = data.items;
     total.value = data.total;
+    // 勾选只对当前页有效：翻页/换筛选后把已经不在列表里的行剔掉，避免对看不见的行下操作
+    const visible = new Set(rows.value.map((row) => row.id));
+    checkedKeys.value = checkedKeys.value.filter((key) => visible.has(String(key)));
   } catch (error) {
     message.error(errorMessage(error));
   } finally {
@@ -113,6 +133,91 @@ function closable(row: Order): boolean {
   return row.status === 'pending' || row.status === 'processing';
 }
 
+/** 批量关单：后端只关 pending/processing，跳过的笔数 = requested - closed */
+async function batchClose() {
+  const ids = checkedKeys.value.map((key) => String(key));
+  if (ids.length === 0) {
+    message.warning('先勾选要关闭的订单');
+    return;
+  }
+  batchClosing.value = true;
+  try {
+    const result = await adminApi.batchCloseOrders(ids);
+    const closed = numberOr(result.closed, 0);
+    const requested = numberOr(result.requested, ids.length);
+    const skipped = Math.max(0, requested - closed);
+    message.success(`已关闭 ${closed} 笔，跳过 ${skipped} 笔`);
+    checkedKeys.value = [];
+    await load();
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    batchClosing.value = false;
+  }
+}
+
+function openComplete(row: Order) {
+  completeTarget.value = row;
+  completeChannelTradeNo.value = '';
+  showComplete.value = true;
+}
+
+/** 手动补单：留空通道单号时后端会自己生成 MANUAL-<trade_no> */
+async function submitComplete() {
+  const target = completeTarget.value;
+  if (!target) return;
+  completing.value = true;
+  try {
+    const result = await adminApi.completeOrder(target.id, completeChannelTradeNo.value.trim());
+    message.success(result.applied ? '补单完成：已按已支付记账并通知商户' : '该订单此前已完成，本次没有重复记账');
+    showComplete.value = false;
+    await load();
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    completing.value = false;
+  }
+}
+
+/** 补发通知：requeued=0 说明商户已经确认过，没有待重发的消息 */
+async function resendNotify(row: Order) {
+  notifyingId.value = row.id;
+  try {
+    const result = await adminApi.resendOrderNotify(row.id);
+    const count = numberOr(result.requeued, 0);
+    if (count === 0) message.warning('该订单没有待重发的通知');
+    else message.success(`已重新排队 ${count} 条通知`);
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    notifyingId.value = '';
+  }
+}
+
+/** frozen_at 有值即已冻结 */
+function isFrozen(row: Order): boolean {
+  return typeof row.frozen_at === 'string' && row.frozen_at !== '';
+}
+
+/**
+ * 冻结 / 解冻订单：金额在商户「可用余额」和「冻结余额」之间挪，订单状态不变。
+ * 后端把整条订单回给我们，直接覆盖当前行和已打开的详情弹窗，不用整页重载。
+ */
+async function toggleFreeze(row: Order, freeze: boolean) {
+  freezingId.value = row.id;
+  try {
+    const updated = freeze ? await adminApi.freezeOrder(row.id) : await adminApi.unfreezeOrder(row.id);
+    const index = rows.value.findIndex((item) => item.id === row.id);
+    if (index >= 0) rows.value[index] = { ...rows.value[index], ...updated };
+    if (detail.value && detail.value.id === row.id) detail.value = { ...detail.value, ...updated };
+    message.success(freeze ? '订单金额已转入商户冻结余额' : '冻结金额已退回商户可用余额');
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    freezingId.value = '';
+  }
+}
+
 // 退款：默认整单全额，金额按元填写，提交时换回分。
 const showRefund = ref(false);
 const refundTarget = ref<Order | null>(null);
@@ -165,6 +270,11 @@ async function submitRefund() {
 
 const columns = computed<DataTableColumns<Order>>(() => [
   {
+    // 只有未支付订单能被批量关单，已支付的勾了也没用，直接从选择列禁掉
+    type: 'selection',
+    disabled: (row: Order) => !closable(row),
+  },
+  {
     title: '平台订单号',
     key: 'trade_no',
     width: 210,
@@ -201,11 +311,17 @@ const columns = computed<DataTableColumns<Order>>(() => [
   {
     title: '状态',
     key: 'status',
-    width: 100,
+    width: 160,
     render: (row) =>
-      h(NTag, { size: 'small', bordered: false, type: orderStatus(row.status).type }, () =>
-        orderStatus(row.status).text,
-      ),
+      h(NSpace, { size: 6, wrap: false, align: 'center' }, () => [
+        h(NTag, { size: 'small', bordered: false, type: orderStatus(row.status).type }, () =>
+          orderStatus(row.status).text,
+        ),
+        // 冻结不改订单状态，另挂一个标记，避免和"已支付"混成一句话
+        isFrozen(row)
+          ? h(NTag, { size: 'small', type: 'warning', bordered: false }, () => '已冻结')
+          : null,
+      ]),
   },
   {
     title: '创建时间',
@@ -216,7 +332,7 @@ const columns = computed<DataTableColumns<Order>>(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 190,
+    width: 390,
     fixed: 'right',
     render: (row) =>
       h(NSpace, { size: 8, wrap: false }, () => [
@@ -225,11 +341,58 @@ const columns = computed<DataTableColumns<Order>>(() => [
           { size: 'small', text: true, type: 'primary', onClick: () => openDetail(row) },
           () => '详情',
         ),
+        closable(row)
+          ? h(
+              NButton,
+              { size: 'small', text: true, type: 'primary', onClick: () => openComplete(row) },
+              () => '补单',
+            )
+          : null,
         refundable(row)
           ? h(
               NButton,
               { size: 'small', text: true, type: 'warning', onClick: () => openRefund(row) },
               () => '退款',
+            )
+          : null,
+        row.status === 'paid'
+          ? h(
+              NButton,
+              {
+                size: 'small',
+                text: true,
+                type: 'info',
+                loading: notifyingId.value === row.id,
+                disabled: notifyingId.value === row.id,
+                onClick: () => resendNotify(row),
+              },
+              () => '补发通知',
+            )
+          : null,
+        row.status === 'paid'
+          ? h(
+              NPopconfirm,
+              {
+                onPositiveClick: () => toggleFreeze(row, !isFrozen(row)),
+              },
+              {
+                trigger: () =>
+                  h(
+                    NButton,
+                    {
+                      size: 'small',
+                      text: true,
+                      type: isFrozen(row) ? 'info' : 'warning',
+                      loading: freezingId.value === row.id,
+                      disabled: freezingId.value === row.id,
+                    },
+                    () => (isFrozen(row) ? '解冻' : '冻结'),
+                  ),
+                default: () =>
+                  isFrozen(row)
+                    ? '解冻后这笔金额会退回商户可用余额。'
+                    : '该订单已入账金额会转入商户冻结余额。',
+              },
             )
           : null,
         closable(row)
@@ -260,7 +423,7 @@ interface DetailField {
 const detailFields = computed<DetailField[]>(() => {
   const order = detail.value;
   if (!order) return [];
-  return [
+  const fields: DetailField[] = [
     { label: '订单 ID', value: order.id || '-', mono: true },
     { label: '平台订单号', value: order.trade_no || '-', mono: true },
     { label: '商户订单号', value: order.out_trade_no || '-', mono: true },
@@ -279,6 +442,11 @@ const detailFields = computed<DetailField[]>(() => {
     { label: '创建时间', value: formatDateTime(order.created_at) },
     { label: '更新时间', value: formatDateTime(order.updated_at) },
   ];
+  // 只有被冻结过的订单才多这一条，避免正常订单里多一行 "-"
+  if (typeof order.frozen_at === 'string' && order.frozen_at !== '') {
+    fields.splice(14, 0, { label: '冻结时间', value: formatDateTime(order.frozen_at) });
+  }
+  return fields;
 });
 
 onMounted(load);
@@ -300,6 +468,22 @@ onMounted(load);
           </template>
           导出 CSV
         </n-button>
+        <n-popconfirm :disabled="selectedCount === 0" @positive-click="batchClose">
+          <template #trigger>
+            <n-button
+              type="error"
+              secondary
+              :disabled="selectedCount === 0"
+              :loading="batchClosing"
+            >
+              <template #icon>
+                <n-icon :component="CloseOutline" />
+              </template>
+              批量关单<span v-if="selectedCount > 0">（{{ selectedCount }}）</span>
+            </n-button>
+          </template>
+          确认关闭选中的 {{ selectedCount }} 笔未支付订单？已支付 / 已关闭的会被跳过。
+        </n-popconfirm>
       </n-space>
     </template>
 
@@ -372,13 +556,14 @@ onMounted(load);
       </n-form>
 
       <n-data-table
+        v-model:checked-row-keys="checkedKeys"
         :remote="true"
         :loading="loading"
         :columns="columns"
         :data="rows"
         :pagination="pagination"
         :row-key="(row: Order) => row.id"
-        :scroll-x="1200"
+        :scroll-x="1470"
         :size="isNarrow ? 'small' : 'medium'"
         @update:page="onPage"
         @update:page-size="onPageSize"
@@ -441,6 +626,35 @@ onMounted(load);
         <n-space justify="end">
           <n-button @click="showRefund = false">取消</n-button>
           <n-button type="warning" :loading="refunding" @click="submitRefund">确认退款</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <n-modal v-model:show="showComplete" preset="card" title="手动补单" style="width: 560px; max-width: 94vw">
+      <n-alert type="warning" :bordered="false" style="margin-bottom: 14px">
+        补单会按「已支付」记账（账本 + 钩子 + 通知），走的是和渠道回调完全相同的完成路径，每笔订单只生效一次。
+      </n-alert>
+
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
+        <n-form-item label="订单号">
+          <n-text class="mono">{{ completeTarget?.trade_no || '-' }}</n-text>
+        </n-form-item>
+        <n-form-item label="订单金额">
+          <n-text class="amount">{{ completeTarget ? formatMoney(completeTarget.amount) : '-' }}</n-text>
+        </n-form-item>
+        <n-form-item label="通道单号">
+          <n-input
+            v-model:value="completeChannelTradeNo"
+            placeholder="选填；留空后端生成 MANUAL-<平台订单号>"
+            class="mono"
+          />
+        </n-form-item>
+      </n-form>
+
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showComplete = false">取消</n-button>
+          <n-button type="primary" :loading="completing" @click="submitComplete">确认补单</n-button>
         </n-space>
       </template>
     </n-modal>

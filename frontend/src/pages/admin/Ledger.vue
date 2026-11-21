@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue';
+import { computed, h, onMounted, reactive, ref } from 'vue';
 import { NButton, NCollapseItem, NTag, NText, useMessage } from 'naive-ui';
-import type { DataTableColumns } from 'naive-ui';
+import type { DataTableColumns, FormInst, FormRules, SelectOption } from 'naive-ui';
 import {
   CashOutline,
   CheckmarkCircleOutline,
@@ -69,6 +69,100 @@ const showOperation = ref(false);
 const operationDetail = ref<Row | null>(null);
 const operationLoading = ref(false);
 const operationReason = ref('');
+
+/* ── 手工建账户：POST /admin/ledger/accounts ──────────────────────────────
+   handler 的必填项是 owner_type / owner_id / purpose / category / currency，
+   没有这两个下拉里没列到的值就直接填进输入框（owner_type 与 purpose 是字符串）。 */
+const showCreateAccount = ref(false);
+const accountSubmitting = ref(false);
+const accountFormRef = ref<FormInst | null>(null);
+const accountForm = reactive({
+  owner_type: 'merchant',
+  owner_id: '',
+  purpose: 'balance',
+  category: 'liability',
+  currency: 'CNY',
+});
+
+/* ── 手工记账：POST /admin/ledger/operations ──────────────────────────────
+   后端是"两腿"操作（一个账户 + 对手账户 + 金额，方向由 operation_type 决定），
+   落库状态是 pending，还要在「操作」页签里过账（post）才会产生分录。 */
+const showCreateOperation = ref(false);
+const operationSubmitting = ref(false);
+const operationFormRef = ref<FormInst | null>(null);
+const operationForm = reactive({
+  idempotency_key: '',
+  operation_type: 'transfer',
+  account_id: '',
+  counterparty_account_id: '',
+  amount_yuan: null as number | null,
+  reference_type: 'manual',
+  reference_id: '',
+  description: '',
+  metadata: '',
+});
+
+const ownerTypeOptions: SelectOption[] = [
+  { label: 'merchant（商户）', value: 'merchant' },
+  { label: 'platform（平台）', value: 'platform' },
+  { label: 'system（系统）', value: 'system' },
+];
+
+/** 记账弹窗里的账户下拉：拉前 100 条账户，同时允许直接粘贴一个 ID */
+const accountOptions = ref<SelectOption[]>([]);
+const accountOptionsLoading = ref(false);
+
+async function loadAccountOptions() {
+  if (accountOptions.value.length > 0) return;
+  accountOptionsLoading.value = true;
+  try {
+    const data = await adminApi.ledgerAccounts({ page: 1, page_size: 100 });
+    accountOptions.value = data.items.map((item) => ({
+      label: `${item.owner_type}/${item.owner_id} · ${item.purpose} · ${item.currency} · ${item.id}`,
+      value: item.id,
+    }));
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    accountOptionsLoading.value = false;
+  }
+}
+
+const categoryOptions: SelectOption[] = [
+  { label: 'asset（资产）', value: 'asset' },
+  { label: 'liability（负债）', value: 'liability' },
+  { label: 'equity（权益）', value: 'equity' },
+  { label: 'revenue（收入）', value: 'revenue' },
+  { label: 'expense（支出）', value: 'expense' },
+];
+
+const operationTypeOptions: SelectOption[] = [
+  { label: 'transfer（账户 → 对手账户）', value: 'transfer' },
+  { label: 'credit（记入 account_id）', value: 'credit' },
+  { label: 'debit（从 account_id 扣出）', value: 'debit' },
+];
+
+const createAccountRules: FormRules = {
+  owner_type: { required: true, message: '请选择归属类型', trigger: ['blur', 'change'] },
+  owner_id: { required: true, message: '请填写归属 ID', trigger: ['blur', 'input'] },
+  purpose: { required: true, message: '请填写账户用途，例如 balance / frozen', trigger: ['blur', 'input'] },
+  category: { required: true, message: '请选择账户类别', trigger: ['blur', 'change'] },
+  currency: { required: true, message: '请填写三位币种，例如 CNY', trigger: ['blur', 'input'] },
+};
+
+const createOperationRules: FormRules = {
+  idempotency_key: { required: true, message: '请填写幂等键', trigger: ['blur', 'input'] },
+  operation_type: { required: true, message: '请选择操作类型', trigger: ['blur', 'change'] },
+  account_id: { required: true, message: '请填写账户 ID', trigger: ['blur', 'input'] },
+  counterparty_account_id: { required: true, message: '请填写对手账户 ID', trigger: ['blur', 'input'] },
+  reference_id: { required: true, message: '请填写关联单号', trigger: ['blur', 'input'] },
+};
+
+/** 幂等键给个默认值，省得每次手打；建账前也方便重放同一笔 */
+function newIdempotencyKey(): string {
+  const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+  return `manual-${stamp}-${Math.floor(Math.random() * 9000 + 1000)}`;
+}
 
 const accountEntriesPaging = useServerPaging(loadAccountEntries);
 const entryPagination = accountEntriesPaging.pagination;
@@ -177,6 +271,111 @@ function exportLedger() {
   window.open(exportCsvUrl('ledger'), '_blank');
 }
 
+function openCreateAccount() {
+  accountForm.owner_type = 'merchant';
+  accountForm.owner_id = '';
+  accountForm.purpose = 'balance';
+  accountForm.category = 'liability';
+  accountForm.currency = 'CNY';
+  showCreateAccount.value = true;
+}
+
+async function submitCreateAccount() {
+  try {
+    await accountFormRef.value?.validate();
+  } catch {
+    return;
+  }
+  const currency = accountForm.currency.trim().toUpperCase();
+  if (currency.length !== 3) {
+    message.warning('币种需要三位字母，例如 CNY / USD');
+    return;
+  }
+  accountSubmitting.value = true;
+  try {
+    const created = await adminLedgerApi.createAccount({
+      owner_type: accountForm.owner_type.trim(),
+      owner_id: accountForm.owner_id.trim(),
+      purpose: accountForm.purpose.trim(),
+      category: accountForm.category,
+      currency,
+    });
+    const createdId = textOf(asRow(created).id, '');
+    message.success(createdId === '' ? '账本账户已创建' : `账本账户已创建：${createdId}`);
+    showCreateAccount.value = false;
+    tab.value = 'accounts';
+    await loadAccounts();
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    accountSubmitting.value = false;
+  }
+}
+
+function openCreateOperation() {
+  operationForm.idempotency_key = newIdempotencyKey();
+  operationForm.operation_type = 'transfer';
+  operationForm.account_id = '';
+  operationForm.counterparty_account_id = '';
+  operationForm.amount_yuan = null;
+  operationForm.reference_type = 'manual';
+  operationForm.reference_id = '';
+  operationForm.description = '';
+  operationForm.metadata = '';
+  showCreateOperation.value = true;
+  void loadAccountOptions();
+}
+
+async function submitCreateOperation() {
+  try {
+    await operationFormRef.value?.validate();
+  } catch {
+    return;
+  }
+  const accountId = operationForm.account_id.trim();
+  const counterpartyId = operationForm.counterparty_account_id.trim();
+  if (accountId === counterpartyId) {
+    message.warning('账户与对手账户不能是同一条账户');
+    return;
+  }
+  const amount = Math.round(numberOr(operationForm.amount_yuan, 0) * 100);
+  if (amount <= 0) {
+    message.warning('金额需要大于 0');
+    return;
+  }
+  const metadata = operationForm.metadata.trim();
+  if (metadata !== '') {
+    try {
+      JSON.parse(metadata);
+    } catch {
+      message.warning('元数据需要是合法 JSON，例如 {"note":"人工调账"}');
+      return;
+    }
+  }
+  operationSubmitting.value = true;
+  try {
+    await adminLedgerApi.createOperation({
+      idempotency_key: operationForm.idempotency_key.trim(),
+      operation_type: operationForm.operation_type,
+      account_id: accountId,
+      counterparty_account_id: counterpartyId,
+      amount,
+      reference_type: operationForm.reference_type.trim(),
+      reference_id: operationForm.reference_id.trim(),
+      description: operationForm.description.trim() || undefined,
+      metadata: metadata === '' ? '{}' : metadata,
+    });
+    message.success('记账操作已提交，需在「操作」页签过账后才产生分录');
+    showCreateOperation.value = false;
+    tab.value = 'operations';
+    await loadOperations();
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    operationSubmitting.value = false;
+  }
+}
+
 async function copyJson(value: unknown) {
   const ok = await copyText(prettyJson(value));
   if (ok) message.success('已复制到剪贴板');
@@ -258,7 +457,7 @@ async function openOperation(row: Row) {
   }
 }
 
-async function processOperation(action: 'approve' | 'reject') {
+async function processOperation(action: 'post' | 'reject') {
   const id = textOf(asRow(operationDetail.value).id, '');
   if (id === '') return;
   if (action === 'reject' && operationReason.value.trim() === '') {
@@ -270,7 +469,7 @@ async function processOperation(action: 'approve' | 'reject') {
       const updated = await adminLedgerApi.processOperation(id, action, operationReason.value.trim());
       operationDetail.value = asRow(updated);
       operationReason.value = '';
-      message.success(action === 'approve' ? '操作已通过' : '操作已驳回');
+      message.success(action === 'post' ? '操作已过账，分录已生成' : '操作已驳回');
       await loadOperations();
     } catch (error) {
       message.error(errorMessage(error));
@@ -542,6 +741,18 @@ onMounted(() => {
             <n-icon :component="DownloadOutline" />
           </template>
           导出 CSV
+        </n-button>
+        <n-button secondary @click="openCreateAccount">
+          <template #icon>
+            <n-icon :component="CashOutline" />
+          </template>
+          新建账户
+        </n-button>
+        <n-button type="primary" @click="openCreateOperation">
+          <template #icon>
+            <n-icon :component="SwapHorizontalOutline" />
+          </template>
+          手工记账
         </n-button>
       </n-space>
     </template>
@@ -847,7 +1058,7 @@ onMounted(() => {
                 </template>
                 驳回
               </n-button>
-              <n-popconfirm @positive-click="processOperation('approve')">
+              <n-popconfirm @positive-click="processOperation('post')">
                 <template #trigger>
                   <n-button type="primary" :loading="operationBusy" :disabled="operationBusy">
                     <template #icon>
@@ -863,5 +1074,171 @@ onMounted(() => {
         </template>
       </n-drawer-content>
     </n-drawer>
+
+    <n-modal
+      v-model:show="showCreateAccount"
+      preset="card"
+      title="新建账本账户"
+      style="width: 620px; max-width: 94vw"
+    >
+      <n-alert type="info" :bordered="false" style="margin-bottom: 14px">
+        账户由「归属类型 + 归属 ID + 用途 + 币种」唯一确定；重复提交同一条组合会返回已存在的账户。
+        类别决定借贷方向，商户余额账户一般是 liability。
+      </n-alert>
+
+      <n-form
+        ref="accountFormRef"
+        :model="accountForm"
+        :rules="createAccountRules"
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 160"
+      >
+        <n-form-item label="归属类型" path="owner_type">
+          <n-select
+            v-model:value="accountForm.owner_type"
+            :options="ownerTypeOptions"
+            filterable
+            tag
+            placeholder="merchant / platform / system"
+            style="width: 100%"
+          />
+        </n-form-item>
+        <n-form-item label="归属 ID" path="owner_id">
+          <n-input v-model:value="accountForm.owner_id" placeholder="例如商户 ID；平台账户可填 platform" class="mono" />
+        </n-form-item>
+        <n-form-item label="用途" path="purpose">
+          <n-input v-model:value="accountForm.purpose" placeholder="balance / frozen / deposit / fee" />
+        </n-form-item>
+        <n-form-item label="类别" path="category">
+          <n-select
+            v-model:value="accountForm.category"
+            :options="categoryOptions"
+            placeholder="选择账户类别"
+            style="width: 100%"
+          />
+        </n-form-item>
+        <n-form-item label="币种" path="currency">
+          <n-input v-model:value="accountForm.currency" placeholder="三位字母，例如 CNY" style="max-width: 200px" />
+        </n-form-item>
+      </n-form>
+
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showCreateAccount = false">取消</n-button>
+          <n-button type="primary" :loading="accountSubmitting" @click="submitCreateAccount">创建账户</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <n-modal
+      v-model:show="showCreateOperation"
+      preset="card"
+      title="手工记账 / 调账"
+      style="width: 780px; max-width: 94vw"
+    >
+      <n-alert type="info" :bordered="false" style="margin-bottom: 14px">
+        提交后生成一条待审批的资金操作，需要在「操作」页签里过账才会真正写分录。
+        后端按两腿记账：两条账户的类别与币种必须一致，金额对等。
+      </n-alert>
+
+      <n-form
+        ref="operationFormRef"
+        :model="operationForm"
+        :rules="createOperationRules"
+        :label-placement="isNarrow ? 'top' : 'left'"
+        :label-width="isNarrow ? undefined : 160"
+      >
+        <n-form-item label="幂等键" path="idempotency_key">
+          <n-space :wrap="true" style="width: 100%" :size="8">
+            <n-input
+              v-model:value="operationForm.idempotency_key"
+              placeholder="重试时填同一个值可防重复记账"
+              class="mono"
+              style="width: 100%; max-width: 380px"
+            />
+            <n-button size="small" @click="operationForm.idempotency_key = newIdempotencyKey()">重新生成</n-button>
+          </n-space>
+        </n-form-item>
+        <n-form-item label="操作类型" path="operation_type">
+          <n-select
+            v-model:value="operationForm.operation_type"
+            :options="operationTypeOptions"
+            style="width: 100%"
+          />
+        </n-form-item>
+
+        <n-form-item label="分录">
+          <n-space vertical :size="10" style="width: 100%">
+            <n-grid :cols="1" :x-gap="10" :y-gap="8" style="width: 100%">
+              <n-gi>
+                <n-space vertical :size="4" style="width: 100%">
+                  <n-text depth="3" style="font-size: 12px">分录 1 · 主账户（account_id）</n-text>
+                  <n-select
+                    v-model:value="operationForm.account_id"
+                    :options="accountOptions"
+                    :loading="accountOptionsLoading"
+                    filterable
+                    tag
+                    clearable
+                    placeholder="选择账户，或直接粘贴账户 ID"
+                    style="width: 100%"
+                  />
+                </n-space>
+              </n-gi>
+              <n-gi>
+                <n-space vertical :size="4" style="width: 100%">
+                  <n-text depth="3" style="font-size: 12px">分录 2 · 对手账户（counterparty_account_id）</n-text>
+                  <n-select
+                    v-model:value="operationForm.counterparty_account_id"
+                    :options="accountOptions"
+                    :loading="accountOptionsLoading"
+                    filterable
+                    tag
+                    clearable
+                    placeholder="选择账户，或直接粘贴账户 ID"
+                    style="width: 100%"
+                  />
+                </n-space>
+              </n-gi>
+            </n-grid>
+            <n-form-item label="金额（元）" :show-label="true" style="margin: 0">
+              <n-input-number
+                v-model:value="operationForm.amount_yuan"
+                :min="0.01"
+                :step="1"
+                :precision="2"
+                placeholder="两条分录共用的金额"
+                style="width: 100%; max-width: 240px"
+              />
+            </n-form-item>
+          </n-space>
+        </n-form-item>
+
+        <n-form-item label="关联类型">
+          <n-input v-model:value="operationForm.reference_type" placeholder="manual / order / refund …" />
+        </n-form-item>
+        <n-form-item label="关联单号" path="reference_id">
+          <n-input v-model:value="operationForm.reference_id" placeholder="这笔调账对应的业务单号" class="mono" />
+        </n-form-item>
+        <n-form-item label="摘要">
+          <n-input v-model:value="operationForm.description" placeholder="可选，例如：人工补单冲正" />
+        </n-form-item>
+        <n-form-item label="元数据">
+          <n-input
+            v-model:value="operationForm.metadata"
+            type="textarea"
+            :autosize="{ minRows: 2, maxRows: 5 }"
+            placeholder='可选，合法 JSON，例如 {"note":"人工调账"}'
+          />
+        </n-form-item>
+      </n-form>
+
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showCreateOperation = false">取消</n-button>
+          <n-button type="primary" :loading="operationSubmitting" @click="submitCreateOperation">提交记账</n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </admin-page>
 </template>

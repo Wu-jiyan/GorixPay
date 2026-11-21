@@ -10,10 +10,12 @@ import {
   PeopleOutline,
   ReceiptOutline,
   RefreshOutline,
+  ReturnDownBackOutline,
+  TimeOutline,
 } from '@vicons/ionicons5';
 import AdminPage from '@/components/AdminPage.vue';
 import { adminApi } from '@/api';
-import type { AdminDashboard, DailyStat } from '@/api';
+import type { AdminDashboard, AdminSummary, DailyStat } from '@/api';
 import { errorMessage } from '@/api/client';
 import { formatMoney } from '@/utils/format';
 import { useNarrow } from './shared';
@@ -23,6 +25,7 @@ const message = useMessage();
 const isNarrow = useNarrow();
 
 const dashboard = ref<AdminDashboard | null>(null);
+const summary = ref<AdminSummary | null>(null);
 const dailyStats = ref<DailyStat[]>([]);
 const outboxStats = ref<Record<string, number>>({});
 const loading = ref(false);
@@ -96,18 +99,29 @@ const quickLinks = [
 async function load() {
   loading.value = true;
   try {
-    const [summary, stats, outbox] = await Promise.all([
+    const [adminDashboard, stats, outbox] = await Promise.all([
       adminApi.dashboard(),
       adminApi.dailyStats(14),
       adminApi.outboxStats(),
     ]);
-    dashboard.value = summary;
+    dashboard.value = adminDashboard;
     dailyStats.value = stats;
     outboxStats.value = outbox;
   } catch (error) {
     message.error(errorMessage(error));
   } finally {
     loading.value = false;
+  }
+  await loadSummary();
+}
+
+/** 汇总卡片单独取一次：即使 /admin/stats/summary 不可用，上面的经营数据也照常显示 */
+async function loadSummary() {
+  try {
+    summary.value = await adminApi.statsSummary();
+  } catch (error) {
+    summary.value = null;
+    message.error(errorMessage(error));
   }
 }
 
@@ -127,6 +141,57 @@ onMounted(load);
 
     <n-spin :show="loading">
       <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="16" :y-gap="16">
+        <n-gi>
+          <n-card size="small" :bordered="false">
+            <n-statistic
+              label="待处理退款"
+              :value="summary?.pending_refunds ?? 0"
+              @click="router.push('/admin/refunds')"
+            >
+              <template #prefix>
+                <n-icon :component="ReturnDownBackOutline" />
+              </template>
+            </n-statistic>
+            <n-text depth="3" style="font-size: 12px">审核中的退款申请</n-text>
+          </n-card>
+        </n-gi>
+        <n-gi>
+          <n-card size="small" :bordered="false">
+            <n-statistic
+              label="待处理结算"
+              :value="summary?.pending_settlements ?? 0"
+              @click="router.push('/admin/settlements')"
+            >
+              <template #prefix>
+                <n-icon :component="TimeOutline" />
+              </template>
+            </n-statistic>
+            <n-text depth="3" style="font-size: 12px">审核中的结算申请</n-text>
+          </n-card>
+        </n-gi>
+        <n-gi>
+          <n-card size="small" :bordered="false">
+            <n-statistic label="今日成交" :value="formatMoney(summary?.today_paid_amount ?? 0)">
+              <template #prefix>
+                <n-icon :component="CashOutline" />
+              </template>
+            </n-statistic>
+            <n-text depth="3" style="font-size: 12px">今日已支付金额</n-text>
+          </n-card>
+        </n-gi>
+        <n-gi>
+          <n-card size="small" :bordered="false">
+            <n-statistic label="累计成交笔数" :value="summary?.paid_order_count ?? dashboard?.paid_order_count ?? 0">
+              <template #prefix>
+                <n-icon :component="CheckmarkCircleOutline" />
+              </template>
+            </n-statistic>
+            <n-text depth="3" style="font-size: 12px">全平台已支付订单</n-text>
+          </n-card>
+        </n-gi>
+      </n-grid>
+
+      <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="16" :y-gap="16" style="margin-top: 16px">
         <n-gi>
           <n-card size="small" :bordered="false">
             <n-statistic label="商户总数" :value="dashboard?.merchant_count ?? 0">

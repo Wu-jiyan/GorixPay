@@ -14,7 +14,7 @@ func TestMetadataAndRegistration(t *testing.T) {
 	if metadata.Code != "sandbox" || metadata.Name != "沙箱支付" {
 		t.Fatalf("metadata=%+v", metadata)
 	}
-	if len(metadata.Capabilities) != 1 || metadata.Capabilities[0] != pluginpayment.CapabilityPayment {
+	if len(metadata.Capabilities) != 2 || metadata.Capabilities[0] != pluginpayment.CapabilityPayment {
 		t.Fatalf("capabilities=%+v", metadata.Capabilities)
 	}
 	registry := pluginpayment.NewRegistry()

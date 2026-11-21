@@ -740,7 +740,7 @@ func TestVerifyCallbackRejectsMissingPieces(t *testing.T) {
 func TestMetadataAndConfigFields(t *testing.T) {
 	plugin := New(nil)
 	metadata := plugin.Metadata()
-	if metadata.Code != "huifu" || metadata.Name != "汇付斗拱" || len(metadata.Capabilities) != 1 {
+	if metadata.Code != "huifu" || metadata.Name != "汇付斗拱" || len(metadata.Capabilities) != 2 {
 		t.Fatalf("metadata=%+v", metadata)
 	}
 	wanted := map[string]bool{"sys_id": true, "product_id": true, "private_key": true, "huifu_public_key": true, "huifu_id": true}

@@ -207,7 +207,7 @@ func TestVerifyCallbackRejectsBadSignatureAndAmounts(t *testing.T) {
 func TestMetadataAndConfigFields(t *testing.T) {
 	plugin := New(nil)
 	metadata := plugin.Metadata()
-	if metadata.Code != "qqpay" || metadata.Name == "" || len(metadata.Capabilities) != 1 {
+	if metadata.Code != "qqpay" || metadata.Name == "" || len(metadata.Capabilities) != 2 {
 		t.Fatalf("metadata=%+v", metadata)
 	}
 	wanted := map[string]bool{"mch_id": true, "app_id": true, "key": true, "api_url": true}

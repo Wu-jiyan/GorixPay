@@ -275,14 +275,16 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		}
 		notifyprefs.RegisterMerchant(router.Group("/api/v1/merchant", identityhttp.Authenticate(sessions)), notifyPrefs)
 		merchant := merchanthttp.Register(router.Group("/api/v1/merchant"), sessions, credentials)
-		merchanthttp.RegisterOrders(merchant, paymentquery.New(db))
+		merchantOrders := paymentquery.New(db)
+		merchanthttp.RegisterOrders(merchant, merchantOrders)
+		merchanthttp.RegisterOrderNotify(merchant, merchantOrders, outboxQuery)
 		merchanthttp.RegisterFinance(merchant, finance)
 		merchanthttp.RegisterProfile(merchant, db)
 
 		adminGroup := router.Group("/api/v1/admin", identityhttp.Authenticate(sessions), identityhttp.RequireAdministrator())
 		invitecode.RegisterAdmin(adminGroup, inviteCodes)
 		reporting.RegisterMerchantExports(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions))
-		adminhttp.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions), channelConfigs, ledgerquery.New(db), ledgerWriter, finance, outboxQuery, adminhttp.WithCipher(cipher), adminhttp.WithRefundReconciler(orchestrator))
+		adminhttp.Register(router.Group("/api/v1"), db, identityhttp.Authenticate(sessions), channelConfigs, ledgerquery.New(db), ledgerWriter, finance, outboxQuery, adminhttp.WithCipher(cipher), adminhttp.WithRefundReconciler(orchestrator), adminhttp.WithCompletionService(callbacks))
 		adminhttp.RegisterExtras(adminGroup, db)
 
 		epaypayment.Register(router, db, credentials, orders, cfg.HTTP.PublicURL, orchestrator)
