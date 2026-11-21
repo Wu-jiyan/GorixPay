@@ -174,13 +174,17 @@ func TestCreateAlipayNativeOrderReturnsQRCode(t *testing.T) {
 	}
 }
 
-// TestCreateHostingOrderReturnsJumpURL pins the 托管 route: a channel carrying
-// project_id (Epay fills it only for 托管 products) must call the hosting
-// pre-order endpoint. On a phone the buyer is sent straight to that page; on a
-// desktop the same URL is rendered as a QR code, which is what upstream Epay
-// does — opening the H5 page in a desktop browser makes 汇付 answer
-// 「当前订单方式不支持」.
-func TestCreateHostingOrderReturnsJumpURL(t *testing.T) {
+// TestCreateHostingOrderPinsOnlyRunnableTradeTypes pins the two rules that make
+// the hosted cashier actually usable:
+//
+//  1. trans_type is only sent when that type can run in the buyer's browser —
+//     T_JSAPI needs the WeChat in-app browser, A_JSAPI the Alipay app, and a
+//     desktop 微信 order has no T_NATIVE to fall back on in 托管. Everything
+//     else is sent without trans_type so 汇付 renders its own cashier; sending
+//     a type the browser cannot run is exactly what makes the page answer
+//     「当前订单支付方式不支持」.
+//  2. a phone gets the page as a jump, a desktop gets it as a QR code.
+func TestCreateHostingOrderPinsOnlyRunnableTradeTypes(t *testing.T) {
 	merchant, platform := newKeyMaterial(t), newKeyMaterial(t)
 	gateway, recorded := newGateway(t, &merchant.private.PublicKey, platform.private, func(map[string]json.RawMessage) map[string]any {
 		return map[string]any{
@@ -200,49 +204,64 @@ func TestCreateHostingOrderReturnsJumpURL(t *testing.T) {
 		}),
 	}
 
-	// A phone opens the hosted page directly.
-	mobile := base
-	mobile.Extra = map[string]string{"device": "mobile"}
-	action, err := New(gateway.Client()).CreatePayment(context.Background(), mobile)
-	if err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		name       string
+		device     string
+		paymentTyp string
+		wantType   string
+		wantAction pluginpayment.ActionType
+	}{
+		// 普通手机浏览器：不 pin，让汇付收银台自己挑能跑的方式。
+		{"手机浏览器-微信", "mobile", "wxpay", "", pluginpayment.ActionJump},
+		{"手机浏览器-支付宝", "mobile", "alipay", "", pluginpayment.ActionJump},
+		// 微信/支付宝内置浏览器：pin 对应的 JSAPI。
+		{"微信内", "wechat", "wxpay", "T_JSAPI", pluginpayment.ActionJump},
+		{"支付宝内", "alipay", "alipay", "A_JSAPI", pluginpayment.ActionJump},
+		// PC：支付宝直接出扫码页；微信托管没有 T_NATIVE，退回收银台。
+		{"PC-支付宝", "pc", "alipay", "A_NATIVE", pluginpayment.ActionQRCode},
+		{"PC-微信", "pc", "wxpay", "", pluginpayment.ActionQRCode},
 	}
-	if action.Type != pluginpayment.ActionJump || action.URL != "https://paas.huifu.com/hosting/pay?token=abc" {
-		t.Fatalf("mobile action=%+v", action)
-	}
-
-	// A desktop gets the same URL as a QR code instead of a redirect.
-	desktop := base
-	desktop.Extra = map[string]string{"device": "pc"}
-	action, err = New(gateway.Client()).CreatePayment(context.Background(), desktop)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if action.Type != pluginpayment.ActionQRCode || action.URL != "https://paas.huifu.com/hosting/pay?token=abc" {
-		t.Fatalf("desktop action=%+v", action)
-	}
-
-	for key, want := range map[string]string{
-		"pre_order_type": "1",
-		"trans_type":     "T_JSAPI",
-		"trans_amt":      "0.01",
-		"req_seq_id":     "202611152200000001",
-		"notify_url":     "https://pay.example/cb",
-	} {
-		if got := fieldString(t, recorded.data, key); got != want {
-			t.Errorf("%s=%q want %q", key, got, want)
-		}
-	}
-	hosting := fieldString(t, recorded.data, "hosting_data")
-	for _, want := range []string{
-		`"project_id":"PROJECTID2026051265060546"`,
-		`"project_title":"测试站点"`,
-		`"request_type":"M"`,
-		`"callback_url":"https://pay.example/return"`,
-	} {
-		if !strings.Contains(hosting, want) {
-			t.Fatalf("hosting_data=%s 缺少 %s", hosting, want)
-		}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			request := base
+			request.PaymentType = testCase.paymentTyp
+			request.Extra = map[string]string{"device": testCase.device}
+			action, err := New(gateway.Client()).CreatePayment(context.Background(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if action.Type != testCase.wantAction || action.URL != "https://paas.huifu.com/hosting/pay?token=abc" {
+				t.Fatalf("action=%+v", action)
+			}
+			gotTransType := ""
+			if _, present := recorded.data["trans_type"]; present {
+				gotTransType = fieldString(t, recorded.data, "trans_type")
+			}
+			if gotTransType != testCase.wantType {
+				t.Fatalf("trans_type=%q want %q (缺失即表示交给汇付收银台)", gotTransType, testCase.wantType)
+			}
+			wantRequestType := "M"
+			if testCase.device == "pc" {
+				wantRequestType = "P"
+			}
+			hosting := fieldString(t, recorded.data, "hosting_data")
+			for _, want := range []string{
+				`"request_type":"` + wantRequestType + `"`,
+				`"project_id":"PROJECTID2026051265060546"`,
+				`"project_title":"测试站点"`,
+				`"callback_url":"https://pay.example/return"`,
+			} {
+				if !strings.Contains(hosting, want) {
+					t.Fatalf("hosting_data=%s 缺少 %s", hosting, want)
+				}
+			}
+			if got := fieldString(t, recorded.data, "pre_order_type"); got != "1" {
+				t.Fatalf("pre_order_type=%q", got)
+			}
+			if got := fieldString(t, recorded.data, "trans_amt"); got != "0.01" {
+				t.Fatalf("trans_amt=%q", got)
+			}
+		})
 	}
 }
 

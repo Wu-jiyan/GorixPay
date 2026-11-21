@@ -246,14 +246,10 @@ func (plugin *Plugin) createHosting(ctx context.Context, request pluginpayment.C
 		description = defaultGoodsDesc
 	}
 	requestType := "M"
-	method := strings.ToLower(strings.TrimSpace(request.Method))
-	if strings.Contains(method, "pc") || strings.Contains(method, "web") {
+	device := hostingDevice(request)
+	if device == "pc" {
 		requestType = "P"
 	}
-	// 托管 is always the JSAPI trade family: 汇付 selects H5/PC by request_type
-	// (M/P), while the trade type stays *_JSAPI — that is also what the Epay
-	// plugin sends for its 托管H5/PC channels.
-	tradeType, _, _ := selectTradeType(request.PaymentType, "jsapi")
 	hostingData := jsonObject(map[string]string{
 		"project_title": pluginpayment.ConfigValue(request.Configuration, "project_title", defaultProjectTitle),
 		"project_id":    projectID,
@@ -269,7 +265,11 @@ func (plugin *Plugin) createHosting(ctx context.Context, request pluginpayment.C
 		"pre_order_type": rawValue("1"),
 		"hosting_data":   rawValue(hostingData),
 		"notify_url":     rawValue(request.NotifyURL),
-		"trans_type":     rawValue(tradeType),
+	}
+	// Empty means "let 汇付 render its own cashier", which is what we want whenever
+	// the pinned trade type cannot run in this browser (see hostingTransType).
+	if tradeType := hostingTransType(request.PaymentType, requestType, device); tradeType != "" {
+		data["trans_type"] = rawValue(tradeType)
 	}
 	response, err := client.post(ctx, hostingPath, data)
 	if err != nil {
@@ -285,7 +285,7 @@ func (plugin *Plugin) createHosting(ctx context.Context, request pluginpayment.C
 	// 汇付的托管收银台是 H5 页面（hostingh5）。上游 Epay 在 PC 浏览器上不会把买家
 	// 直接跳到这个地址——那样汇付会回「当前订单方式不支持」——而是把它当二维码渲染，
 	// 让买家拿手机扫。手机上才直接跳过去，所以这里按设备决定动作类型。
-	if hostingDevice(request) == "mobile" {
+	if deviceIsMobile(device) {
 		action := pluginpayment.Action{Type: pluginpayment.ActionJump, URL: jumpURL}
 		if err := action.Validate(); err != nil {
 			return pluginpayment.Action{}, err
@@ -299,21 +299,74 @@ func (plugin *Plugin) createHosting(ctx context.Context, request pluginpayment.C
 	return action, nil
 }
 
-// hostingDevice reports how the buyer is paying. The request hints carry the
+// hostingTransType picks the trans_type to pin on a hosted pre-order, or "" to
+// let 汇付 show its own cashier.
+//
+// The pinned type only works in the browser it belongs to: T_JSAPI is 微信公众
+// 号支付 (needs the WeChat in-app browser), A_JSAPI needs the Alipay app. Sending
+// either from a plain Safari/Chrome makes 汇付's page answer「当前订单支付方式不
+// 支持」— which is what upstream Epay trips over too. On a desktop browser the
+// only 微信 type a 托管 product accepts is T_JSAPI (there is no T_NATIVE), so a
+// desktop 微信 order also has to fall back to the cashier.
+//
+// Pinning is therefore reserved for the cases that can actually run:
+//   - 微信 in-app browser → T_JSAPI
+//   - 支付宝 in-app browser → A_JSAPI
+//   - desktop → A_NATIVE / U_NATIVE, which render a scannable QR
+//
+// Everything else passes no trans_type, and 汇付 renders the cashier with the
+// methods the project and the browser support.
+func hostingTransType(paymentType, requestType, device string) string {
+	family := paymentFamily(paymentType)
+	switch {
+	case device == "wechat" && family == familyWX:
+		return "T_JSAPI"
+	case device == "alipay" && family == familyAlipay:
+		return "A_JSAPI"
+	case requestType == "P" && family == familyAlipay:
+		return "A_NATIVE"
+	case requestType == "P" && family == familyBank:
+		return "U_NATIVE"
+	default:
+		return ""
+	}
+}
+
+// paymentFamily reuses the family detection of the direct flow, without the
+// method hint (hosting has no JSAPI/scan distinction of its own).
+func paymentFamily(paymentType string) string {
+	_, family, _ := selectTradeType(paymentType, "")
+	return family
+}
+
+// hostingDevice normalises how the buyer is paying. The request hints carry the
 // device the protocol layer detected (Epay's device=mobile/wechat/alipay/app/pc);
-// anything missing or unrecognised counts as a desktop browser, which is the
-// safe default because the hosted cashier is an H5 page.
+// anything missing or unrecognised counts as a desktop browser, which is the safe
+// default because the hosted cashier is an H5 page.
+//
+// The in-app browsers keep their own identity: only they can run a JSAPI trade
+// type, so "wechat" and "alipay" must not be flattened into "mobile".
 func hostingDevice(request pluginpayment.CreateRequest) string {
 	device := strings.ToLower(strings.TrimSpace(request.Extra["device"]))
 	if device == "" {
 		device = strings.ToLower(strings.TrimSpace(request.Method))
 	}
 	switch device {
-	case "mobile", "wap", "wechat", "weixin", "alipay", "qq", "app", "jump", "h5", "jsapi":
+	case "wechat", "weixin", "micromessenger":
+		return "wechat"
+	case "alipay", "alipayclient":
+		return "alipay"
+	case "mobile", "wap", "app", "jump", "h5", "jsapi", "qq":
 		return "mobile"
 	default:
 		return "pc"
 	}
+}
+
+// deviceIsMobile reports whether a hosted page may simply be opened, as opposed
+// to being rendered as a QR code for the buyer to scan.
+func deviceIsMobile(device string) bool {
+	return device == "mobile" || device == "wechat" || device == "alipay"
 }
 
 // VerifyCallback authenticates the notification: Huifu signs the exact resp_data
