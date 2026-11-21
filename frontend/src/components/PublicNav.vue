@@ -113,10 +113,22 @@ onUnmounted(() => mql?.removeEventListener('change', syncNarrow));
 }
 .nav-actions {
   flex: none;
+  /* 动作永远贴右边：窄屏时品牌和汉堡之间会留出一大段空白，不靠这个就挤在左边。 */
+  margin-left: auto;
 }
 @media (max-width: 900px) {
   .nav-inner {
     gap: 10px;
+    height: 56px;
+  }
+}
+/* 手机上副标题只会把品牌挤窄，站点名本身已经够说明是谁了。 */
+@media (max-width: 520px) {
+  .public-nav :deep(.brand-mark-sub) {
+    display: none;
+  }
+  .public-nav :deep(.brand-mark-name) {
+    font-size: 15px;
   }
 }
 </style>

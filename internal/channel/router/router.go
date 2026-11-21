@@ -145,6 +145,24 @@ func (router *Router) Select(ctx context.Context, paymentType string) (Channel, 
 	return Channel{}, nil, ErrNoAvailableChannel
 }
 
+// ByID loads one channel and resolves its plugin for the given capability. It is
+// the lookup a refund needs: the money has to go back through the SAME channel
+// that captured it, not through whichever channel happens to win a new roll.
+func (router *Router) ByID(ctx context.Context, id string, capability pluginpayment.Capability) (Channel, pluginpayment.Plugin, error) {
+	var channel Channel
+	if err := router.db.WithContext(ctx).Where("id = ?", id).First(&channel).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Channel{}, nil, ErrNoAvailableChannel
+		}
+		return Channel{}, nil, err
+	}
+	plugin, err := router.registry.Resolve(channel.PluginCode, capability)
+	if err != nil {
+		return Channel{}, nil, err
+	}
+	return channel, plugin, nil
+}
+
 func cryptoRandomInt(max int) (int, error) {
 	value, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
 	if err != nil {

@@ -155,8 +155,10 @@ func (handler *Handler) sysMessage(ctx *gin.Context, message string) {
 	ctx.String(http.StatusOK, `<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>站点提示信息</title></head><body id="error-page"><h3>站点提示信息</h3>`+html.EscapeString(message)+`</body></html>`)
 }
 
-// submit hands the browser to the cashier, which is where GorixPay performs the
-// channel selection that upstream does inside lib\Channel::submit.
+// submit mirrors upstream Pay.php: with a channel chosen the browser goes to that
+// channel's own page (/pay/{func}/{trade_no}/), which starts the payment and
+// renders it. Without a usable page name it falls back to the cashier, where the
+// buyer picks a method.
 func (handler *Handler) submit(ctx *gin.Context) {
 	order, err := handler.load(ctx)
 	if err != nil {
@@ -166,6 +168,12 @@ func (handler *Handler) submit(ctx *gin.Context) {
 	if order.Status == model.StatusPaid {
 		ctx.Redirect(http.StatusFound, handler.returnPath(order.TradeNo))
 		return
+	}
+	if name := strings.ToLower(strings.TrimSpace(order.PaymentType)); name != "" {
+		if _, ok := channelPageFuncs[name]; ok {
+			ctx.Redirect(http.StatusFound, handler.siteURL+"/pay/"+name+"/"+url.PathEscape(order.TradeNo)+"/")
+			return
+		}
 	}
 	ctx.Redirect(http.StatusFound, handler.cashierPath(order.TradeNo))
 }
@@ -192,17 +200,21 @@ func (handler *Handler) channelPage(ctx *gin.Context, name string) {
 		ctx.Redirect(http.StatusFound, handler.cashierPath(order.TradeNo))
 		return
 	}
-	// A phone can open the channel page directly; a desktop gets the code so the
-	// buyer scans it with whatever app the channel needs.
+	// A phone can open most channel pages directly, but two cases still need the
+	// page in front of them:
+	//   - a desktop browser, which cannot follow an H5 cashier at all;
+	//   - a 微信 payment outside the WeChat app, where the buyer has to carry the
+	//     link over by hand (upstream renders wxpay_wap for exactly this case
+	//     instead of redirecting into a page that cannot pay).
+	// Inside WeChat, and for 支付宝 on a phone, the redirect is the happy path.
+	showPage := device == "pc" || (isWeChatPayment(order.PaymentType) && device != "wechat")
 	switch {
-	case action.Type == pluginpayment.ActionJump && device != "pc":
+	case !showPage && action.Type == pluginpayment.ActionJump:
 		ctx.Redirect(http.StatusFound, action.URL)
-	case action.Type == pluginpayment.ActionQRCode && device != "pc" && isWebURL(action.URL):
-		// A phone cannot scan its own screen. When the "code" is really a page —
-		// which is what a hosted channel hands back — send the browser there.
+	case !showPage && action.Type == pluginpayment.ActionQRCode && isWebURL(action.URL):
 		ctx.Redirect(http.StatusFound, action.URL)
 	case action.Type == pluginpayment.ActionJump, action.Type == pluginpayment.ActionQRCode:
-		handler.renderScanPage(ctx, order, action.URL)
+		handler.renderScanPage(ctx, order, action.URL, device)
 	case action.Type == pluginpayment.ActionURLScheme:
 		ctx.Header("Content-Type", "text/html; charset=UTF-8")
 		ctx.String(http.StatusOK, `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>正在打开支付</title><script>location.href=%q;</script></head><body><p>正在打开支付…</p></body></html>`, action.URL)
@@ -264,45 +276,15 @@ func (handler *Handler) storedAction(ctx *gin.Context, orderID string) (pluginpa
 	return action, true
 }
 
-// renderScanPage paints the QR code of a channel URL plus the order summary,
-// mirroring upstream's alipay_qrcode/wxpay_qrcode templates.
-func (handler *Handler) renderScanPage(ctx *gin.Context, order model.Order, content string) {
+// renderScanPage paints the code page for a channel URL: the layout of upstream's
+// wxpay_qrcode / wxpay_wap templates, including the copy-the-link route for the
+// cases where a code cannot be scanned.
+func (handler *Handler) renderScanPage(ctx *gin.Context, order model.Order, content, device string) {
 	ctx.Header("Content-Type", "text/html; charset=UTF-8")
-	ctx.String(http.StatusOK, scanPageHTML, formatAmount(order.Amount), html.EscapeString(order.Name),
-		renderQRSVG(content), html.EscapeString(order.TradeNo),
-		html.EscapeString(handler.siteURL+"/pay/checkpay/"+url.PathEscape(order.TradeNo)+"/"),
-		html.EscapeString(content))
+	if err := scanPageTemplate.Execute(ctx.Writer, handler.scanPageData(order, content, device)); err != nil {
+		handler.serverError(ctx)
+	}
 }
-
-// scanPageHTML is deliberately dependency free: the page only has to show a code,
-// the amount and a way to poll the order, and it must stay readable on a phone.
-const scanPageHTML = `<!doctype html>
-<html lang="zh-CN"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>扫码支付</title>
-<style>
-:root{color-scheme:light}
-body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-background:#f5f7fa;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:#111827}
-.card{background:#fff;border-radius:16px;box-shadow:0 8px 30px rgba(15,23,42,.08);padding:28px 24px;width:min(92vw,360px);text-align:center}
-h1{font-size:16px;font-weight:500;color:#6b7280;margin:0 0 8px}
-.amount{font-size:34px;font-weight:600;letter-spacing:-.5px;margin:0 0 4px}
-.amount small{font-size:16px;font-weight:500;margin-right:2px}
-.name{color:#6b7280;font-size:13px;margin:0 0 18px;word-break:break-all}
-svg{display:block;margin:0 auto;width:220px;height:220px}
-.trade{color:#9ca3af;font-size:12px;margin:16px 0 18px;word-break:break-all}
-a.done{display:block;background:#2563eb;color:#fff;text-decoration:none;border-radius:10px;padding:12px;font-size:15px;font-weight:500}
-a.raw{display:block;margin-top:12px;color:#9ca3af;font-size:12px;word-break:break-all}
-</style></head>
-<body><div class="card">
-<h1>请使用手机扫码支付</h1>
-<div class="amount"><small>￥</small>%s</div>
-<p class="name">%s</p>
-%s
-<p class="trade">订单号：%s</p>
-<a class="done" href="%s">我已完成支付</a>
-<a class="raw" href="%s">使用当前浏览器打开支付页面</a>
-</div></body></html>`
 
 // isWebURL reports whether the action URL is a page a browser can open, as
 // opposed to a scannable scheme such as weixin://.

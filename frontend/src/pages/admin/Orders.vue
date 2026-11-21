@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
-import { NButton, NPopconfirm, NSpace, NTag, NText, useMessage } from 'naive-ui';
+import { NButton, NForm, NFormItem, NInput, NInputNumber, NModal, NPopconfirm, NSpace, NSwitch, NTag, NText, useMessage } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { DownloadOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5';
 import { adminApi } from '@/api';
@@ -113,6 +113,56 @@ function closable(row: Order): boolean {
   return row.status === 'pending' || row.status === 'processing';
 }
 
+// 退款：默认整单全额，金额按元填写，提交时换回分。
+const showRefund = ref(false);
+const refundTarget = ref<Order | null>(null);
+const refundAmount = ref<number | null>(null);
+const refundReason = ref('');
+const refundExecute = ref(true);
+const refunding = ref(false);
+
+function refundable(row: Order): boolean {
+  return row.status === 'paid';
+}
+
+function openRefund(row: Order) {
+  refundTarget.value = row;
+  refundAmount.value = row.amount / 100;
+  refundReason.value = '';
+  refundExecute.value = true;
+  showRefund.value = true;
+}
+
+async function submitRefund() {
+  const target = refundTarget.value;
+  if (!target) return;
+  const yuan = refundAmount.value;
+  if (yuan === null || yuan <= 0) {
+    message.error('退款金额需大于 0');
+    return;
+  }
+  refunding.value = true;
+  try {
+    const result = await adminApi.refundOrder(target.id, {
+      amount: Math.round(yuan * 100),
+      reason: refundReason.value.trim() || undefined,
+      execute: refundExecute.value,
+    });
+    if (result.channel === 'refunded') {
+      message.success('退款已提交并完成通道退款');
+    } else {
+      message.success(result.message || '退款申请已提交，等待审核');
+    }
+    showRefund.value = false;
+    await load();
+  } catch (error) {
+    message.error(errorMessage(error));
+    await load();
+  } finally {
+    refunding.value = false;
+  }
+}
+
 const columns = computed<DataTableColumns<Order>>(() => [
   {
     title: '平台订单号',
@@ -166,7 +216,7 @@ const columns = computed<DataTableColumns<Order>>(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 140,
+    width: 190,
     fixed: 'right',
     render: (row) =>
       h(NSpace, { size: 8, wrap: false }, () => [
@@ -175,6 +225,13 @@ const columns = computed<DataTableColumns<Order>>(() => [
           { size: 'small', text: true, type: 'primary', onClick: () => openDetail(row) },
           () => '详情',
         ),
+        refundable(row)
+          ? h(
+              NButton,
+              { size: 'small', text: true, type: 'warning', onClick: () => openRefund(row) },
+              () => '退款',
+            )
+          : null,
         closable(row)
           ? h(
               NPopconfirm,
@@ -338,7 +395,52 @@ onMounted(load);
 
       <template #footer>
         <n-space justify="end">
+          <n-button
+            v-if="detail && refundable(detail)"
+            type="warning"
+            secondary
+            @click="showDetail = false; openRefund(detail)"
+          >
+            退款
+          </n-button>
           <n-button @click="showDetail = false">关闭窗口</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <n-modal v-model:show="showRefund" preset="card" title="订单退款" style="width: 480px; max-width: 94vw">
+      <n-form label-placement="top" :show-feedback="false">
+        <n-form-item label="订单号">
+          <n-text class="mono">{{ refundTarget?.trade_no || '-' }}</n-text>
+        </n-form-item>
+        <n-form-item label="订单金额">
+          <n-text>{{ refundTarget ? formatMoney(refundTarget.amount) : '-' }}</n-text>
+        </n-form-item>
+        <n-form-item label="退款金额（元）">
+          <n-input-number
+            v-model:value="refundAmount"
+            :min="0.01"
+            :max="refundTarget ? refundTarget.amount / 100 : undefined"
+            :precision="2"
+            style="width: 100%"
+          />
+        </n-form-item>
+        <n-form-item label="退款原因">
+          <n-input v-model:value="refundReason" type="textarea" :rows="2" placeholder="选填，会记录在退款单上" />
+        </n-form-item>
+        <n-form-item label="立即向通道退款">
+          <n-space vertical :size="4">
+            <n-switch v-model:value="refundExecute" />
+            <n-text depth="3" style="font-size: 12px">
+              开启：立刻调用捕获这笔款的通道退款接口并记账；关闭：只生成退款单，等待在「退款管理」里审核。
+            </n-text>
+          </n-space>
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showRefund = false">取消</n-button>
+          <n-button type="warning" :loading="refunding" @click="submitRefund">确认退款</n-button>
         </n-space>
       </template>
     </n-modal>

@@ -32,7 +32,9 @@ type Handler struct {
 	ledger       *ledgerquery.Service
 	ledgerWriter *ledgerservice.Service
 	finance      *financeservice.Service
-	outbox       *outbox.QueryService
+	// channelRefund sends the money back through the channel that captured it.
+	channelRefund refundReconciler
+	outbox        *outbox.QueryService
 	// cipher encrypts credential settings (api secrets, SMTP password, SMS token)
 	// at rest. Nil means the deployment runs without a master key, and credential
 	// settings are refused instead of being stored in the clear.
@@ -41,6 +43,11 @@ type Handler struct {
 
 // Option tweaks what Register builds.
 type Option func(*Handler)
+
+// WithRefundReconciler wires the channel refund executor used by the order refund.
+func WithRefundReconciler(reconciler refundReconciler) Option {
+	return func(handler *Handler) { handler.channelRefund = reconciler }
+}
 
 // WithCipher enables encryption of credential settings at rest.
 func WithCipher(cipher *secret.Cipher) Option {
@@ -151,6 +158,7 @@ func Register(group *gin.RouterGroup, db *gorm.DB, sessions gin.HandlerFunc, con
 	admin.GET("/orders", handler.orders)
 	admin.GET("/orders/:id", handler.order)
 	admin.POST("/orders/:id/close", handler.closeOrder)
+	admin.POST("/orders/:id/refund", handler.refundOrder)
 	admin.GET("/channels", handler.channels)
 	admin.POST("/channels", handler.createChannel)
 	admin.PUT("/channels/:id", handler.updateChannel)

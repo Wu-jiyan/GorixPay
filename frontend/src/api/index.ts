@@ -281,6 +281,19 @@ export const adminApi = {
   async closeOrder(id: string) {
     await http.post(`/admin/orders/${id}/close`);
   },
+  // 退款：先在账务里落一条退款单，execute=true 时再让捕获这笔钱的那条通道退回去。
+  async refundOrder(
+    id: string,
+    payload: { amount?: number; reason?: string; execute?: boolean },
+  ) {
+    const { data } = await http.post<{
+      refund: Record<string, unknown>;
+      channel: string;
+      message?: string;
+      channel_refund_no?: string;
+    }>(`/admin/orders/${id}/refund`, payload);
+    return data;
+  },
   async channels() {
     const { data } = await http.get<{ items: Channel[] }>('/admin/channels');
     return data.items;

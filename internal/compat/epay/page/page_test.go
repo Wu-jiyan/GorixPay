@@ -183,7 +183,7 @@ func TestChannelPageRendersScanPageOnDesktop(t *testing.T) {
 	starter := &stubStarter{action: pluginpayment.Action{Type: pluginpayment.ActionJump, URL: "https://channel.example/pay/1"}}
 	router, db := newPageRouter(t, WithStarter(starter))
 	order := model.Order{ID: "order-scan", TradeNo: "T-SCAN", OutTradeNo: "OUT-SCAN", Status: model.StatusPending,
-		Name: "测试商品", Amount: 1999}
+		Name: "测试商品", Amount: 1999, PaymentType: "alipay"}
 	if err := db.Create(&order).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -193,10 +193,13 @@ func TestChannelPageRendersScanPageOnDesktop(t *testing.T) {
 		t.Fatalf("status=%d", desktop.Code)
 	}
 	body := desktop.Body.String()
-	for _, want := range []string{"请使用手机扫码支付", "19.99", "T-SCAN", "<svg", "/pay/checkpay/T-SCAN/"} {
+	for _, want := range []string{"请使用支付宝扫描二维码完成支付", "19.99", "T-SCAN", "<svg", "/pay/checkpay/T-SCAN/", "复制", "getshop.php?act=poll"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("扫码页缺少 %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, "打开微信") {
+		t.Fatalf("支付宝订单不应出现「打开微信」: %s", body)
 	}
 	if starter.method != "jsapi" || starter.device != "pc" {
 		t.Fatalf("method=%q device=%q", starter.method, starter.device)
@@ -231,5 +234,35 @@ func TestChannelPageMobileRedirectsWebQRCode(t *testing.T) {
 	inApp := callPageWithUserAgent(t, router, "/pay/wxpay/T-QR/", "Mozilla/5.0 (iPhone) MicroMessenger/8.0.49")
 	if inApp.Code != http.StatusOK || !strings.Contains(inApp.Body.String(), "<svg") {
 		t.Fatalf("scheme code status=%d", inApp.Code)
+	}
+}
+
+// TestChannelPageKeepsWeChatBuyerOnThePage pins the wxpay_wap flow: outside the
+// WeChat app a 微信 order must not be redirected into a page that cannot pay.
+// The buyer gets the code, an "打开微信" button and the copy-the-link recipe
+// instead; inside WeChat the redirect is still the happy path.
+func TestChannelPageKeepsWeChatBuyerOnThePage(t *testing.T) {
+	starter := &stubStarter{action: pluginpayment.Action{Type: pluginpayment.ActionJump, URL: "https://api.huifu.com/hostingh5/?jump_id=H2"}}
+	router, db := newPageRouter(t, WithStarter(starter))
+	order := model.Order{ID: "order-wx", TradeNo: "T-WX", OutTradeNo: "OUT-WX", Status: model.StatusPending,
+		Name: "微信商品", Amount: 500, PaymentType: "wxpay"}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	mobile := callPageWithUserAgent(t, router, "/pay/wxpay/T-WX/", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148")
+	if mobile.Code != http.StatusOK {
+		t.Fatalf("mobile 微信订单应停在页面上，实际 status=%d", mobile.Code)
+	}
+	body := mobile.Body.String()
+	for _, want := range []string{"打开微信", "weixin://", "复制", "在微信顶部搜索框"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("微信引导页缺少 %q: %s", want, body)
+		}
+	}
+
+	inside := callPageWithUserAgent(t, router, "/pay/wxpay/T-WX/", "Mozilla/5.0 (iPhone) MicroMessenger/8.0.49")
+	if inside.Code != http.StatusFound || inside.Header().Get("Location") != "https://api.huifu.com/hostingh5/?jump_id=H2" {
+		t.Fatalf("微信内应直接跳转，status=%d location=%q", inside.Code, inside.Header().Get("Location"))
 	}
 }

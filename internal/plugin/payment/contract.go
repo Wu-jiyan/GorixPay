@@ -57,6 +57,33 @@ type Plugin interface {
 	CreatePayment(context.Context, CreateRequest) (Action, error)
 }
 
+// RefundRequest asks a channel to return money for an order it already captured.
+// TradeNo is the channel's own reference for the original payment (req_seq_id at
+// most acquirers), RefundNo the new reference for this refund.
+type RefundRequest struct {
+	TradeNo       string
+	OrgTradeNo    string
+	RefundNo      string
+	Amount        int64
+	Currency      string
+	Description   string
+	Configuration map[string]string
+	Extra         map[string]string
+}
+
+// RefundResult carries the channel's refund reference, when it returns one.
+type RefundResult struct {
+	ChannelRefundNo string
+	Amount          int64
+}
+
+// Refunder is implemented by plugins whose channel can actually send money back
+// (CapabilityRefund). A plugin without it only supports a bookkeeping refund,
+// which the finance layer records without telling the channel.
+type Refunder interface {
+	Refund(context.Context, RefundRequest) (RefundResult, error)
+}
+
 // ConfigValidator is implemented by plugins that can reject an incomplete
 // channel configuration (for example a channel without a signing key) before an
 // order or a callback is attempted. Registry.ValidateConfiguration is the entry

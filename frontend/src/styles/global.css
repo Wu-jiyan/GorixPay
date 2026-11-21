@@ -117,6 +117,26 @@ a {
   .page {
     padding: 16px 12px 32px;
   }
+
+  /* 手机上的宽表格只能横向滑，但一眼看不出右边还有列。
+     右边压一层很淡的渐变，滑到底会自然消失，比加一行提示文字干净。 */
+  .n-data-table .n-data-table-base-table {
+    position: relative;
+  }
+  .n-data-table .n-data-table-base-table::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 20px;
+    pointer-events: none;
+    background: linear-gradient(to left, rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0));
+  }
+  /* 表格里的空状态和分页在窄屏别顶着边。 */
+  .n-data-table .n-data-table__pagination {
+    padding: 10px 8px;
+  }
 }
 
 /* 站点皮肤：site.skin（default / dark / compact）。
