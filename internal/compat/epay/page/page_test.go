@@ -6,9 +6,12 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"gorixpay/internal/payment/model"
+	paymentorchestrator "gorixpay/internal/payment/orchestrator"
+	pluginpayment "gorixpay/internal/plugin/payment"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
@@ -32,8 +35,17 @@ func newPageRouter(t *testing.T, options ...Option) (*gin.Engine, *gorm.DB) {
 
 func callPage(t *testing.T, router *gin.Engine, target string) *httptest.ResponseRecorder {
 	t.Helper()
+	return callPageWithUserAgent(t, router, target, "")
+}
+
+func callPageWithUserAgent(t *testing.T, router *gin.Engine, target, agent string) *httptest.ResponseRecorder {
+	t.Helper()
 	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
+	request := httptest.NewRequest(http.MethodGet, target, nil)
+	if agent != "" {
+		request.Header.Set("User-Agent", agent)
+	}
+	router.ServeHTTP(recorder, request)
 	return recorder
 }
 
@@ -119,19 +131,21 @@ func TestGetShopRejectsUnknownAction(t *testing.T) {
 
 // TestChannelPageFuncsRedirectToCashier keeps the per-channel page names working
 // instead of answering 404 for a URL a merchant may have cached.
-func TestChannelPageFuncsRedirectToCashier(t *testing.T) {
+// TestChannelPageFuncsRedirectToCashierWithoutStarter keeps the fallback: with no
+// payment starter wired the channel pages cannot start anything, so they must
+// still hand the browser to the cashier rather than answer 404 or a blank page.
+func TestChannelPageFuncsRedirectToCashierWithoutStarter(t *testing.T) {
 	router, db := newPageRouter(t)
 	order := model.Order{ID: "order-chan", TradeNo: "T-CHAN", OutTradeNo: "OUT-CHAN", Status: model.StatusPending}
 	if err := db.Create(&order).Error; err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range channelPageFuncs {
+	for name := range channelPageFuncs {
 		recorder := callPage(t, router, "/pay/"+name+"/T-CHAN/")
 		if recorder.Code != http.StatusFound {
 			t.Fatalf("%s status=%d", name, recorder.Code)
 		}
-		location := recorder.Header().Get("Location")
-		if location == "" {
+		if recorder.Header().Get("Location") == "" {
 			t.Fatalf("%s has no Location", name)
 		}
 	}
@@ -142,5 +156,80 @@ func TestChannelPageFuncsRedirectToCashier(t *testing.T) {
 	recorder := callPage(t, router, "/pay/scan/T-PAID/")
 	if recorder.Code != http.StatusFound || recorder.Header().Get("Location") == "" {
 		t.Fatalf("paid order status=%d location=%q", recorder.Code, recorder.Header().Get("Location"))
+	}
+}
+
+// stubStarter answers with a fixed action so the page behaviour can be asserted
+// without a channel.
+type stubStarter struct {
+	action  pluginpayment.Action
+	method  string
+	device  string
+	started int
+}
+
+func (starter *stubStarter) StartWithOptions(_ context.Context, _ string, options paymentorchestrator.StartOptions) (paymentorchestrator.Result, error) {
+	starter.started++
+	starter.method = options.Method
+	starter.device = options.Device
+	return paymentorchestrator.Result{Action: starter.action}, nil
+}
+
+// TestChannelPageRendersScanPageOnDesktop mirrors upstream's qrcode templates: a
+// desktop browser gets the code drawn inline, a phone is redirected into the
+// channel page instead. The method hint has to come from the page name, because
+// that is what distinguishes /pay/wxpay/ from /pay/wxjspay/ upstream.
+func TestChannelPageRendersScanPageOnDesktop(t *testing.T) {
+	starter := &stubStarter{action: pluginpayment.Action{Type: pluginpayment.ActionJump, URL: "https://channel.example/pay/1"}}
+	router, db := newPageRouter(t, WithStarter(starter))
+	order := model.Order{ID: "order-scan", TradeNo: "T-SCAN", OutTradeNo: "OUT-SCAN", Status: model.StatusPending,
+		Name: "测试商品", Amount: 1999}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	desktop := callPageWithUserAgent(t, router, "/pay/alipayjs/T-SCAN/", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131")
+	if desktop.Code != http.StatusOK {
+		t.Fatalf("status=%d", desktop.Code)
+	}
+	body := desktop.Body.String()
+	for _, want := range []string{"请使用手机扫码支付", "19.99", "T-SCAN", "<svg", "/pay/checkpay/T-SCAN/"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("扫码页缺少 %q: %s", want, body)
+		}
+	}
+	if starter.method != "jsapi" || starter.device != "pc" {
+		t.Fatalf("method=%q device=%q", starter.method, starter.device)
+	}
+
+	mobile := callPageWithUserAgent(t, router, "/pay/wxwappay/T-SCAN/", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148")
+	if mobile.Code != http.StatusFound || mobile.Header().Get("Location") != "https://channel.example/pay/1" {
+		t.Fatalf("mobile status=%d location=%q", mobile.Code, mobile.Header().Get("Location"))
+	}
+	if starter.method != "wap" || starter.device != "mobile" {
+		t.Fatalf("mobile method=%q device=%q", starter.method, starter.device)
+	}
+}
+
+// TestChannelPageMobileRedirectsWebQRCode pins the "a phone cannot scan its own
+// screen" rule: when the channel hands back a page URL as the code, a mobile
+// browser is sent to it instead of being shown a QR it cannot use. A scannable
+// scheme (weixin://) still renders the page, because there is nothing to open.
+func TestChannelPageMobileRedirectsWebQRCode(t *testing.T) {
+	starter := &stubStarter{action: pluginpayment.Action{Type: pluginpayment.ActionQRCode, URL: "https://api.huifu.com/hostingh5/?jump_id=H1"}}
+	router, db := newPageRouter(t, WithStarter(starter))
+	order := model.Order{ID: "order-qr", TradeNo: "T-QR", OutTradeNo: "OUT-QR", Status: model.StatusPending, Amount: 100}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+	mobile := callPageWithUserAgent(t, router, "/pay/alipay/T-QR/", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148")
+	if mobile.Code != http.StatusFound || mobile.Header().Get("Location") != "https://api.huifu.com/hostingh5/?jump_id=H1" {
+		t.Fatalf("mobile status=%d location=%q", mobile.Code, mobile.Header().Get("Location"))
+	}
+
+	starter.action = pluginpayment.Action{Type: pluginpayment.ActionQRCode, URL: "weixin://wxpay/bizpayurl?pr=x"}
+	inApp := callPageWithUserAgent(t, router, "/pay/wxpay/T-QR/", "Mozilla/5.0 (iPhone) MicroMessenger/8.0.49")
+	if inApp.Code != http.StatusOK || !strings.Contains(inApp.Body.String(), "<svg") {
+		t.Fatalf("scheme code status=%d", inApp.Code)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -22,6 +23,8 @@ import (
 	"strings"
 
 	"gorixpay/internal/payment/model"
+	paymentorchestrator "gorixpay/internal/payment/orchestrator"
+	pluginpayment "gorixpay/internal/plugin/payment"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -34,9 +37,16 @@ type Signer interface {
 	NotificationValues(ctx context.Context, order model.Order) (url.Values, error)
 }
 
+// Starter begins (or resumes) a payment. The payment orchestrator implements it;
+// a nil starter makes the per-channel pages fall back to the cashier.
+type Starter interface {
+	StartWithOptions(ctx context.Context, tradeNo string, options paymentorchestrator.StartOptions) (paymentorchestrator.Result, error)
+}
+
 type Handler struct {
 	db      *gorm.DB
 	signer  Signer
+	starter Starter
 	siteURL string
 	captcha CaptchaVerifier
 }
@@ -57,6 +67,14 @@ func WithCaptchaVerifier(verifier CaptchaVerifier) Option {
 	}
 }
 
+// WithStarter wires the payment starter used by the per-channel pages. Without
+// it those pages keep redirecting to the cashier instead of opening the channel.
+func WithStarter(starter Starter) Option {
+	return func(handler *Handler) {
+		handler.starter = starter
+	}
+}
+
 // Register mounts the browser payment pages. siteURL is the public base URL used
 // to build the cashier link; it is trimmed of a trailing slash.
 func Register(router *gin.Engine, db *gorm.DB, siteURL string, signer Signer, options ...Option) {
@@ -69,19 +87,44 @@ func Register(router *gin.Engine, db *gorm.DB, siteURL string, signer Signer, op
 	router.GET("/pay/return/:trade_no/", handler.returnToMerchant)
 	router.GET("/pay/ok/:trade_no/", handler.ok)
 	router.GET("/submit2.php", handler.submit2)
-	// Upstream renders one private payment page per channel family. GorixPay
-	// renders all of them in the cashier SPA, so every family name lands on the
-	// same page instead of answering 404 for a URL a merchant may have cached.
-	for _, name := range channelPageFuncs {
-		router.GET("/pay/"+name+"/:trade_no/", handler.channelPage)
+	// Upstream serves one private payment page per channel entry point:
+	// /pay/wxpay/{trade_no}/ shows the scan page, /pay/wxjspay/ the in-WeChat
+	// JSAPI page, /pay/wxwappay/ the mobile one. Merchants cache these URLs, so
+	// the names are part of the compatibility surface and each one carries the
+	// method it was written for.
+	for name := range channelPageFuncs {
+		pageName := name
+		router.GET("/pay/"+pageName+"/:trade_no/", func(ctx *gin.Context) {
+			handler.channelPage(ctx, pageName)
+		})
 	}
 	router.GET("/getshop.php", handler.getshop)
 }
 
-// channelPageFuncs are the private payment page names upstream ships in
-// includes/pages and lib/Plugin. Keeping the list explicit avoids a wildcard
-// route, which would collide with /pay/submit/ and the other fixed names.
-var channelPageFuncs = []string{"scan", "qrcode", "jsapi", "mini", "h5", "red", "bank", "wap"}
+// channelPageFuncs maps the upstream page name onto the payment method it starts.
+// An empty value means "let the channel decide" (scan on PC, redirect on mobile).
+var channelPageFuncs = map[string]string{
+	"alipay":     "",
+	"alipayjs":   "jsapi",
+	"wxpay":      "",
+	"wxjspay":    "jsapi",
+	"wxwappay":   "wap",
+	"wxappay":    "app",
+	"bank":       "",
+	"quickpay":   "quickpay",
+	"unionpay":   "",
+	"unionpayjs": "jsapi",
+	"scanpay":    "scan",
+	"ecny":       "",
+	// Legacy names kept so an old cached link still resolves.
+	"scan":   "scan",
+	"qrcode": "",
+	"jsapi":  "jsapi",
+	"mini":   "app",
+	"h5":     "wap",
+	"red":    "",
+	"wap":    "wap",
+}
 
 // submit2 is the retry page upstream links from a failed channel attempt
 // (Epay/submit2.php). It re-opens an unpaid order: a missing order and a paid
@@ -127,10 +170,13 @@ func (handler *Handler) submit(ctx *gin.Context) {
 	ctx.Redirect(http.StatusFound, handler.cashierPath(order.TradeNo))
 }
 
-// channelPage answers the per-channel private payment pages. Upstream renders a
-// different template per channel family; here they all land on the cashier,
-// which knows how to render the action the channel returned.
-func (handler *Handler) channelPage(ctx *gin.Context) {
+// channelPage answers the per-channel private payment pages. Upstream starts the
+// channel inside the page and then renders a template per result type
+// (lib\Plugin::loadForPay -> Payment::echoDefault): jump redirects the browser,
+// qrcode paints the code. GorixPay does the same here instead of bouncing to the
+// cashier SPA, so a merchant that links straight to /pay/wxpay/{trade_no}/ gets
+// the payment without a second hop.
+func (handler *Handler) channelPage(ctx *gin.Context, name string) {
 	order, err := handler.load(ctx)
 	if err != nil {
 		handler.notFound(ctx)
@@ -140,11 +186,147 @@ func (handler *Handler) channelPage(ctx *gin.Context) {
 		ctx.Redirect(http.StatusFound, handler.returnPath(order.TradeNo))
 		return
 	}
-	target := handler.cashierPath(order.TradeNo)
-	if name := strings.TrimSpace(ctx.Param("func")); name != "" {
-		target += "&func=" + url.QueryEscape(name)
+	device := deviceFromRequest(ctx.Request)
+	action, ok := handler.channelAction(ctx, order, channelPageFuncs[name], device)
+	if !ok {
+		ctx.Redirect(http.StatusFound, handler.cashierPath(order.TradeNo))
+		return
 	}
-	ctx.Redirect(http.StatusFound, target)
+	// A phone can open the channel page directly; a desktop gets the code so the
+	// buyer scans it with whatever app the channel needs.
+	switch {
+	case action.Type == pluginpayment.ActionJump && device != "pc":
+		ctx.Redirect(http.StatusFound, action.URL)
+	case action.Type == pluginpayment.ActionQRCode && device != "pc" && isWebURL(action.URL):
+		// A phone cannot scan its own screen. When the "code" is really a page —
+		// which is what a hosted channel hands back — send the browser there.
+		ctx.Redirect(http.StatusFound, action.URL)
+	case action.Type == pluginpayment.ActionJump, action.Type == pluginpayment.ActionQRCode:
+		handler.renderScanPage(ctx, order, action.URL)
+	case action.Type == pluginpayment.ActionURLScheme:
+		ctx.Header("Content-Type", "text/html; charset=UTF-8")
+		ctx.String(http.StatusOK, `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>正在打开支付</title><script>location.href=%q;</script></head><body><p>正在打开支付…</p></body></html>`, action.URL)
+	default:
+		ctx.Redirect(http.StatusFound, handler.cashierPath(order.TradeNo))
+	}
+}
+
+// channelAction starts (or resumes) the order for this page. It answers false
+// when nothing can be started, which sends the browser to the cashier.
+//
+// An order that is already `processing` was started by the API that created it
+// (mapi.php, submit.php), and the orchestrator refuses to start it twice. The
+// channel URL it produced is still what the buyer needs, so replay the stored
+// attempt — the same way upstream reopens an order without re-creating it.
+func (handler *Handler) channelAction(ctx *gin.Context, order model.Order, method, device string) (pluginpayment.Action, bool) {
+	if order.Status == model.StatusProcessing {
+		if action, ok := handler.storedAction(ctx, order.ID); ok {
+			return action, true
+		}
+	}
+	if handler.starter == nil {
+		return pluginpayment.Action{}, false
+	}
+	result, err := handler.starter.StartWithOptions(ctx.Request.Context(), order.TradeNo, paymentorchestrator.StartOptions{
+		Method: method,
+		Device: device,
+	})
+	if err != nil {
+		return pluginpayment.Action{}, false
+	}
+	if strings.TrimSpace(result.Action.URL) == "" {
+		return pluginpayment.Action{}, false
+	}
+	return result.Action, true
+}
+
+// storedAction reads the action the last successful attempt produced.
+func (handler *Handler) storedAction(ctx *gin.Context, orderID string) (pluginpayment.Action, bool) {
+	var attempt model.Attempt
+	if err := handler.db.WithContext(ctx.Request.Context()).
+		Where("order_id = ? AND status = ?", orderID, model.AttemptSucceeded).
+		Order("attempt_no DESC").First(&attempt).Error; err != nil {
+		return pluginpayment.Action{}, false
+	}
+	if attempt.ActionPayload == "" {
+		return pluginpayment.Action{}, false
+	}
+	var action pluginpayment.Action
+	if err := json.Unmarshal([]byte(attempt.ActionPayload), &action); err != nil {
+		return pluginpayment.Action{}, false
+	}
+	if action.Type == "" {
+		action.Type = pluginpayment.ActionType(attempt.ActionType)
+	}
+	if strings.TrimSpace(action.URL) == "" {
+		return pluginpayment.Action{}, false
+	}
+	return action, true
+}
+
+// renderScanPage paints the QR code of a channel URL plus the order summary,
+// mirroring upstream's alipay_qrcode/wxpay_qrcode templates.
+func (handler *Handler) renderScanPage(ctx *gin.Context, order model.Order, content string) {
+	ctx.Header("Content-Type", "text/html; charset=UTF-8")
+	ctx.String(http.StatusOK, scanPageHTML, formatAmount(order.Amount), html.EscapeString(order.Name),
+		renderQRSVG(content), html.EscapeString(order.TradeNo),
+		html.EscapeString(handler.siteURL+"/pay/checkpay/"+url.PathEscape(order.TradeNo)+"/"),
+		html.EscapeString(content))
+}
+
+// scanPageHTML is deliberately dependency free: the page only has to show a code,
+// the amount and a way to poll the order, and it must stay readable on a phone.
+const scanPageHTML = `<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>扫码支付</title>
+<style>
+:root{color-scheme:light}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:#f5f7fa;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:#111827}
+.card{background:#fff;border-radius:16px;box-shadow:0 8px 30px rgba(15,23,42,.08);padding:28px 24px;width:min(92vw,360px);text-align:center}
+h1{font-size:16px;font-weight:500;color:#6b7280;margin:0 0 8px}
+.amount{font-size:34px;font-weight:600;letter-spacing:-.5px;margin:0 0 4px}
+.amount small{font-size:16px;font-weight:500;margin-right:2px}
+.name{color:#6b7280;font-size:13px;margin:0 0 18px;word-break:break-all}
+svg{display:block;margin:0 auto;width:220px;height:220px}
+.trade{color:#9ca3af;font-size:12px;margin:16px 0 18px;word-break:break-all}
+a.done{display:block;background:#2563eb;color:#fff;text-decoration:none;border-radius:10px;padding:12px;font-size:15px;font-weight:500}
+a.raw{display:block;margin-top:12px;color:#9ca3af;font-size:12px;word-break:break-all}
+</style></head>
+<body><div class="card">
+<h1>请使用手机扫码支付</h1>
+<div class="amount"><small>￥</small>%s</div>
+<p class="name">%s</p>
+%s
+<p class="trade">订单号：%s</p>
+<a class="done" href="%s">我已完成支付</a>
+<a class="raw" href="%s">使用当前浏览器打开支付页面</a>
+</div></body></html>`
+
+// isWebURL reports whether the action URL is a page a browser can open, as
+// opposed to a scannable scheme such as weixin://.
+func isWebURL(target string) bool {
+	return strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://")
+}
+
+// deviceFromRequest classifies the browser the same way the protocol layer does:
+// the in-app browsers keep their identity because only they can run a JSAPI trade
+// type.
+func deviceFromRequest(request *http.Request) string {
+	agent := strings.ToLower(request.UserAgent())
+	switch {
+	case strings.Contains(agent, "micromessenger"):
+		return "wechat"
+	case strings.Contains(agent, "alipayclient"):
+		return "alipay"
+	case strings.Contains(agent, "mobile"), strings.Contains(agent, "android"),
+		strings.Contains(agent, "iphone"), strings.Contains(agent, "ipad"),
+		strings.Contains(agent, "ipod"), strings.Contains(agent, "harmony"):
+		return "mobile"
+	default:
+		return "pc"
+	}
 }
 
 // getshop covers Epay/getshop.php: the cashier polls act=poll for the payment

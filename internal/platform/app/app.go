@@ -348,7 +348,9 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			AllowPrivate: cfg.Security.AllowPrivateNotifyHosts,
 		})
 		notifier := epaynotification.NewSenderWithSigner(db, credentials, notifyClient, signer)
-		epaypage.Register(router, db, cfg.HTTP.PublicURL, notifier, epaypage.WithCaptchaVerifier(securityService.VerifyCaptcha))
+		epaypage.Register(router, db, cfg.HTTP.PublicURL, notifier,
+			epaypage.WithCaptchaVerifier(securityService.VerifyCaptcha),
+			epaypage.WithStarter(orchestrator))
 		worker := outbox.NewWorker(db, notifier, time.Now, outbox.Options{})
 		workerContext, workerCancel := context.WithCancel(context.Background())
 		background := newBackgroundGroup(logger)

@@ -17,7 +17,7 @@
 | `/api.php?act=query\|order\|orders\|refund\|refundapi\|settle` | 账户、单笔、列表、退款、内部退款、结算 | `internal/compat/epay/payment/api.go` | 已实现 |
 | `/api/{class}/{method}`（`api.php?s=` 重写） | V2 分发，`pay`/`merchant`/`transfer` 三组 | `internal/compat/epay/v2/handler.go`，12 个方法 | 已实现 |
 | `/submit2.php` | 失败重试换通道页，已完成订单渲染 sysmsg | `internal/compat/epay/page/page.go` 的 `submit2` | 已实现 |
-| `/pay/{func}/{trade_no}/` | `Plugin::loadForPay` 按 `func` 渲染通道私有支付页 | `internal/compat/epay/page/page.go` 注册了上游八种页面名（`scan`、`qrcode`、`jsapi`、`mini`、`h5`、`red`、`bank`、`wap`），统一落到收银台 SPA；通道私有页面模板本身不适用，理由是我们用收银台统一渲染 | 已实现 |
+| `/pay/{func}/{trade_no}/` | `Plugin::loadForPay` 按 `func` 渲染通道私有支付页 | `internal/compat/epay/page/page.go`：注册上游全部页面名（`alipay`、`alipayjs`、`wxpay`、`wxjspay`、`wxwappay`、`wxappay`、`bank`、`quickpay`、`unionpay`、`unionpayjs`、`scanpay`、`ecny` 外加旧名 `scan`/`qrcode`/`jsapi`/`mini`/`h5`/`red`/`wap`）。页面名决定下发的 `method`（`*jsapi` → `jsapi`、`*wappay` → `wap`、`*appay`/`mini` → `app`、`scanpay`/`scan` → `scan`，其余由通道自选），按 UA 判设备：手机与应用内浏览器直接 302 到通道支付地址，PC 渲染本项目自己的扫码页（内联 SVG 二维码 + 金额 + 订单号 + 轮询按钮）。未接线 starter 时退回收银台 SPA | 已实现 |
 | `/cashier.php` | 收银台选支付方式 | `frontend/src/pages/cashier/`，前端路由 `/cashier.php` | 已实现 |
 | `/gateway.php` | 语音播报设备与扫码枪的 JSON 网关 | `internal/device`：`/api/v1/device/voice/{heartbeat,ack}` 与 `/printer/{poll,ack}`，`device_no` 加 secret、常量时间比对、不走会话。扫码枪独立网关不适用，扫码枪下单走 V1 的 `method=scan` | 已实现 |
 | `/getshop.php` | 收银台轮询付款结果，`act=captcha_verify` 换安全验证密钥 | `internal/compat/epay/page/page.go` 的 `getshop`：`act=poll` 回订单状态，`act=captcha_verify` 校验 SVG 验证码并换一次性 key（未接线时回 `code=-1`，不发 key） | 已实现 |
