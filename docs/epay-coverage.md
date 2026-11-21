@@ -4,7 +4,7 @@
 
 上游规模：根目录 13 个 PHP 入口，`admin/` 55 个，`user/` 36 个，`plugins/` 63 个渠道目录，`paypage/` 14 个支付页，`includes/pages/` 28 个通道页面，`includes/lib/` 23 个公共库（外加 `api`、`mail`、`ocr`、`ProfitSharing`、`sms`、`wechat` 六个子目录），`template/` 11 套皮肤。
 
-2026-11-14 补了三批运营面功能，又做了一轮收尾。第一批是用户组与费率、自动结算与自动打款、内部接收方分账、红包批次、CSV 导出与统计（迁移 `000017` 到 `000019`）。第二批是投诉处理、后台安全（图形验证码与 TOTP）、支付方式与按日轮询、通知通道与找回密码（迁移 `000020` 到 `000023`）。第三批是语音设备与云打印、数据清理与测试支付、第三方登录与扫码登录、用户组套餐购买、红包过期退回、官网三档主题（迁移 `000024` 到 `000026`）。收尾轮补了插件定时钩子、投诉自动规则、`/pay/{func}` 八种页面名、`getshop` 轮询与验证码、后台手动与批量付款、注册邀请码、商户通知偏好、商户两份 CSV、聚合收款码与自助测试支付（迁移 `000027`、`000028`）。
+2026-11-14 补了三批运营面功能，又做了一轮收尾。第一批是用户组与费率、自动结算与自动打款、内部接收方分账、红包批次、CSV 导出与统计（迁移 `000017` 到 `000019`）。第二批是投诉处理、后台安全（图形验证码与 TOTP）、支付方式与按日轮询、通知通道与找回密码（迁移 `000020` 到 `000023`）。第三批是语音设备与云打印、数据清理与测试支付、第三方登录与扫码登录、用户组套餐购买、红包过期退回、官网三档主题（迁移 `000024` 到 `000026`）。收尾轮补了插件定时钩子、投诉自动规则、`/pay/{func}` 19 种页面名、`getshop` 轮询与验证码、后台手动与批量付款、注册邀请码、商户通知偏好、商户两份 CSV、聚合收款码与自助测试支付（迁移 `000027`、`000028`）。
 
 结论先给：协议面（V1 六个入口、V2 十二个方法、异步通知、浏览器回跳）是 100% 覆盖。运营面覆盖到订单、退款、结算、分账、投诉（含自动规则）、用户组与套餐、通道与轮询、公众号配置、商户与导出、安全、设备、第三方登录、清理与主题。代码层面没有剩下的缺口：做不到的都按设计标了不适用并写明理由，剩下三个口子要渠道商务开通，逐条写在对应表格和第 8、9 节。
 
@@ -61,7 +61,7 @@
 | 邀请码 | `invitecode.php` | 注册邀请码管理 | `internal/invitecode`（迁移 `000027`）：注册邀请码增删改查；注册带 `invite_code` 原子消费次数，注册失败回退，20 并发抢 5 个名额的用例通过 | 已实现 |
 | 授权域名 | `domain.php` | 商户支付域名审核 | `/admin/domains` 加审核（`internal/domainauth`） | 已实现 |
 | 支付接口 | `pay_channel.php`、`pay_type.php`、`pay_plugin.php`、`pay_roll.php`、`pay_weixin.php`、`pay_wework.php`、`plugin_page.php`、`ajax_pay.php` | 通道、支付方式、插件、轮询、公众号与小程序配置、微信客服 | `internal/channelops`：通道与插件、`pay_types` 与公开接口、`pay_rolls` 按日权重接进渠道选择（当天有记录就替换权重，权重 0 当天不参与）、`wechat_mp_configs` 密钥加密；`site.payment_types` 也读这张表。企微客服支付配置（`pay_wework.php`）不适用，理由同 `/wework.php`，需要企业微信资质 | 已实现 |
-| 系统设置 | `set.php`（19 个 `mod`）、`set_totp.php`、`set_wxkf.php`、`gonggao.php` | 站点、支付、风控、结算、转账、认证、登录、通知、邮件短信、模板、计划任务、代理、上传等配置 | `GET/PUT /api/v1/admin/settings/:key`（白名单 23 个键，含 `site.skin`、`security.captcha_required`、`oauth.{wechat,qq,douyin}.{app_id,app_secret}`）、公告、通知通道与测试发送、TOTP 与验证码开关。中转代理与 PHP 式 cron 配置不适用：没有 PHP 进程，定时任务硬接在 app 层（结算、客诉、插件钩子、红包过期、OAuth 清理） | 已实现 |
+| 系统设置 | `set.php`（19 个 `mod`）、`set_totp.php`、`set_wxkf.php`、`gonggao.php` | 站点、支付、风控、结算、转账、认证、登录、通知、邮件短信、模板、计划任务、代理、上传等配置 | `GET/PUT /api/v1/admin/settings/:key`（白名单 31 个键，含 `site.skin`、`security.captcha_required`、`oauth.{wechat,qq,douyin}.{app_id,app_secret}`）、公告、通知通道与测试发送、TOTP 与验证码开关。中转代理与 PHP 式 cron 配置不适用：没有 PHP 进程，定时任务硬接在 app 层（结算、客诉、插件钩子、红包过期、OAuth 清理） | 已实现 |
 | 报表与导出 | `download.php`、`export.php`、`record_export.php`、`transfer_export.php`、`ustat.php`、`buyerstat.php` | CSV 导出与统计报表 | `internal/reporting`：后台 7 个 CSV（orders、refunds、settlements、transfers、merchants、ledger、buyers）、商户 4 个 CSV（orders、records、complaints、profit-sharing）、`/admin/stats/{buyers,merchants}`、`/merchant/stats/daily`；都带 BOM 与截断提示 | 已实现 |
 | 安全与运维 | `risk.php`、`clean.php`、`testsubmit.php`、`gettoken.php`、`loader_helper.php` | 风控记录、数据清理、测试支付、取用户标识、插件加载辅助 | 风控事件、Outbox、审计、登录尝试审计、`POST /admin/maintenance/cleanup`（四张表白名单，只删 30 天前，默认 dry-run，真删要 `confirm:"DELETE"`）、`POST /admin/channels/:id/test-order`。`gettoken.php` 不适用：会话 token 由登录接口签发，没有单独的取 token 端点 | 已实现 |
 
@@ -105,7 +105,7 @@
 
 ## 7. 协议面与运营面的区别
 
-协议面覆盖完整。V1 的 `submit.php`、`mapi.php`、`api.php?act=*`（含内部 `refundapi` 与系统签名查询）、`submit2.php`、`/pay/{func}/{trade_no}/`（八种页面名）、`getshop.php` 全部有实现，字段、错误码、签名规则、HTTP 永远 200 这些怪癖都对齐，`tests/conformance/epay` 有 63 个测试函数、109 条用例守着，其中一部分真跑 PHP 7.4 与上游 `EpayCore` 客户端 SDK。V2 的 12 个方法齐全（`pay` 6 个、`merchant` 2 个、`transfer` 4 个，与上游 `includes/lib/api/{Pay,Merchant,Transfer}.php` 的方法名逐一对应），双向签名、时间戳窗口、防重放都有。异步通知与浏览器回跳也补齐了。
+协议面覆盖完整。V1 的 `submit.php`、`mapi.php`、`api.php?act=*`（含内部 `refundapi` 与系统签名查询）、`submit2.php`、`/pay/{func}/{trade_no}/`（19 种页面名）、`getshop.php` 全部有实现，字段、错误码、签名规则、HTTP 永远 200 这些怪癖都对齐，`tests/conformance/epay` 有 63 个测试函数、109 条用例守着，其中一部分真跑 PHP 7.4 与上游 `EpayCore` 客户端 SDK。V2 的 12 个方法齐全（`pay` 6 个、`merchant` 2 个、`transfer` 4 个，与上游 `includes/lib/api/{Pay,Merchant,Transfer}.php` 的方法名逐一对应），双向签名、时间戳窗口、防重放都有。异步通知与浏览器回跳也补齐了。
 
 `act=order` 与 `act=orders` 的 `type` 字段与上游一致地返回支付方式**显示名**（`pre_types.name`，取不到时退回 code），`buyer` 也如实回填订单上的买家标识，不再是空串。
 
@@ -166,6 +166,6 @@
 - `plugins/` 的 63 个目录只按目录名归类，没有逐个读实现，单个插件的可用状态与报文细节未核实。
 - `includes/lib/ProfitSharing/` 的 16 个文件只读了目录与 `CommUtil` 的调用点；`alipayd`、`wxpaynp` 的「直清结算」只读到调用点。
 - 第一批（迁移 `000017` 到 `000019`）的判定依据是读 `internal/merchantgroup`、`internal/settlement`、`internal/profitsharing`、`internal/reporting` 的模型、服务与路由注册。第二批（`000020` 到 `000023`）读的是 `internal/complaint`、`internal/security`、`internal/channelops`、`internal/notify` 与 `channel/router` 的 `RollResolver` 接线。第三批（`000024` 到 `000026`）读的是 `internal/device`、`internal/oauth`、`internal/groupshop` 与 `app.go` 里的支付钩子、30 分钟巡检与皮肤设置。
-- 收尾轮的判定依据是读迁移 `000027`、`000028`、`internal/invitecode`、`internal/notifyprefs`、`internal/merchanttools`、`internal/plugin/payment` 的 `CronHook`、`internal/compat/epay/page` 的八种页面名与 `getshop`、`internal/transfer` 的后台付款与批量付款、`internal/reporting` 的商户两份 CSV。本轮我自己跑过 `go test ./... -count=1`：68 个包全部通过（含 `tests/conformance/epay` 约 41 秒、`tests/contracts/plugins` 约 29 秒），0 失败；前端 typecheck 与 build 由负责那部分的人跑过，我没有复跑。
+- 收尾轮的判定依据是读迁移 `000027`、`000028`、`internal/invitecode`、`internal/notifyprefs`、`internal/merchanttools`、`internal/plugin/payment` 的 `CronHook`、`internal/compat/epay/page` 的19 种页面名与 `getshop`、`internal/transfer` 的后台付款与批量付款、`internal/reporting` 的商户两份 CSV。本轮我自己跑过 `go test ./... -count=1`：68 个包全部通过（含 `tests/conformance/epay` 约 41 秒、`tests/contracts/plugins` 约 29 秒），0 失败；前端 typecheck 与 build 由负责那部分的人跑过，我没有复跑。
 - 第 3、4 节里有的行只读了 `$title` 与菜单文字，没逐页读表单字段（`gedit.php`、`group.php`、`glist.php`、`ustat.php`、`buyerstat.php` 这几个）。
 - 「已实现」指路由与页面存在、且有测试或端到端检查覆盖；后台与商户中心的页面没有逐屏点过，判定来自路由清单、服务测试与页面组件清单。
