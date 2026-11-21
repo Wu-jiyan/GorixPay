@@ -67,4 +67,18 @@ export function errorMessage(error: unknown, fallback = '请求失败，请稍�
   return fallback;
 }
 
+/**
+ * 取后端错误体里的业务码（`{"code":"printer_missing",...}`）。
+ * 有些场景要按码分支提示（比如「还没加打印机」），不能只看 message。
+ */
+export function errorCode(error: unknown): string | undefined {
+  if (!axios.isAxiosError(error)) return undefined;
+  const data = error.response?.data;
+  if (data && typeof data === 'object' && !(data instanceof Blob)) {
+    const code = (data as Record<string, unknown>).code;
+    if (typeof code === 'string' && code !== '') return code;
+  }
+  return undefined;
+}
+
 export default http;

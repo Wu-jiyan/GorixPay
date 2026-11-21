@@ -357,6 +357,25 @@ export interface DepositInfo {
   enabled: boolean;
 }
 
+/** GET /merchant/printers：internal/merchant/httpapi/printers.go 的列表项（不回 secret） */
+export interface MerchantPrinter {
+  id: string;
+  name: string;
+  status: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+/** 打印任务：internal/device/model.go 的 PrintJob */
+export interface MerchantPrintJob {
+  id: string;
+  printer_id: string;
+  order_id?: string | null;
+  content: string;
+  status: string;
+  attempts?: number;
+}
+
 export interface PluginConfigField {
   key: string;
   label: string;

@@ -278,6 +278,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		merchantOrders := paymentquery.New(db)
 		merchanthttp.RegisterOrders(merchant, merchantOrders)
 		merchanthttp.RegisterOrderNotify(merchant, merchantOrders, outboxQuery)
+		merchanthttp.RegisterPrinters(merchant, deviceService)
 		merchanthttp.RegisterFinance(merchant, finance)
 		merchanthttp.RegisterProfile(merchant, db)
 

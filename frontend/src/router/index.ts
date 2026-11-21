@@ -98,6 +98,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/merchant/Credentials.vue'),
         meta: { title: '密钥管理' },
       },
+      { path: 'printers', component: () => import('@/pages/merchant/Printers.vue'), meta: { title: '小票打印机' } },
       { path: 'profile', component: () => import('@/pages/merchant/Profile.vue'), meta: { title: '账户资料' } },
     ],
   },

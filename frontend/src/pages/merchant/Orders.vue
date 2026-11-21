@@ -5,7 +5,7 @@ import { NButton, NSpace, NTag, NText, useMessage, type DataTableColumns, type S
 import { DownloadOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5';
 import { merchantApi } from '@/api';
 import type { Order, PageQuery } from '@/api/types';
-import { errorMessage } from '@/api/client';
+import { errorCode, errorMessage } from '@/api/client';
 import { downloadMerchantCsv, type MerchantExportQuery } from '@/api/merchantExports';
 import AdminPage from '@/components/AdminPage.vue';
 import { centsToYuan, formatDateTime, formatMoney, orderStatus, paymentTypeText, yuanToCents } from '@/utils/format';
@@ -33,6 +33,9 @@ const detailOrder = ref<Order | null>(null);
 
 /** 补发通知的 in-flight 锁：同一个订单请求未回时按钮显示 loading */
 const notifyingId = ref('');
+
+/** 打印小票的 in-flight 锁 */
+const printingId = ref('');
 
 const refundVisible = ref(false);
 const refundSubmitting = ref(false);
@@ -75,6 +78,26 @@ async function resendNotify(row: Order) {
     message.error(errorMessage(err));
   } finally {
     notifyingId.value = '';
+  }
+}
+
+/** 打印小票：POST /merchant/orders/:id/print，成功只是入队，由打印代理拉取后出纸 */
+async function printReceipt(row: Order) {
+  printingId.value = row.id;
+  try {
+    await merchantApi.printOrder(row.id);
+    message.success('已加入打印队列');
+  } catch (err) {
+    const code = errorCode(err);
+    if (code === 'printer_missing') {
+      message.error('还没有可用的打印机，请先到「小票打印机」里添加');
+    } else if (code === 'order_not_printable') {
+      message.error('只有已支付的订单可以打印小票');
+    } else {
+      message.error(errorMessage(err));
+    }
+  } finally {
+    printingId.value = '';
   }
 }
 
@@ -194,7 +217,7 @@ const columns: DataTableColumns<Order> = [
   {
     title: '操作',
     key: 'actions',
-    width: 220,
+    width: 300,
     fixed: 'right',
     render: (row) =>
       h(NSpace, { size: 8, wrap: false }, () => [
@@ -222,6 +245,19 @@ const columns: DataTableColumns<Order> = [
                 onClick: () => resendNotify(row),
               },
               () => '补发通知',
+            )
+          : null,
+        row.status === 'paid'
+          ? h(
+              NButton,
+              {
+                size: 'small',
+                text: true,
+                loading: printingId.value === row.id,
+                disabled: printingId.value === row.id,
+                onClick: () => printReceipt(row),
+              },
+              () => '打印小票',
             )
           : null,
       ]),
@@ -417,7 +453,7 @@ onMounted(() => {
         :pagination="pagination"
         :bordered="false"
         :row-key="rowKey"
-        :scroll-x="1220"
+        :scroll-x="1300"
         :size="isNarrow ? 'small' : 'medium'"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"

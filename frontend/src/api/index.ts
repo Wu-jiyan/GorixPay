@@ -18,6 +18,8 @@ import type {
   MerchantDailyStat,
   MerchantDashboard,
   MerchantDomain,
+  MerchantPrintJob,
+  MerchantPrinter,
   Order,
   OrderStatistics,
   PageQuery,
@@ -271,6 +273,48 @@ export const merchantApi = {
   },
   async riskEvents(query: PageQuery = {}) {
     const { data } = await http.get<Paginated<RiskEvent>>('/merchant/risk-events', { params: clean(query) });
+    return data;
+  },
+
+  /* ── 小票打印：商户只管理自己的打印机（internal/merchant/httpapi/printers.go） ── */
+
+  /** 我的打印机列表：GET /merchant/printers */
+  async printers() {
+    const { data } = await http.get<{ items: MerchantPrinter[] }>('/merchant/printers');
+    return data.items;
+  },
+  /** 添加打印机：POST /merchant/printers，secret 只在这次响应里出现 */
+  async createPrinter(payload: { name: string }) {
+    const { data } = await http.post<{ printer: MerchantPrinter; secret: string }>('/merchant/printers', payload);
+    return data;
+  },
+  /** 删除打印机：DELETE /merchant/printers/:id（204；不属于自己时 404） */
+  async deletePrinter(id: string) {
+    await http.delete(`/merchant/printers/${encodeURIComponent(id)}`);
+  },
+  /** 测试打印：POST /merchant/printers/:id/test，回 {job} */
+  async testPrinter(id: string) {
+    const { data } = await http.post<{ job: MerchantPrintJob }>(
+      `/merchant/printers/${encodeURIComponent(id)}/test`,
+    );
+    return data;
+  },
+  /** 重置打印机密钥：POST /merchant/printers/:id/reset-secret，回 {secret}（只出现这一次） */
+  async resetPrinterSecret(id: string) {
+    const { data } = await http.post<{ secret: string }>(
+      `/merchant/printers/${encodeURIComponent(id)}/reset-secret`,
+    );
+    return data.secret;
+  },
+  /**
+   * 打印订单小票：POST /merchant/orders/:id/print，回 {job}。
+   * 404 not_found（订单不属于自己）、409 order_not_printable（未支付）、
+   * 409 printer_missing（还没有打印机）。
+   */
+  async printOrder(id: string) {
+    const { data } = await http.post<{ job: MerchantPrintJob }>(
+      `/merchant/orders/${encodeURIComponent(id)}/print`,
+    );
     return data;
   },
 };
