@@ -96,7 +96,7 @@ async function rotateV2() {
 async function handleCopy(text: string, label = '内容') {
   if (!text) return;
   const ok = await copyText(text);
-  if (ok) message.success(`${label}已复制`);
+  if (ok) message.success('已复制到剪贴板');
   else message.error('复制失败，请手动选择文本复制');
 }
 
@@ -230,7 +230,7 @@ onMounted(() => {
       </n-card>
     </div>
 
-    <n-modal v-model:show="secretModalVisible" preset="card" title="新的 MD5 密钥" style="max-width: 520px">
+    <n-modal v-model:show="secretModalVisible" preset="card" title="新的 MD5 密钥" style="width: 520px; max-width: 94vw">
       <n-alert type="warning" :bordered="false" class="credential-alert">
         该密钥只显示一次，关闭后无法再次查看。请立即复制并更新到服务端配置。
       </n-alert>
@@ -242,9 +242,9 @@ onMounted(() => {
         <pre class="key-pre mono">{{ secretValue }}</pre>
       </div>
       <template #footer>
-        <div class="modal-footer">
+        <n-space justify="end" :size="10">
           <n-button type="primary" @click="secretModalVisible = false">我已保存，关闭</n-button>
-        </div>
+        </n-space>
       </template>
     </n-modal>
 
@@ -252,7 +252,7 @@ onMounted(() => {
       v-model:show="privateModalVisible"
       preset="card"
       title="V2 商户私钥（只显示一次）"
-      style="max-width: 560px"
+      style="width: 560px; max-width: 94vw"
     >
       <n-alert type="error" :bordered="false" class="credential-alert">
         私钥绝不会再次展示，请立即复制并保存到密钥管理系统。关闭后如未保存，只能重新轮换密钥。
@@ -265,9 +265,9 @@ onMounted(() => {
         <pre class="key-pre mono">{{ privateKey }}</pre>
       </div>
       <template #footer>
-        <div class="modal-footer">
+        <n-space justify="end" :size="10">
           <n-button type="primary" @click="privateModalVisible = false">我已保存，关闭</n-button>
-        </div>
+        </n-space>
       </template>
     </n-modal>
   </admin-page>
@@ -281,21 +281,21 @@ onMounted(() => {
   align-items: start;
 }
 .credential-card {
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--gp-shadow);
 }
 .credential-desc {
   margin: 0 0 16px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--gp-text-3);
   line-height: 1.85;
 }
 .credential-desc code {
-  background: #f1f5f9;
+  background: var(--gp-bg-soft);
   padding: 1px 6px;
-  border-radius: 5px;
+  border-radius: var(--gp-radius-sm);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
-  color: #1d4ed8;
+  color: var(--gp-accent);
 }
 .credential-meta {
   margin-bottom: 8px;
@@ -319,15 +319,15 @@ onMounted(() => {
   margin-bottom: 6px;
 }
 .key-label {
-  font-size: 12.5px;
-  color: #475569;
+  font-size: 12px;
+  color: var(--gp-text-2);
   font-weight: 600;
 }
 .key-pre {
   margin: 0;
-  background: #0f172a;
-  color: #dbeafe;
-  border-radius: 10px;
+  background: var(--gp-code-bg);
+  color: var(--gp-code-text);
+  border-radius: var(--gp-radius);
   padding: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11.5px;
@@ -339,15 +339,10 @@ onMounted(() => {
 }
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px;
+  font-size: 12px;
 }
 .muted {
-  color: #94a3b8;
-}
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+  color: var(--gp-text-3);
 }
 @media (max-width: 1100px) {
   .credential-grid {

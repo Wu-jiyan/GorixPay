@@ -29,9 +29,21 @@ body {
   /* 强调色：浅色一档深蓝，深色必须提亮，否则压在 #101014 上读不清 */
   --gp-accent: #2563eb;
   --gp-accent-soft: rgba(37, 99, 235, 0.1);
+  /* accent 底上的文字色：浅色皮肤 accent 是深蓝，字必须是白的；
+     深色皮肤 accent 也够深，白字同样最稳，所以两套都是 #ffffff。 */
+  --gp-on-accent: #ffffff;
+  /* 危险 / 倒计时 / 错误提示：浅色要够红，深色要提亮，否则压在 #101014 上看不见 */
+  --gp-danger: #d03050;
+  /* 代码块：浅色皮肤走"终端观感"（深底浅字），深色皮肤见下面的覆盖 */
+  --gp-code-bg: #0f172a;
+  --gp-code-text: #dbeafe;
   --gp-radius-sm: 8px;
   --gp-radius: 10px;
   --gp-radius-lg: 14px;
+  /* 胶囊圆角：徽标、标签这类"非常圆"的控件统一用这个，别再写 999px */
+  --gp-radius-pill: 999px;
+  /* 二维码必须压在白底上才扫得出来，深浅色皮肤都是纯白，不做皮肤覆盖 */
+  --gp-qr-bg: #ffffff;
   --gp-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
@@ -46,6 +58,13 @@ html[data-skin='dark'] {
   --gp-surface: #1b1c22;
   --gp-accent: #6ea8fe;
   --gp-accent-soft: rgba(110, 168, 254, 0.16);
+  --gp-on-accent: #ffffff;
+  /* 深色皮肤里"深底浅字"的代码块反过来了：用 bg-soft 打底、text-1 上字，
+     否则 #0f172a 的块压在 #1b1c22 卡片上分不出边界。 */
+  --gp-danger: #e88080;
+  --gp-code-bg: var(--gp-bg-soft);
+  --gp-code-text: var(--gp-text-1);
+  --gp-qr-bg: #ffffff;
   --gp-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
@@ -83,7 +102,7 @@ a {
 }
 
 .page-subtitle {
-  color: #6b7280;
+  color: var(--gp-text-3);
   font-size: 13px;
   margin: 0;
 }
@@ -97,7 +116,19 @@ a {
 }
 
 .muted {
-  color: #6b7280;
+  color: var(--gp-text-3);
+}
+
+/* 次要说明文字：表格小字、字段注解、表单提示统一用这个类，
+   页面里别再写 style="font-size: 12px"（颜色走 text-3，别处的强调色另写）。 */
+.gp-hint {
+  font-size: 12px;
+  color: var(--gp-text-3);
+}
+
+/* 卡片 / 段落之间固定的纵向呼吸位，替代每个页面各写一遍 margin-top: 16px */
+.gp-section-gap {
+  margin-top: 16px;
 }
 
 .mono {

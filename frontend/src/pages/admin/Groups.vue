@@ -158,7 +158,7 @@ function selectMerchant(row: MerchantOption) {
 
 function merchantRowProps(row: MerchantOption) {
   return {
-    style: `cursor: pointer;${row.id === assignMerchantId.value ? ' background: rgba(24, 160, 88, 0.08);' : ''}`,
+    style: `cursor: pointer;${row.id === assignMerchantId.value ? ' background: var(--gp-accent-soft);' : ''}`,
     onClick: () => selectMerchant(row),
   };
 }
@@ -171,7 +171,7 @@ const merchantColumns = computed<DataTableColumns<MerchantOption>>(() => [
     align: 'center',
     render: (row) =>
       row.id === assignMerchantId.value
-        ? h(NIcon, { component: CheckmarkCircleOutline, size: 18, color: '#18a058' })
+        ? h(NIcon, { component: CheckmarkCircleOutline, size: 18, color: 'var(--n-success-color)' })
         : h('span', { class: 'muted' }, '—'),
   },
   {
@@ -556,7 +556,7 @@ onMounted(load);
         :model="form"
         :rules="rules"
         :label-placement="isNarrow ? 'top' : 'left'"
-        :label-width="isNarrow ? undefined : 120"
+        :label-width="isNarrow ? undefined : 160"
       >
         <n-form-item label="用户组名称" path="name">
           <n-input v-model:value="form.name" placeholder="例如：普通商户 / 大客户" />
@@ -652,7 +652,7 @@ onMounted(load);
 
       <n-form
         :label-placement="isNarrow ? 'top' : 'left'"
-        :label-width="isNarrow ? undefined : 110"
+        :label-width="isNarrow ? undefined : 160"
         style="margin-top: 16px"
         :show-feedback="false"
       >

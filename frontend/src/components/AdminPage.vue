@@ -18,7 +18,7 @@ withDefaults(
         <slot name="actions" />
       </template>
     </n-page-header>
-    <n-divider style="margin: 14px 0 18px" />
+    <n-divider class="admin-page-divider" />
     <slot />
   </div>
 </template>
@@ -28,6 +28,10 @@ withDefaults(
 .admin-page {
   width: 100%;
   min-width: 0;
+}
+/* 页头分割线的上下留白，从模板里的行内 style 挪到这里 */
+.admin-page-divider {
+  margin: 14px 0 18px;
 }
 /* 手机上标题会被副标题挤成两行（「订单 / 管理」），副标题这时只是噪音，直接收掉。 */
 @media (max-width: 768px) {

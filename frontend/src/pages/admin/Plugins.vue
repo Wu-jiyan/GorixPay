@@ -315,7 +315,7 @@ onMounted(load);
             :bordered="false"
             :single-line="false"
             :scroll-x="620"
-            size="small"
+            :size="isNarrow ? 'small' : 'medium'"
           >
             <template #empty>
               <n-empty description="该插件无需配置" size="small" />

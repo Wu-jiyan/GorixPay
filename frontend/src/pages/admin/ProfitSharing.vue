@@ -275,7 +275,7 @@ const receiverColumns = computed<DataTableColumns<ProfitReceiver>>(() => [
           default: () => [
             h(
               NButton,
-              { size: 'tiny', quaternary: true, type: 'info', onClick: () => openEdit(row) },
+              { size: 'small', text: true, type: 'primary', onClick: () => openEdit(row) },
               { default: () => '编辑' },
             ),
             h(
@@ -283,7 +283,7 @@ const receiverColumns = computed<DataTableColumns<ProfitReceiver>>(() => [
               { onPositiveClick: () => removeReceiver(row) },
               {
                 trigger: () =>
-                  h(NButton, { size: 'tiny', quaternary: true, type: 'error' }, { default: () => '删除' }),
+                  h(NButton, { size: 'small', text: true, type: 'error' }, { default: () => '删除' }),
                 default: () => '确认删除该接收方？',
               },
             ),
@@ -428,7 +428,7 @@ onMounted(() => {
       :title="isEditing ? '编辑接收方' : '新建接收方'"
       style="width: 640px; max-width: 94vw"
     >
-      <n-form ref="formRef" :model="form" :rules="rules" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 130">
+      <n-form ref="formRef" :model="form" :rules="rules" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-form-item label="商户 ID" path="merchant_id">
           <n-input v-model:value="form.merchant_id" placeholder="接收方所属商户" />
         </n-form-item>

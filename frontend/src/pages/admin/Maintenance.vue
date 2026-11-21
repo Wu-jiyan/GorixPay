@@ -178,7 +178,7 @@ const columns = computed<DataTableColumns<CleanupResultRow>>(() => [
     </n-alert>
 
     <n-card size="small" :bordered="false" title="清理条件" style="margin-bottom: 16px">
-      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 180">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-form-item label="清理目标">
           <n-select
             v-model:value="targets"
@@ -271,7 +271,7 @@ const columns = computed<DataTableColumns<CleanupResultRow>>(() => [
         {{ matchedRows }} 行。删除后不可恢复。
       </n-alert>
 
-      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 180">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-form-item label="输入确认文字">
           <n-input
             v-model:value="confirmText"

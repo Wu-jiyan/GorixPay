@@ -273,12 +273,12 @@ const columns = computed<DataTableColumns<SettleRule>>(() => {
             default: () => [
               h(
                 NButton,
-                { size: 'tiny', quaternary: true, type: 'info', onClick: () => openEdit(row) },
+                { size: 'small', text: true, type: 'info', onClick: () => openEdit(row) },
                 { default: () => '编辑' },
               ),
               h(
                 NButton,
-                { size: 'tiny', quaternary: true, type: 'primary', loading: running === row.id, onClick: () => runNow(row) },
+                { size: 'small', text: true, type: 'primary', loading: running === row.id, onClick: () => runNow(row) },
                 { default: () => '立即执行' },
               ),
               h(
@@ -288,7 +288,7 @@ const columns = computed<DataTableColumns<SettleRule>>(() => {
                   trigger: () =>
                     h(
                       NButton,
-                      { size: 'tiny', quaternary: true, type: row.status === 'active' ? 'warning' : 'primary' },
+                      { size: 'small', text: true, type: row.status === 'active' ? 'warning' : 'primary' },
                       { default: () => (row.status === 'active' ? '禁用' : '启用') },
                     ),
                   default: () => (row.status === 'active' ? '确认禁用该规则？' : '确认启用该规则？'),
@@ -299,7 +299,7 @@ const columns = computed<DataTableColumns<SettleRule>>(() => {
                 { onPositiveClick: () => remove(row) },
                 {
                   trigger: () =>
-                    h(NButton, { size: 'tiny', quaternary: true, type: 'error' }, { default: () => '删除' }),
+                    h(NButton, { size: 'small', text: true, type: 'error' }, { default: () => '删除' }),
                   default: () => '确认删除该结算规则？',
                 },
               ),
@@ -347,7 +347,7 @@ onMounted(load);
       :title="isEditing ? '编辑结算规则' : '新建结算规则'"
       style="width: 680px; max-width: 94vw"
     >
-      <n-form ref="formRef" :model="form" :rules="rules" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 140">
+      <n-form ref="formRef" :model="form" :rules="rules" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-form-item label="规则名称" path="name">
           <n-input v-model:value="form.name" placeholder="例如：T+1 自动结算" />
         </n-form-item>

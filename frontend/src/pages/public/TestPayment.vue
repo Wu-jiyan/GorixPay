@@ -129,7 +129,7 @@ onUnmounted(() => mql?.removeEventListener('change', syncNarrow));
             </div>
             <n-space align="center" :size="6" class="head-badge">
               <n-icon :component="ShieldCheckmarkOutline" size="14" />
-              <n-text depth="3" style="font-size: 12px">真实通道</n-text>
+              <n-text depth="3" class="gp-hint">真实通道</n-text>
             </n-space>
           </div>
         </template>
@@ -166,7 +166,7 @@ onUnmounted(() => mql?.removeEventListener('change', syncNarrow));
           <div class="result-body">
             <div v-if="isQrcode" class="qr-box">
               <n-qr-code :value="payInfoText" :size="qrSize" />
-              <n-text depth="3" style="font-size: 12px">用手机扫码支付</n-text>
+              <n-text depth="3" class="gp-hint">用手机扫码支付</n-text>
             </div>
             <n-space vertical :size="10" class="result-meta">
               <n-descriptions :column="metaColumns" label-placement="top" size="small" :bordered="false">
@@ -209,7 +209,7 @@ onUnmounted(() => mql?.removeEventListener('change', syncNarrow));
                   再测一次
                 </n-button>
               </n-space>
-              <n-text v-if="!isQrcode && !isJump" depth="3" style="font-size: 12px; word-break: break-all">
+              <n-text v-if="!isQrcode && !isJump" depth="3" class="gp-hint" style="word-break: break-all">
                 {{ payInfoText }}
               </n-text>
             </n-space>

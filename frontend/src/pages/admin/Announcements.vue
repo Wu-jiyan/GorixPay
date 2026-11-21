@@ -260,7 +260,7 @@ onMounted(load);
         :model="form"
         :rules="rules"
         :label-placement="isNarrow ? 'top' : 'left'"
-        :label-width="isNarrow ? undefined : 90"
+        :label-width="isNarrow ? undefined : 160"
       >
         <n-form-item label="标题" path="title">
           <n-input v-model:value="form.title" placeholder="例如：系统升级维护通知" />

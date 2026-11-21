@@ -36,7 +36,7 @@ func New(client *http.Client) *Plugin {
 }
 
 func (*Plugin) Metadata() pluginpayment.Metadata {
-	return pluginpayment.Metadata{Code: "epay", Name: "Epay", Capabilities: []pluginpayment.Capability{pluginpayment.CapabilityPayment}}
+	return pluginpayment.Metadata{Code: "epay", Name: "Epay", Capabilities: []pluginpayment.Capability{pluginpayment.CapabilityPayment, pluginpayment.CapabilityRefund}}
 }
 
 func (plugin *Plugin) CreatePayment(ctx context.Context, request pluginpayment.CreateRequest) (pluginpayment.Action, error) {

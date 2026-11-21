@@ -452,7 +452,7 @@ onMounted(reload);
             <template #suffix>
               <n-popconfirm @positive-click="handleUnbind(item.provider)">
                 <template #trigger>
-                  <n-button text type="error" size="small" :loading="unbinding === item.provider">解绑</n-button>
+                  <n-button secondary type="error" size="small" :loading="unbinding === item.provider">解绑</n-button>
                 </template>
                 解绑后该平台账号将不能再用于登录，确认解绑？
               </n-popconfirm>

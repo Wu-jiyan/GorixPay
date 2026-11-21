@@ -440,7 +440,7 @@ onMounted(() => {
           <n-descriptions-item label="支付时间">{{ formatDateTime(detailOrder.paid_at) }}</n-descriptions-item>
           <n-descriptions-item label="过期时间">{{ formatDateTime(detailOrder.expires_at) }}</n-descriptions-item>
         </n-descriptions>
-        <n-empty v-else description="暂无订单数据" />
+        <n-empty v-else description="暂无订单数据" size="small" />
         <template #footer>
           <n-space>
             <n-button

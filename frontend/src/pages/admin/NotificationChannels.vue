@@ -353,7 +353,7 @@ onMounted(load);
 
           <n-spin v-else :show="loading">
             <n-space vertical size="large">
-              <n-empty v-if="cards.length === 0" description="暂无通知通道，点击右上角新建" />
+              <n-empty v-if="cards.length === 0" description="暂无通知通道，点击右上角新建" size="small" />
 
               <n-card v-for="card in cards" :key="card.id" size="small" :bordered="true">
                 <template #header>
@@ -380,7 +380,7 @@ onMounted(load);
                   </n-space>
                 </template>
 
-                <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 200" :show-feedback="false">
+                <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160" :show-feedback="false">
                   <n-form-item label="服务商">
                     <n-input v-model:value="card.provider" placeholder="例如 aliyun / tencent / smtp" />
                   </n-form-item>
@@ -469,7 +469,7 @@ onMounted(load);
     </n-card>
 
     <n-modal v-model:show="showCreate" preset="card" title="新建通知通道" style="width: 640px; max-width: 94vw">
-      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-form-item label="类型">
           <n-radio-group v-model:value="createForm.kind">
             <n-space>
@@ -511,7 +511,7 @@ onMounted(load);
                 placeholder="配置值"
                 style="flex: 1 1 160px; min-width: 0"
               />
-              <n-button text type="error" @click="removeCreateRow(index)">删除</n-button>
+              <n-button secondary type="error" @click="removeCreateRow(index)">删除</n-button>
             </n-space>
             <n-space>
               <n-button size="small" dashed @click="addCreateRow">添加配置项</n-button>
@@ -535,7 +535,7 @@ onMounted(load);
         </n-descriptions-item>
         <n-descriptions-item label="服务商">{{ testTarget.provider || '-' }}</n-descriptions-item>
       </n-descriptions>
-      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120" style="margin-top: 16px">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160" style="margin-top: 16px">
         <n-form-item label="接收目标">
           <n-input
             v-model:value="testValue"

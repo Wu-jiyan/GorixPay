@@ -81,7 +81,7 @@ async function submit() {
     v-model:show="visible"
     preset="card"
     title="修改登录密码"
-    style="width: 460px; max-width: 92vw"
+    style="width: 460px; max-width: 94vw"
     :mask-closable="!busy"
     :close-on-esc="!busy"
   >

@@ -16,9 +16,11 @@ import { adminApi } from '@/api';
 import type { AdminDashboard, DailyStat } from '@/api';
 import { errorMessage } from '@/api/client';
 import { formatMoney } from '@/utils/format';
+import { useNarrow } from './shared';
 
 const router = useRouter();
 const message = useMessage();
+const isNarrow = useNarrow();
 
 const dashboard = ref<AdminDashboard | null>(null);
 const dailyStats = ref<DailyStat[]>([]);
@@ -126,7 +128,7 @@ onMounted(load);
     <n-spin :show="loading">
       <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="16" :y-gap="16">
         <n-gi>
-          <n-card size="small">
+          <n-card size="small" :bordered="false">
             <n-statistic label="商户总数" :value="dashboard?.merchant_count ?? 0">
               <template #prefix>
                 <n-icon :component="PeopleOutline" />
@@ -136,7 +138,7 @@ onMounted(load);
           </n-card>
         </n-gi>
         <n-gi>
-          <n-card size="small">
+          <n-card size="small" :bordered="false">
             <n-statistic label="订单总数" :value="dashboard?.order_count ?? 0">
               <template #prefix>
                 <n-icon :component="ReceiptOutline" />
@@ -146,7 +148,7 @@ onMounted(load);
           </n-card>
         </n-gi>
         <n-gi>
-          <n-card size="small">
+          <n-card size="small" :bordered="false">
             <n-statistic label="支付订单数" :value="dashboard?.paid_order_count ?? 0">
               <template #prefix>
                 <n-icon :component="CheckmarkCircleOutline" />
@@ -156,7 +158,7 @@ onMounted(load);
           </n-card>
         </n-gi>
         <n-gi>
-          <n-card size="small">
+          <n-card size="small" :bordered="false">
             <n-statistic label="支付金额" :value="formatMoney(dashboard?.paid_amount ?? 0)">
               <template #prefix>
                 <n-icon :component="CashOutline" />
@@ -167,7 +169,7 @@ onMounted(load);
         </n-gi>
       </n-grid>
 
-      <n-card size="small" style="margin-top: 16px">
+      <n-card size="small" :bordered="false" style="margin-top: 16px">
         <template #header>近 14 天支付走势</template>
         <template #header-extra>
           <n-space :size="16" :wrap="true">
@@ -181,16 +183,16 @@ onMounted(load);
           :loading="loading"
           :bordered="false"
           :single-line="false"
-          size="small"
+          :size="isNarrow ? 'small' : 'medium'"
           :max-height="320"
           :pagination="false"
           :scroll-x="860"
           :row-key="(row: DailyStat) => row.date"
         />
-        <n-empty v-if="!dailyStats.length && !loading" description="还没有订单数据" style="padding: 24px 0" />
+        <n-empty v-if="!dailyStats.length && !loading" description="还没有订单数据" size="small" />
       </n-card>
 
-      <n-card size="small" style="margin-top: 16px">
+      <n-card size="small" :bordered="false" style="margin-top: 16px">
         <template #header>
           <n-space align="center" :size="8">
             <n-icon :component="NotificationsOutline" />
@@ -208,7 +210,7 @@ onMounted(load);
         <n-text v-if="!outboxCards.length" depth="3">队列为空</n-text>
       </n-card>
 
-      <n-card size="small" style="margin-top: 16px">
+      <n-card size="small" :bordered="false" style="margin-top: 16px">
         <template #header>快捷入口</template>
         <n-space :wrap="true">
           <n-button v-for="link in quickLinks" :key="link.path" secondary @click="router.push(link.path)">

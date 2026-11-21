@@ -308,7 +308,7 @@ onMounted(load);
         :model="form"
         :rules="rules"
         :label-placement="isNarrow ? 'top' : 'left'"
-        :label-width="isNarrow ? undefined : 120"
+        :label-width="isNarrow ? undefined : 160"
       >
         <n-form-item label="编码" path="code">
           <n-input v-model:value="form.code" placeholder="例如 alipay / wxpay，创建后尽量别改" />

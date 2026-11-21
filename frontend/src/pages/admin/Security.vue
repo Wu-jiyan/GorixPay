@@ -178,8 +178,8 @@ function resetAttempts() {
 async function copy(text: string) {
   if (!text) return;
   const ok = await copyText(text);
-  if (ok) message.success('已复制');
-  else message.warning('复制失败，请手动选择');
+  if (ok) message.success('已复制到剪贴板');
+  else message.error('复制失败，请手动选择文本复制');
 }
 
 function reloadAll() {
@@ -301,7 +301,7 @@ onMounted(reloadAll);
             关闭后登录只校验密码，建议只在换绑设备时临时关闭。
           </n-text>
 
-          <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 180">
+          <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
             <n-form-item label="验证码">
               <n-space align="center" :wrap="true" :size="10">
                 <n-input
@@ -367,7 +367,7 @@ onMounted(reloadAll);
             </n-gi>
           </n-grid>
 
-          <n-form v-if="setup" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 180" style="margin-top: 16px">
+          <n-form v-if="setup" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160" style="margin-top: 16px">
             <n-form-item label="验证码">
               <n-space align="center" :wrap="true" :size="10">
                 <n-input
@@ -423,9 +423,6 @@ onMounted(reloadAll);
               重置
             </n-button>
           </n-space>
-        </n-gi>
-        <n-gi>
-          <n-text depth="3">共 {{ total }} 条</n-text>
         </n-gi>
       </n-grid>
 

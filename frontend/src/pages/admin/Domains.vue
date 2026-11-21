@@ -255,9 +255,6 @@ onMounted(load);
             </n-button>
           </n-space>
         </n-gi>
-        <n-gi>
-          <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
-        </n-gi>
       </n-grid>
 
       <n-data-table
@@ -314,7 +311,7 @@ onMounted(load);
 
       <n-form
         :label-placement="isNarrow ? 'top' : 'left'"
-        :label-width="isNarrow ? undefined : 180"
+        :label-width="isNarrow ? undefined : 160"
         style="margin-top: 16px"
       >
         <n-form-item label="驳回原因">

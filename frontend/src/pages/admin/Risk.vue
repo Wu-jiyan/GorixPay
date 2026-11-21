@@ -318,7 +318,7 @@ onMounted(() => {
             </n-gi>
           </n-grid>
 
-          <n-empty v-if="entriesUnavailable" description="接口未启用" size="large">
+          <n-empty v-if="entriesUnavailable" description="接口未启用" size="small">
             <template #extra>
               <n-button size="small" :loading="entriesLoading" @click="loadEntries">重新检测</n-button>
             </template>
@@ -380,12 +380,9 @@ onMounted(() => {
                 <n-button @click="resetEventFilters">重置</n-button>
               </n-space>
             </n-gi>
-            <n-gi>
-              <n-text depth="3" style="font-size: 12px">共 {{ eventsTotal }} 条</n-text>
-            </n-gi>
           </n-grid>
 
-          <n-empty v-if="eventsUnavailable" description="接口未启用" size="large">
+          <n-empty v-if="eventsUnavailable" description="接口未启用" size="small">
             <template #extra>
               <n-button size="small" :loading="eventsLoading" @click="loadEvents">重新检测</n-button>
             </template>
@@ -412,7 +409,7 @@ onMounted(() => {
     </n-card>
 
     <n-modal v-model:show="showCreate" preset="card" title="添加黑名单" style="width: 560px; max-width: 94vw">
-      <n-form ref="formRef" :model="form" :rules="rules" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 80">
+      <n-form ref="formRef" :model="form" :rules="rules" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-form-item label="类型" path="entry_type">
           <n-select v-model:value="form.entry_type" :options="entryTypeOptions" />
         </n-form-item>

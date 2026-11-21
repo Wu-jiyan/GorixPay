@@ -130,8 +130,8 @@ function openSecret(title: string, secret?: string) {
 
 async function copySecret() {
   const ok = await copyText(secretValue.value);
-  if (ok) message.success('已复制');
-  else message.warning('复制失败，请手动选择');
+  if (ok) message.success('已复制到剪贴板');
+  else message.error('复制失败，请手动选择文本复制');
 }
 
 function openCreateDevice() {
@@ -497,7 +497,7 @@ onMounted(() => {
         :model="deviceForm"
         :rules="deviceRules"
         :label-placement="isNarrow ? 'top' : 'left'"
-        :label-width="isNarrow ? undefined : 120"
+        :label-width="isNarrow ? undefined : 160"
       >
         <n-form-item label="设备号" path="device_no">
           <n-input
@@ -535,7 +535,7 @@ onMounted(() => {
         :model="printerForm"
         :rules="printerRules"
         :label-placement="isNarrow ? 'top' : 'left'"
-        :label-width="isNarrow ? undefined : 120"
+        :label-width="isNarrow ? undefined : 160"
       >
         <n-form-item label="名称" path="name">
           <n-input v-model:value="printerForm.name" placeholder="例如 前台热敏打印机" />
@@ -593,7 +593,7 @@ onMounted(() => {
       </n-descriptions>
       <n-form
         :label-placement="isNarrow ? 'top' : 'left'"
-        :label-width="isNarrow ? undefined : 120"
+        :label-width="isNarrow ? undefined : 160"
         style="margin-top: 16px"
       >
         <n-form-item label="播报内容">

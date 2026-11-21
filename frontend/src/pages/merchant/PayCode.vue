@@ -126,7 +126,7 @@ async function createTestOrder() {
 async function handleCopy(text: string, label = '链接') {
   if (!text) return;
   const ok = await copyText(text);
-  if (ok) message.success(`${label}已复制`);
+  if (ok) message.success('已复制到剪贴板');
   else message.error('复制失败，请手动选择文本复制');
 }
 
@@ -205,7 +205,7 @@ onMounted(() => {
                     />
                     <n-empty v-else description="渠道未返回二维码" size="small" />
 
-                    <n-form v-if="codeResult" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 110" style="width: 100%">
+                    <n-form v-if="codeResult" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160" style="width: 100%">
                       <n-form-item label="收银台链接">
                         <n-input :value="codeResult.url || ''" readonly placeholder="生成后展示收款链接">
                           <template #suffix>
@@ -289,7 +289,7 @@ onMounted(() => {
 
             <n-gi>
               <n-spin :show="testLoading">
-                <n-form v-if="testResult" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 110">
+                <n-form v-if="testResult" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
                   <n-form-item label="订单号">
                     <n-input :value="testResult.trade_no" readonly class="mono" />
                   </n-form-item>

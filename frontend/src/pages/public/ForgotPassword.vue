@@ -210,7 +210,7 @@ function backToStepOne() {
   color: var(--gp-text-3);
 }
 .auth-link {
-  color: #2563eb;
+  color: var(--gp-accent);
   font-weight: 600;
 }
 .auth-bottom {
@@ -223,7 +223,7 @@ function backToStepOne() {
   justify-content: center;
 }
 .auth-bottom a:hover {
-  color: #2563eb;
+  color: var(--gp-accent);
 }
 .sep {
   color: var(--gp-text-3);

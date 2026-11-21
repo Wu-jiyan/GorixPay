@@ -281,7 +281,6 @@ onMounted(load);
                   查询
                 </n-button>
                 <n-button @click="resetFilters">重置</n-button>
-                <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
               </n-space>
             </n-form-item>
           </n-gi>
@@ -305,7 +304,7 @@ onMounted(load);
     <n-drawer v-model:show="showDetail" :width="isNarrow ? '92vw' : 720" placement="right">
       <n-drawer-content :title="detail?.display_name ?? '商户详情'" closable>
         <n-spin :show="detailLoading">
-          <n-empty v-if="!detail && !detailLoading" description="暂无商户数据" />
+          <n-empty v-if="!detail && !detailLoading" description="暂无商户数据" size="small" />
           <template v-else-if="detail">
             <n-descriptions :column="isNarrow ? 1 : 2" bordered size="small" label-placement="left">
               <n-descriptions-item label="商户 ID">
@@ -328,6 +327,7 @@ onMounted(load);
               :data="detail.credentials ?? []"
               :row-key="(row: Credential) => row.id"
               :scroll-x="700"
+              :size="isNarrow ? 'small' : 'medium'"
             />
 
             <n-divider title-placement="left">账本账户与余额</n-divider>
@@ -336,6 +336,7 @@ onMounted(load);
               :data="detailAccounts"
               :row-key="(row: LedgerAccountRow) => row.id"
               :scroll-x="900"
+              :size="isNarrow ? 'small' : 'medium'"
             />
           </template>
         </n-spin>

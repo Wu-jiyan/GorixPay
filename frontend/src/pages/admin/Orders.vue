@@ -391,7 +391,7 @@ onMounted(load);
           <n-text :class="{ mono: field.mono }" style="word-break: break-all">{{ field.value }}</n-text>
         </n-descriptions-item>
       </n-descriptions>
-      <n-empty v-else description="暂无订单数据" />
+      <n-empty v-else description="暂无订单数据" size="small" />
 
       <template #footer>
         <n-space justify="end">
@@ -409,7 +409,7 @@ onMounted(load);
     </n-modal>
 
     <n-modal v-model:show="showRefund" preset="card" title="订单退款" style="width: 480px; max-width: 94vw">
-      <n-form label-placement="top" :show-feedback="false">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :show-feedback="false">
         <n-form-item label="订单号">
           <n-text class="mono">{{ refundTarget?.trade_no || '-' }}</n-text>
         </n-form-item>

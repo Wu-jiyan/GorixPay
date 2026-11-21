@@ -467,7 +467,7 @@ onMounted(() => {
     </n-card>
 
     <n-modal v-model:show="showGenerate" preset="card" title="批量生成轮询" style="width: 640px; max-width: 94vw">
-      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 110">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-form-item label="支付渠道">
           <n-select
             v-model:value="generateForm.channel_ids"

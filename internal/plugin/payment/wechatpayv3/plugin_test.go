@@ -319,7 +319,7 @@ func TestVerifyCallbackRequiresPlatformKey(t *testing.T) {
 
 func TestMetadataAndConfigFields(t *testing.T) {
 	plugin := New(nil)
-	if metadata := plugin.Metadata(); metadata.Code != "wechatpayv3" || len(metadata.Capabilities) != 1 {
+	if metadata := plugin.Metadata(); metadata.Code != "wechatpayv3" || len(metadata.Capabilities) != 2 {
 		t.Fatalf("metadata=%+v", metadata)
 	}
 	wanted := map[string]bool{"mch_id": true, "app_id": true, "serial_no": true, "private_key": true, "api_v3_key": true}

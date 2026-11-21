@@ -180,7 +180,7 @@ function exportLedger() {
 async function copyJson(value: unknown) {
   const ok = await copyText(prettyJson(value));
   if (ok) message.success('已复制到剪贴板');
-  else message.warning('复制失败，请手动选择文本');
+  else message.error('复制失败，请手动选择文本复制');
 }
 
 async function loadAccountDetail() {
@@ -806,7 +806,7 @@ onMounted(() => {
             <n-divider title-placement="left">
               审批
             </n-divider>
-            <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 90" :show-feedback="false">
+            <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160" :show-feedback="false">
               <n-form-item label="驳回原因">
                 <n-input v-model:value="operationReason" placeholder="驳回时必填，通过可留空" />
               </n-form-item>

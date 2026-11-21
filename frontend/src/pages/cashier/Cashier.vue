@@ -648,7 +648,7 @@ onBeforeUnmount(() => {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 13px;
   font-weight: 600;
-  color: #d03050;
+  color: var(--gp-danger);
   font-variant-numeric: tabular-nums;
 }
 .pay-meta {
@@ -704,7 +704,7 @@ onBeforeUnmount(() => {
   padding: 6px;
   border: 1px solid var(--gp-line);
   border-radius: var(--gp-radius);
-  background: #fff;
+  background: var(--gp-qr-bg, #fff);
   max-width: 100%;
 }
 .qr-image {

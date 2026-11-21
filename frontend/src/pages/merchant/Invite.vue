@@ -119,7 +119,7 @@ async function handleCopy(text: string, label: string) {
     return;
   }
   const ok = await copyText(text);
-  if (ok) message.success(`${label}已复制`);
+  if (ok) message.success('已复制到剪贴板');
   else message.error('复制失败，请手动选择文本复制');
 }
 

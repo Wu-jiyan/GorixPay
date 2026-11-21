@@ -7,6 +7,7 @@ import { adminSettingsApi } from '@/api/adminSettings';
 import { errorMessage } from '@/api/client';
 import { refreshSite } from '@/stores/site';
 import { formatDateTime } from '@/utils/format';
+import { useNarrow } from './shared';
 
 type FieldType = 'text' | 'textarea' | 'number' | 'bool' | 'select' | 'secret' | 'cents';
 
@@ -111,6 +112,7 @@ const tabs: Tab[] = [
 ];
 
 const message = useMessage();
+const isNarrow = useNarrow();
 const loading = ref(false);
 const savingTab = ref('');
 const activeTab = ref(tabs[0].name);
@@ -271,7 +273,7 @@ onMounted(reload);
           </template>
 
           <n-spin :show="loading">
-            <n-form label-placement="top" :show-feedback="true" require-mark-placement="right-hanging">
+            <n-form :label-placement="isNarrow ? 'top' : 'left'" :show-feedback="true" require-mark-placement="right-hanging">
               <n-grid cols="1 m:2" responsive="screen" :x-gap="32" :y-gap="6">
                 <n-gi v-for="field in tab.fields" :key="field.key">
                   <n-form-item :label="field.label" :feedback="field.hint">

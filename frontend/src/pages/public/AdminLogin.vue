@@ -151,7 +151,7 @@ async function handleSubmit() {
   justify-content: center;
 }
 .auth-bottom a:hover {
-  color: #2563eb;
+  color: var(--gp-accent);
 }
 .sep {
   color: var(--gp-text-3);

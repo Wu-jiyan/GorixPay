@@ -413,7 +413,7 @@ onMounted(load);
           :model="form"
           :rules="rules"
           :label-placement="isNarrow ? 'top' : 'left'"
-          :label-width="isNarrow ? undefined : 150"
+          :label-width="isNarrow ? undefined : 160"
         >
           <n-form-item label="适用商户">
             <n-input v-model:value="form.merchant_id" placeholder="留空表示全局配置，或填商户 ID" />
@@ -486,7 +486,7 @@ onMounted(load);
       </n-descriptions>
       <n-form
         :label-placement="isNarrow ? 'top' : 'left'"
-        :label-width="isNarrow ? undefined : 120"
+        :label-width="isNarrow ? undefined : 160"
         style="margin-top: 16px"
       >
         <n-form-item label="接收 openid">

@@ -192,9 +192,6 @@ onMounted(load);
             </n-button>
           </n-space>
         </n-gi>
-        <n-gi>
-          <n-text depth="3">共 {{ total }} 条</n-text>
-        </n-gi>
       </n-grid>
 
       <n-data-table

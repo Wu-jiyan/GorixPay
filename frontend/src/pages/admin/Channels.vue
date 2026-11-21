@@ -496,7 +496,7 @@ onMounted(() => {
       v-model:show="showForm"
       preset="card"
       :title="isEditing ? '编辑渠道' : '新建渠道'"
-      style="width: 880px; max-width: 96vw"
+      style="width: 880px; max-width: 94vw"
     >
       <n-space vertical :size="12">
         <n-alert v-if="isEditing" type="warning" :bordered="false">
@@ -515,7 +515,7 @@ onMounted(() => {
         :model="form"
         :rules="rules"
         :label-placement="isNarrow ? 'top' : 'left'"
-        :label-width="isNarrow ? undefined : 120"
+        :label-width="isNarrow ? undefined : 160"
       >
         <n-grid cols="1 s:2" responsive="screen" :x-gap="16" :y-gap="12">
           <n-form-item-gi label="渠道名称" path="name">
@@ -618,7 +618,7 @@ onMounted(() => {
     </n-modal>
 
     <n-modal v-model:show="showTest" preset="card" title="渠道测试结果" style="width: 680px; max-width: 94vw">
-      <n-empty v-if="!testResult" description="暂无测试结果" />
+      <n-empty v-if="!testResult" description="暂无测试结果" size="small" />
       <template v-else>
         <n-descriptions :column="isNarrow ? 1 : 2" bordered size="small" label-placement="left">
           <n-descriptions-item label="渠道">{{ testResult.channelName }}</n-descriptions-item>

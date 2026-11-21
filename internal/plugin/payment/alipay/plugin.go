@@ -43,7 +43,7 @@ func (*Plugin) Metadata() pluginpayment.Metadata {
 	return pluginpayment.Metadata{
 		Code:         "alipay",
 		Name:         "支付宝当面付",
-		Capabilities: []pluginpayment.Capability{pluginpayment.CapabilityPayment},
+		Capabilities: []pluginpayment.Capability{pluginpayment.CapabilityPayment, pluginpayment.CapabilityRefund},
 	}
 }
 

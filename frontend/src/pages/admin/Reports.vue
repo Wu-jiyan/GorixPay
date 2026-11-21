@@ -315,9 +315,6 @@ onMounted(() => {
                 </n-button>
               </n-space>
             </n-gi>
-            <n-gi>
-              <n-text depth="3" style="font-size: 12px">共 {{ buyerTotal }} 条</n-text>
-            </n-gi>
           </n-grid>
 
           <n-data-table
@@ -382,9 +379,6 @@ onMounted(() => {
                   导出 CSV
                 </n-button>
               </n-space>
-            </n-gi>
-            <n-gi>
-              <n-text depth="3" style="font-size: 12px">共 {{ merchantTotal }} 条</n-text>
             </n-gi>
           </n-grid>
 

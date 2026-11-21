@@ -606,7 +606,7 @@ onMounted(load);
         </n-grid>
       </n-form>
 
-      <n-empty v-if="notAvailable" description="接口未启用">
+      <n-empty v-if="notAvailable" description="接口未启用" size="small">
         <template #extra>
           <n-button size="small" :loading="loading" @click="load">重新检测</n-button>
         </template>
@@ -621,6 +621,7 @@ onMounted(load);
         :pagination="pagination"
         :row-key="(row: Transfer) => row.id"
         :scroll-x="1500"
+        :size="isNarrow ? 'small' : 'medium'"
         @update:page="onPage"
         @update:page-size="onPageSize"
       />
@@ -636,7 +637,7 @@ onMounted(load);
         </n-descriptions-item>
       </n-descriptions>
 
-      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120" style="margin-top: 16px">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160" style="margin-top: 16px">
         <n-form-item label="驳回原因">
           <n-input
             v-model:value="rejectionReason"
@@ -660,7 +661,7 @@ onMounted(load);
         手动付款会直接生成一笔代付单，后端按账本规则扣减可用余额；金额与收款账户请核对后再提交。
       </n-alert>
 
-      <n-form ref="manualFormRef" :model="manualForm" :rules="manualRules" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120">
+      <n-form ref="manualFormRef" :model="manualForm" :rules="manualRules" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-form-item label="商户 ID" path="merchant_id">
           <n-input v-model:value="manualForm.merchant_id" placeholder="这笔付款记在哪个商户名下" />
         </n-form-item>
@@ -692,12 +693,12 @@ onMounted(load);
       </template>
     </n-modal>
 
-    <n-modal v-model:show="showBatch" preset="card" title="批量付款" style="width: 820px; max-width: 96vw">
+    <n-modal v-model:show="showBatch" preset="card" title="批量付款" style="width: 820px; max-width: 94vw">
       <n-alert type="warning" :bordered="false" style="margin-bottom: 14px">
         所有行记在同一个商户名下，合计金额会先从该商户可用余额扣减；空行或金额为 0 的行提交时会被忽略。
       </n-alert>
 
-      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-form-item label="商户 ID">
           <n-input v-model:value="batchMerchantId" placeholder="这笔批次记在哪个商户名下" />
         </n-form-item>
@@ -784,6 +785,7 @@ onMounted(load);
           :pagination="redPaging.pagination.value"
           :row-key="(row: RedBatch) => row.batch_no"
           :scroll-x="1100"
+          :size="isNarrow ? 'small' : 'medium'"
           @update:page="redPaging.onPage"
           @update:page-size="redPaging.onPageSize"
         />
@@ -803,7 +805,7 @@ onMounted(load);
         </n-descriptions-item>
       </n-descriptions>
 
-      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120" style="margin-top: 16px">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160" style="margin-top: 16px">
         <n-form-item label="撤销原因">
           <n-input v-model:value="redCancelReason" placeholder="可选，记录到审计" />
         </n-form-item>

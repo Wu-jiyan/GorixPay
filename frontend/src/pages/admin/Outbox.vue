@@ -146,8 +146,8 @@ function payloadOf(row: Row | null): string {
 
 async function copyPayload() {
   const ok = await copyText(payloadOf(detailRow.value));
-  if (ok) message.success('载荷已复制');
-  else message.warning('复制失败，请手动选择文本');
+  if (ok) message.success('已复制到剪贴板');
+  else message.error('复制失败，请手动选择文本复制');
 }
 
 const detailPayload = computed(() => payloadOf(detailRow.value));
@@ -198,7 +198,7 @@ const columns = computed<DataTableColumns<Row>>(() => [
     ellipsis: { tooltip: true },
     render: (row) => {
       const text = fieldText(row, 'last_error', 'LastError');
-      return text === '-' ? text : h('span', { style: 'color: #b91c1c' }, previewJson(text, 80));
+      return text === '-' ? text : h('span', { style: 'color: var(--gp-danger)' }, previewJson(text, 80));
     },
   },
   {
@@ -260,7 +260,7 @@ onMounted(() => {
     </template>
 
     <n-spin :show="statsLoading">
-      <n-empty v-if="statCards.length === 0" description="暂无队列统计" style="margin-bottom: 16px" />
+      <n-empty v-if="statCards.length === 0" description="暂无队列统计" size="small" />
       <n-grid v-else cols="2 s:3 m:5" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 16px">
         <n-grid-item v-for="card in statCards" :key="card.key">
           <n-card size="small" :bordered="false">
@@ -286,9 +286,6 @@ onMounted(() => {
             <n-button type="primary" @click="search">查询</n-button>
             <n-button @click="resetFilters">重置</n-button>
           </n-space>
-        </n-gi>
-        <n-gi>
-          <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
         </n-gi>
       </n-grid>
 
@@ -332,7 +329,7 @@ onMounted(() => {
             {{ detailCreatedAt }}
           </n-descriptions-item>
           <n-descriptions-item label="最近错误" :span="isNarrow ? 1 : 2">
-            <span style="color: #b91c1c">{{ fieldText(detailRow, 'last_error', 'LastError') }}</span>
+            <n-text type="error">{{ fieldText(detailRow, 'last_error', 'LastError') }}</n-text>
           </n-descriptions-item>
         </n-descriptions>
 

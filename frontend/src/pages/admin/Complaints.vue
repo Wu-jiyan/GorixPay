@@ -547,7 +547,6 @@ onMounted(load);
                   查询
                 </n-button>
                 <n-button @click="resetFilters">重置</n-button>
-                <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
               </n-space>
             </n-form-item>
           </n-gi>
@@ -571,7 +570,7 @@ onMounted(load);
     <n-drawer v-model:show="showDetail" :width="isNarrow ? '92vw' : 680" placement="right">
       <n-drawer-content :title="detail?.complaint_no || '投诉详情'" closable>
         <n-spin :show="detailLoading">
-          <n-empty v-if="!detail && !detailLoading" description="暂无数据" />
+          <n-empty v-if="!detail && !detailLoading" description="暂无数据" size="small" />
           <template v-else-if="detail">
             <n-descriptions :column="isNarrow ? 1 : 2" bordered size="small" label-placement="left">
               <n-descriptions-item label="投诉单号">
@@ -671,7 +670,7 @@ onMounted(load);
         :model="form"
         :rules="rules"
         :label-placement="isNarrow ? 'top' : 'left'"
-        :label-width="isNarrow ? undefined : 130"
+        :label-width="isNarrow ? undefined : 160"
       >
         <n-form-item label="商户 ID" path="merchant_id">
           <n-input v-model:value="form.merchant_id" placeholder="投诉所属商户" />
@@ -759,7 +758,7 @@ onMounted(load);
       :title="ruleEditingId ? '编辑自动规则' : '新建自动规则'"
       style="width: 580px; max-width: 94vw"
     >
-      <n-form ref="ruleFormRef" :model="ruleForm" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 130">
+      <n-form ref="ruleFormRef" :model="ruleForm" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-form-item label="适用渠道">
           <n-select v-model:value="ruleForm.channel" :options="channelOptions" tag filterable />
         </n-form-item>

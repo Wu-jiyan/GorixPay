@@ -218,8 +218,8 @@ async function submitDeposit() {
 async function handleCopy(url: string) {
   if (!url) return;
   const ok = await copyText(url);
-  if (ok) message.success('收银台链接已复制');
-  else message.error('复制失败，请手动选择链接复制');
+  if (ok) message.success('已复制到剪贴板');
+  else message.error('复制失败，请手动选择文本复制');
 }
 
 function handleRechargePageChange(value: number) {

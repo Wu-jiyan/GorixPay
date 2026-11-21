@@ -215,7 +215,7 @@ const go = (path: string) => {
       @close="announcementVisible = false"
     >
       {{ announcement.content }}
-      <n-text v-if="announcement.time" depth="3" style="font-size: 12px"> · {{ announcement.time }}</n-text>
+      <n-text v-if="announcement.time" depth="3" class="gp-hint"> · {{ announcement.time }}</n-text>
     </n-alert>
 
     <!-- 首屏：左边一句话，右边直接能算 -->
@@ -245,7 +245,7 @@ const go = (path: string) => {
         </n-space>
         <n-space :size="16" class="hero-points">
           <n-space :size="4" align="center" v-for="point in ['免预付费', '自助轮换密钥', '账本可对账']" :key="point">
-            <n-icon :component="CheckmarkCircleOutline" size="15" color="#18a058" />
+            <n-icon :component="CheckmarkCircleOutline" size="15" color="var(--gp-accent)" />
             <n-text depth="2" style="font-size: 13px">{{ point }}</n-text>
           </n-space>
         </n-space>
@@ -291,7 +291,7 @@ const go = (path: string) => {
               </n-statistic>
             </n-gi>
           </n-grid>
-          <n-text depth="3" style="font-size: 12px">
+          <n-text depth="3" class="gp-hint">
             按 ￥{{ yuan(realAmount) }} 计：手续费 ￥{{ yuan(fee) }}，到账 ￥{{ yuan(receive) }}。实际费率以开通的用户组为准。
           </n-text>
         </n-space>

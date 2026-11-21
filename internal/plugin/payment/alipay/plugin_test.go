@@ -223,7 +223,7 @@ func TestVerifyCallbackRequiresPublicKey(t *testing.T) {
 func TestMetadataAndConfigFields(t *testing.T) {
 	plugin := New(nil)
 	metadata := plugin.Metadata()
-	if metadata.Code != "alipay" || metadata.Name == "" || len(metadata.Capabilities) != 1 {
+	if metadata.Code != "alipay" || metadata.Name == "" || len(metadata.Capabilities) != 2 {
 		t.Fatalf("metadata=%+v", metadata)
 	}
 	fields := plugin.ConfigFields()

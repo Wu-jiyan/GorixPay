@@ -404,7 +404,6 @@ onMounted(load);
                   查询
                 </n-button>
                 <n-button @click="resetFilters">重置</n-button>
-                <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
               </n-space>
             </n-form-item>
           </n-gi>
@@ -420,6 +419,7 @@ onMounted(load);
         :pagination="pagination"
         :row-key="(row: Settlement) => row.id"
         :scroll-x="1400"
+        :size="isNarrow ? 'small' : 'medium'"
         @update:page="onPage"
         @update:page-size="onPageSize"
       />
@@ -440,7 +440,7 @@ onMounted(load);
         </n-descriptions-item>
       </n-descriptions>
 
-      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120" style="margin-top: 16px">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160" style="margin-top: 16px">
         <n-form-item label="驳回原因">
           <n-input
             v-model:value="rejectionReason"

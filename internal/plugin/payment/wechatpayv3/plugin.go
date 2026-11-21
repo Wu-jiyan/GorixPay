@@ -43,7 +43,7 @@ func (*Plugin) Metadata() pluginpayment.Metadata {
 	return pluginpayment.Metadata{
 		Code:         "wechatpayv3",
 		Name:         "微信支付 V3",
-		Capabilities: []pluginpayment.Capability{pluginpayment.CapabilityPayment},
+		Capabilities: []pluginpayment.Capability{pluginpayment.CapabilityPayment, pluginpayment.CapabilityRefund},
 	}
 }
 

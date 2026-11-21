@@ -125,8 +125,8 @@ async function copy(text: string) {
     return;
   }
   const ok = await copyText(text);
-  if (ok) message.success('已复制');
-  else message.warning('复制失败，请手动选择');
+  if (ok) message.success('已复制到剪贴板');
+  else message.error('复制失败，请手动选择文本复制');
 }
 
 function openCashier() {
@@ -153,7 +153,7 @@ onMounted(loadChannels);
     <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16">
       <n-gi>
         <n-card size="small" :bordered="false" title="下单参数">
-          <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 180">
+          <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
             <n-form-item label="支付渠道">
               <n-select
                 :value="channelId"
@@ -219,7 +219,7 @@ onMounted(loadChannels);
       <n-gi>
         <n-card size="small" :bordered="false" title="订单结果">
           <n-empty v-if="!result" description="还没有创建测试订单" size="small" />
-          <n-form v-else :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 180">
+          <n-form v-else :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
             <n-form-item label="订单号">
               <n-input :value="tradeNo" readonly placeholder="-">
                 <template #suffix>

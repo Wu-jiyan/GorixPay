@@ -173,9 +173,6 @@ onMounted(load);
             <n-button @click="resetFilters">重置</n-button>
           </n-space>
         </n-gi>
-        <n-gi>
-          <n-text depth="3" style="font-size: 12px">共 {{ total }} 条</n-text>
-        </n-gi>
       </n-grid>
 
       <n-empty v-if="unavailable" description="接口未启用" size="large">

@@ -366,14 +366,14 @@ onBeforeUnmount(() => {
   height: 180px;
   padding: 8px;
   border: 1px solid var(--gp-line);
-  border-radius: 12px;
-  background: #fff;
+  border-radius: var(--gp-radius-lg);
+  background: var(--gp-surface);
   display: grid;
   place-items: center;
   cursor: pointer;
 }
 .qr-image:hover {
-  border-color: #93c5fd;
+  border-color: var(--gp-accent);
 }
 .qr-svg {
   display: block;
@@ -432,7 +432,7 @@ onBeforeUnmount(() => {
   flex: none;
 }
 .captcha-image:hover {
-  border-color: #93c5fd;
+  border-color: var(--gp-accent);
 }
 .captcha-svg {
   display: block;
@@ -450,7 +450,7 @@ onBeforeUnmount(() => {
   color: var(--gp-text-3);
 }
 .auth-link {
-  color: #2563eb;
+  color: var(--gp-accent);
   font-weight: 600;
 }
 .auth-bottom {
@@ -463,7 +463,7 @@ onBeforeUnmount(() => {
   justify-content: center;
 }
 .auth-bottom a:hover {
-  color: #2563eb;
+  color: var(--gp-accent);
 }
 .sep {
   color: var(--gp-text-3);

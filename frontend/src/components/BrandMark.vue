@@ -66,14 +66,14 @@ const imgStyle = computed(() => ({
 }
 .brand-mark-img {
   object-fit: contain;
-  background: #fff;
+  background: var(--gp-surface);
   display: block;
   flex: none;
 }
 .brand-mark-tile {
   display: grid;
   place-items: center;
-  color: #fff;
+  color: var(--gp-on-accent);
   font-weight: 600;
   flex: none;
   line-height: 1;

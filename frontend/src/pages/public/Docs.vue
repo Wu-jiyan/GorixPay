@@ -842,7 +842,7 @@ func main() {
 .docs-badge {
   display: inline-block;
   padding: 4px 12px;
-  border-radius: 999px;
+  border-radius: var(--gp-radius-pill);
   background: var(--gp-accent-soft);
   color: var(--gp-accent);
   font-size: 12px;
@@ -872,7 +872,7 @@ func main() {
   color: var(--gp-text-1);
   margin: 26px 0 10px;
   padding-left: 10px;
-  border-left: 3px solid #2563eb;
+  border-left: 3px solid var(--gp-accent);
 }
 .doc-h3 {
   font-size: 15px;

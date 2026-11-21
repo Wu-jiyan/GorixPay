@@ -121,8 +121,8 @@ async function remove(row: InviteCode) {
 
 async function copy(value: string) {
   const ok = await copyText(value);
-  if (ok) message.success('已复制');
-  else message.warning('复制失败，请手动选择');
+  if (ok) message.success('已复制到剪贴板');
+  else message.error('复制失败，请手动选择文本复制');
 }
 
 function usesText(row: InviteCode): string {
@@ -265,7 +265,7 @@ onMounted(load);
         :model="form"
         :rules="rules"
         :label-placement="isNarrow ? 'top' : 'left'"
-        :label-width="isNarrow ? undefined : 110"
+        :label-width="isNarrow ? undefined : 160"
       >
         <n-form-item label="可用次数" path="max_uses">
           <n-space align="center" :size="10" :wrap="true">

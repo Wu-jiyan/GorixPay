@@ -298,6 +298,7 @@ onMounted(load);
         :pagination="pagination"
         :row-key="(row: Refund) => row.id"
         :scroll-x="1200"
+        :size="isNarrow ? 'small' : 'medium'"
         @update:page="onPage"
         @update:page-size="onPageSize"
       />
@@ -313,7 +314,7 @@ onMounted(load);
         </n-descriptions-item>
       </n-descriptions>
 
-      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120" style="margin-top: 16px">
+      <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160" style="margin-top: 16px">
         <n-form-item label="驳回原因">
           <n-input
             v-model:value="rejectionReason"
