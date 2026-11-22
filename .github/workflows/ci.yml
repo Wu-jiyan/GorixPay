@@ -42,8 +42,22 @@ jobs:
           set -euo pipefail
           unformatted="$(git ls-files -z '*.go' | xargs -0 -r gofmt -l)"
           if [ -n "${unformatted}" ]; then
-            echo "以下文件未格式化："
+            echo "以下文件未格式化，本地执行 gofmt -w 后重新提交："
             echo "${unformatted}"
+            exit 1
+          fi
+
+      # go.mod/go.sum 漂移检查：依赖改动必须连带提交，否则别人 go build 会改工作区
+      - name: 检查 go.mod 是否整洁
+        run: |
+          set -euo pipefail
+          cp go.mod /tmp/go.mod.before
+          cp go.sum /tmp/go.sum.before
+          go mod tidy
+          if ! cmp -s /tmp/go.mod.before go.mod || ! cmp -s /tmp/go.sum.before go.sum; then
+            echo "go mod tidy 改动了 go.mod/go.sum，请本地执行后提交："
+            diff -u /tmp/go.mod.before go.mod || true
+            diff -u /tmp/go.sum.before go.sum || true
             exit 1
           fi
 
@@ -59,6 +73,23 @@ jobs:
       # 机器上有 php 时，tests/conformance/epay 会连上游 SDK 一起跑，没有则自动跳过 oracle 部分
       - name: 测试
         run: go test ./... -count=1
+
+  race:
+    name: Go 竞态检测
+    runs-on: ubuntu-latest
+    # 竞态检测比普通测试慢一截，单独开一个 job 并行跑，不拖慢主链路
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go test -race
+        run: go test -race ./internal/... -count=1
 
   frontend:
     name: 前端构建
@@ -80,6 +111,10 @@ jobs:
       # 依赖安装：仓库已提交 package-lock.json，用 npm ci 装锁定版本，避免依赖漂移
       - name: 安装依赖
         run: npm ci
+
+      # 类型检查单独一步：类型错误时不必等到打包结束才报，日志也更好读
+      - name: 类型检查
+        run: npm run typecheck
 
       # 前端构建：防止类型错误和坏页面进入主干
       - name: 构建

@@ -120,6 +120,32 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o gorixpay ./cmd/gorixpay
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o gorixpay ./cmd/gorixpay
 ```
 
+想把版本号打进二进制（`/health/live` 会直接回出来，线上不用猜跑的是哪个 tag）：
+
+```bash
+CGO_ENABLED=0 go build -trimpath \
+  -ldflags "-s -w \
+    -X gorixpay/internal/platform/health.Version=v2.3.0 \
+    -X gorixpay/internal/platform/health.Commit=$(git rev-parse --short HEAD) \
+    -X gorixpay/internal/platform/health.BuiltAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  -o gorixpay ./cmd/gorixpay
+```
+
+不注入时版本显示 `dev`。
+
+#### 直接用 Release 产物
+
+每次打 `v*` tag，CI 会构建 `linux/amd64` 与 `linux/arm64` 两个包并附到 Release：
+
+```bash
+tar -xzf gorixpay-v2.3.0-linux-amd64.tar.gz
+cd gorixpay-v2.3.0-linux-amd64
+sha256sum -c ../gorixpay-v2.3.0-linux-amd64.tar.gz.sha256   # 校验完整性
+./gorixpay                                                  # 首次启动自动迁移
+```
+
+包内已含二进制、`dist/`（前端产物）、`README.md`、`CHANGELOG.md`、`docs/`。放置时二进制与 `dist/` 必须在同一工作目录。
+
 二进制需要同目录下有 `frontend/dist`（或者用 `--public-url` 反代到别处的静态服务）。迁移 SQL 已经 `//go:embed` 进二进制，不用额外拷 `migrations/`。
 
 ### 3.2 配置

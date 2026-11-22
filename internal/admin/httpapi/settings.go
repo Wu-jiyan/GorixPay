@@ -83,11 +83,11 @@ var allowedSettings = map[string]bool{
 	"register.review_required": true,
 	// 注册验证方式：off / email / phone（上游 Epay 的 verifytype）。
 	"register.verify_channel": true,
-	"site.homepage_mode":       true,
-	"site.homepage_url":        true,
-	"site.contact_email":       true,
-	"site.contact_qq":          true,
-	"site.icp_number":          true,
+	"site.homepage_mode":      true,
+	"site.homepage_url":       true,
+	"site.contact_email":      true,
+	"site.contact_qq":         true,
+	"site.icp_number":         true,
 	// 平台级敞口：允许商户自助退款、单笔金额上下限。
 	"payment.merchant_refund_enabled": true,
 	"payment.min_amount_cents":        true,

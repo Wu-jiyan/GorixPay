@@ -1,0 +1,161 @@
+name: Release
+
+# 打 tag 即发版：v* 触发，构建 linux/amd64 与 linux/arm64 二进制 + 前端产物，
+# 打包成 tar.gz 附到 GitHub Release。用 gh cli 而不是第三方 action，
+# 少一层供应链依赖，token 权限也只给到 contents: write。
+on:
+  push:
+    tags: ['v*']
+  # 允许手动重跑一次已存在的 tag（网络抖动、构建机抽风时用）
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要重新构建的 tag（例如 v2.3.0）'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "release-${{ github.ref }}"
+  cancel-in-progress: false
+
+env:
+  GO_VERSION_FILE: go.mod
+  NODE_VERSION: '20'
+
+jobs:
+  build:
+    name: 构建 ${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - goarch: amd64
+          - goarch: arm64
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # 前端产物只构建一次就够，但两个 job 各自独立，重复构建换来的是矩阵简单、
+      # 没有跨 job 传文件；构建时间几十秒，值得。
+      - name: 构建前端
+        working-directory: frontend
+        run: npm ci && npm run build
+
+      - name: 构建二进制
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            version="${{ github.event.inputs.tag }}"
+          fi
+          go build -trimpath \
+            -ldflags "-s -w \
+              -X gorixpay/internal/platform/health.Version=${version} \
+              -X gorixpay/internal/platform/health.Commit=${GITHUB_SHA::7} \
+              -X gorixpay/internal/platform/health.BuiltAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o gorixpay ./cmd/gorixpay
+          ./gorixpay --help >/dev/null 2>&1 || true
+          file gorixpay
+          echo "VERSION=${version}" >> "${GITHUB_ENV}"
+
+      - name: 打包
+        run: |
+          set -euo pipefail
+          name="gorixpay-${VERSION}-linux-${{ matrix.goarch }}"
+          mkdir -p "dist/${name}"
+          cp gorixpay "dist/${name}/"
+          cp -r frontend/dist "dist/${name}/dist"
+          cp README.md CHANGELOG.md LICENSE "dist/${name}/"
+          mkdir -p "dist/${name}/docs"
+          cp docs/*.md "dist/${name}/docs/"
+          tar -C dist -czf "dist/${name}.tar.gz" "${name}"
+          sha256sum "dist/${name}.tar.gz" > "dist/${name}.tar.gz.sha256"
+          ls -lh "dist/${name}.tar.gz"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.goarch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+
+  publish:
+    name: 发布
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: release-*
+          merge-multiple: true
+
+      - name: 生成 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            tag="${{ github.event.inputs.tag }}"
+          fi
+          # release notes 取 CHANGELOG.md 里该版本那一段（到下一个 ## [ 为止），
+          # 找不到就退回自动生成，不让发版卡在文案上。
+          notes_file="$(mktemp)"
+          version_no_v="${tag#v}"
+          awk -v ver="${version_no_v}" '
+            $0 ~ "^## \\[" ver "\\]" { found=1; print; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > "${notes_file}"
+          if [ ! -s "${notes_file}" ]; then
+            echo "CHANGELOG.md 里没有 ${version_no_v} 段落，改用自动生成说明" >&2
+            gh release create "${tag}" artifacts/*.tar.gz artifacts/*.sha256 \
+              --title "${tag}" --generate-notes --verify-tag
+            exit 0
+          fi
+          {
+            cat "${notes_file}"
+            echo
+            echo "---"
+            echo
+            echo "## 安装"
+            echo
+            echo '```bash'
+            echo "tar -xzf gorixpay-${tag}-linux-amd64.tar.gz"
+            echo "cd gorixpay-${tag}-linux-amd64"
+            echo "./gorixpay   # 首次启动会自动执行数据库迁移"
+            echo '```'
+            echo
+            echo "资产里的 dist/ 是前端构建产物，放到进程工作目录下会被直接服务。"
+            echo "校验完整性：\`sha256sum -c *.sha256\`。"
+          } > "${notes_file}.final"
+          gh release create "${tag}" artifacts/*.tar.gz artifacts/*.sha256 \
+            --title "${tag}" --notes-file "${notes_file}.final" --verify-tag

@@ -4,6 +4,47 @@
 
 `v2.0.0` 于 2026-11-13 打上第一个 tag，下面是这个版本的全部内容。之前的两个 commit 是内部开发阶段，没有对外发过。
 
+## [2.3.0] - 2026-11-22
+
+一轮「设置项完整性 + 买家支付页 + 后台暴露面」的收口。两轮只读审计（系统设置完整性、后台入口暴露）把上游 Epay 的 116 个配置键与本仓的 35 个逐条比对，缺什么补什么，存了没人读的要么接线要么删掉。
+
+### 系统设置
+- **注册门禁三态** `register.mode`：开启 / 关闭 / 仅邀请（上游 `reg_open`）。关闭时注册接口回 `register_closed`，仅邀请时无邀请码回 `invite_required`，注册页据此隐藏表单而不是让人填完才被拒。
+- **首页显示模式** `site.homepage_mode` + `site.homepage_url`：正常首页 / 直接跳登录页 / 跳指定网址（上游 `homepage`）。站点信息异步拉取，跳转放在挂载后，不会闪一下首页再走。
+- **注册审核流** `register.review_required`：新商户落 `pending`，登录回 403 `merchant_pending`（与「密码错误」区分），运营在商户列表点「启用」即通过。实测全链路：注册 → pending → 登录被拦 → PATCH active → 登录成功。
+- **注册验证方式** `register.verify_channel`：off / email / phone（上游 `verifytype`）。复用现有验证码服务与限流（每目标 1 分钟 1 次、每天 10 次），新增 `register` 场景；注册页出现发送按钮与 60 秒冷却。
+- **授权站点域名拆成两个开关**：`payment.domain_whitelist_required`（不做就拦）与新的 `payment.domain_self_service`（商户能否自助报备）。上游本来就是 `pay_domain_forbid` / `pay_domain_open` 两个键，之前压成了一个布尔。
+- **单笔金额上下限** `payment.min_amount_cents` / `max_amount_cents`：真正在下单链路校验，不再硬编码 1 分 ~ 10 万元。
+- **商户自助退款开关** `payment.merchant_refund_enabled`：关掉后 `/merchant/refunds` 回 `refund_disabled`，运营仍可退。
+- **风控 IP 白名单** `risk.ip_whitelist`：逗号或换行分隔，支持 CIDR；命中的来源不计数、不受日限额约束。
+- **联系方式与备案号** `site.contact_qq` / `contact_email` / `icp_number`（上游 `kfqq` / `email` / `footer`）。
+- **设置写入的范围校验**：新增 `settingRules`，枚举键只能取固定值、数值键有上下限且要求整数，越界回 400 `invalid_setting_value`。此前 `invite.rate_bp` 能写 50000（500% 返佣）、`site.skin` 能写任意串、风控限额能写负数并静默变成「不限」。
+- **设置改动落审计**：每次写设置记一条 `setting.updated`（key、值、IP、操作人），凭据类键仍不记明文。
+- **订单有效期真正读配置**：`payment.order_expiry_minutes` 之前没被读，所有订单硬编码 5 分钟到期，买家选通道、跳 App、输密码稍慢就撞「订单已过期」。现在按设置走（0 表示不过期），收银台对零值跳过过期判断。
+- **通知重试参数接线**：`notification.max_attempts` / `poll_interval_seconds` 之前传的是空 `Options`，永远是编译期默认值（5 次 / 1 秒）。
+- 新增 `internal/settings.Reader`：注册门禁、首页模式、注册验证、金额上下限、退款开关、通知重试都走同一个只读入口，改完当次请求生效。
+
+### 安全
+- **设置项造成的 SSRF 面**：运营能在控制台填任意 SMTP 主机与短信网关地址，这两条出站此前完全没护栏 —— `smtp.SendMail` 直接拨 host:port（填 `127.0.0.1` 就能打本机 25/465/587），短信网关直接 POST 到运营填的 URL。现在都过 netguard：新增 `ValidateHostPort`（裸 host:port 规则）与导出的 `Control()` 拨号钩子（挡住「域名解析到 169.254.169.254」），SMTP 换成自带 `sendMailWithDialer` 保留 STARTTLS/AUTH。
+- 后台入口不再对访客暴露：官网页脚去掉「运营入口」按钮、移动端抽屉去掉 `/admin/login` 明文、商户登录页去掉「运营登录」链接、官网 FAQ 的「运营后台」改为「平台侧」。后台地址只留给知道 URL 的人。
+
+### 买家支付页
+- **手机支付宝能真正唤起 App**：href 由通道 H5 地址改为 `alipays://platformapi/startApp?appId=20000067&url=…`，之前点了只是跳到汇付网页。
+- **电脑端支付宝不再报「当前订单支付方式不支持」**：PC 上不再 pin `A_NATIVE`/`U_NATIVE` —— 这两个是汇付托管的产品级开关，商户没开就会回这个错；微信一直正常正是因为它从没 pin 过 `T_NATIVE`。现在只有「微信内 + 微信支付」pin `T_JSAPI`、「支付宝内 + 支付宝」pin `A_JSAPI`。
+- **去掉「返回商户」按钮**：未支付时它指向 `checkpay`，而 `checkpay` 又会把人送回支付页，点一下等于原地闪跳。
+- 页面加厚：品牌色状态条、支付方式徽标 + 待支付 chip、操作区浅底框、勾选式信任说明、订单状态行；支付链接截断展示 + 复制按钮取 hidden 全量值。
+- 手机微信保留「复制链接，去微信付款」主操作与「打开微信」次按钮（`weixin://`）。
+- 测试支付页提交后直接跳到服务端支付页，与易支付 `test.php` 一致，不再在本页二次解析二维码。
+
+### 界面一致性
+- 容器内边距修正 16 处：首页 FAQ（`4px 8px` → `12px 24px 20px`）、官网页脚（`20px 0 24px` → `28px 0 32px`）、后台与商户中心窄屏内容区（12px → `var(--gp-gutter)`）、五个登录注册页、文档页、审计页展开行、安全页二维码区、收银台二维码静区（6px → 10px，影响扫码识别率）、商户首页公告列表左基线。
+- 60 张页面级容器卡去掉 `size="small"`，与同页 medium 卡左基线对齐；42 张统计小卡/纯文字卡保留 small。
+- 22 处区块间距从内联 `margin-top: 16px` 换成 `.gp-section-gap`；11 处元素内部间距刻意跳过，避免与弹窗自身节奏打架。
+
+### 工程
+- CI 增加 `go mod tidy` 漂移检查、`go test -race ./internal/...` 独立 job、前端类型检查独立步骤。
+- 新增 `.github/workflows/release.yml`：打 tag 构建 linux/amd64 与 arm64 二进制 + 前端产物，用 `gh release create` 发布并附 sha256；release notes 直接取本文件的版本段落。
+- `/health/live` 与 `/health/ready` 返回 `version` / `commit` / `built_at`，由 link time 注入，可在生产直接确认跑的是哪个 tag。
 ## [2.2.2] - 2026-11-14
 
 把 2.2.1 结尾列的七条已知缺口一次收干净。
