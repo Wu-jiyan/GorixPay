@@ -198,7 +198,37 @@ func (handler *Handler) updateSetting(ctx *gin.Context) {
 		internalError(ctx)
 		return
 	}
+	// 设置改动落审计：以前的审计只有 method/path，事后查不到「谁把 invite.rate_bp
+	// 改成 500」。这里记 key + 旧值 + 新值，凭据类键只记「已更新」不记明文。
+	handler.recordSettingChange(ctx, key, request.Value)
 	ctx.JSON(http.StatusOK, gin.H{"key": key, "value": request.Value, "updated_at": now})
+}
+
+// recordSettingChange appends one audit row for a setting write. Failures are
+// swallowed on purpose: an audit hiccup must not fail an otherwise valid save.
+func (handler *Handler) recordSettingChange(ctx *gin.Context, key string, value any) {
+	actorID := ""
+	if identity := identityhttp.MustSession(ctx); identity.PrincipalID != "" {
+		actorID = identity.PrincipalID
+	}
+	payload := map[string]any{
+		"key":   key,
+		"value": value,
+		"ip":    ctx.ClientIP(),
+	}
+	if encoded, err := json.Marshal(payload); err == nil {
+		event := auditEvent{
+			ID:        uuid.NewString(),
+			EventType: "setting.updated",
+			ActorType: "administrator",
+			Payload:   string(encoded),
+			CreatedAt: time.Now().UTC(),
+		}
+		if actorID != "" {
+			event.ActorID = &actorID
+		}
+		_ = handler.db.WithContext(ctx.Request.Context()).Create(&event).Error
+	}
 }
 
 // validateSettingValue enforces the bounds and enumerations declared in
