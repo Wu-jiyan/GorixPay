@@ -86,6 +86,17 @@ const tabs: Tab[] = [
         ],
       },
       { key: 'register.review_required', label: '注册后需审核', type: 'bool', hint: '开启后新商户默认不可下单，需运营审核通过' },
+      {
+        key: 'register.verify_channel',
+        label: '注册验证方式',
+        type: 'select',
+        hint: '要求先收取邮箱或手机验证码才能完成注册',
+        options: [
+          { label: '不验证', value: 'off' },
+          { label: '邮箱验证', value: 'email' },
+          { label: '手机验证', value: 'phone' },
+        ],
+      },
       { key: 'payment.merchant_refund_enabled', label: '允许商户自助退款', type: 'bool', hint: '关闭后仅运营可发起退款' },
       { key: 'payment.min_amount_cents', label: '单笔最小金额', type: 'cents', hint: '低于此金额的下单会被拒绝', min: 1 },
       { key: 'payment.max_amount_cents', label: '单笔最大金额', type: 'cents', hint: '高于此金额的下单会被拒绝', min: 1 },

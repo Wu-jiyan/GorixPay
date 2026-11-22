@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { useMessage, type FormInst, type FormItemRule, type FormRules } from 'naive-ui';
 import { authApi } from '@/api';
+import { accountSecurityApi } from '@/api/accountSecurity';
 import { errorMessage } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 import { loadSite, siteInfo } from '@/stores/site';
@@ -23,6 +24,52 @@ const registerMode = computed(() => siteInfo.value.register_mode || 'open');
 const canRegister = computed(
   () => registerMode.value === 'open' || (registerMode.value === 'invite' && invite.value !== ''),
 );
+
+// 注册验证方式（register.verify_channel）：off / email / phone。
+const verifyChannel = computed(() => siteInfo.value.verify_channel || 'off');
+const needVerifyCode = computed(() => verifyChannel.value === 'email' || verifyChannel.value === 'phone');
+const verifyCode = ref('');
+const sending = ref(false);
+const cooldown = ref(0);
+let cooldownTimer: ReturnType<typeof setInterval> | null = null;
+
+async function sendCode() {
+  if (sending.value || cooldown.value > 0) return;
+  const target = form.identifier.trim();
+  if (!target) {
+    message.warning('请先填写邮箱或手机号');
+    return;
+  }
+  if (verifyChannel.value === 'email' && !target.includes('@')) {
+    message.warning('本站要求使用邮箱注册');
+    return;
+  }
+  if (verifyChannel.value === 'phone' && target.includes('@')) {
+    message.warning('本站要求使用手机号注册');
+    return;
+  }
+  sending.value = true;
+  try {
+    await accountSecurityApi.sendRegisterCode(target);
+    message.success('验证码已发送，请查收');
+    cooldown.value = 60;
+    cooldownTimer = setInterval(() => {
+      cooldown.value -= 1;
+      if (cooldown.value <= 0 && cooldownTimer) {
+        clearInterval(cooldownTimer);
+        cooldownTimer = null;
+      }
+    }, 1000);
+  } catch (error) {
+    message.error(errorMessage(error));
+  } finally {
+    sending.value = false;
+  }
+}
+
+onUnmounted(() => {
+  if (cooldownTimer) clearInterval(cooldownTimer);
+});
 
 onMounted(() => {
   void loadSite();
@@ -90,7 +137,12 @@ async function handleSubmit() {
     return;
   }
   try {
-    const res = await authApi.register(form.identifier.trim(), form.password, invite.value || undefined);
+    const res = await authApi.register(
+      form.identifier.trim(),
+      form.password,
+      invite.value || undefined,
+      needVerifyCode.value ? verifyCode.value.trim() : undefined,
+    );
     if (!res.merchant) {
       message.error('注册成功但未返回商户信息，请使用登录页登录');
       return;
@@ -167,6 +219,14 @@ async function handleSubmit() {
             placeholder="再次输入登录密码"
           />
         </n-form-item>
+        <n-form-item v-if="needVerifyCode" label="验证码" path="verifyCode">
+          <div class="code-row">
+            <n-input v-model:value="verifyCode" placeholder="请输入收到的验证码" :maxlength="8" />
+            <n-button :disabled="cooldown > 0" :loading="sending" @click="sendCode">
+              {{ cooldown > 0 ? `${cooldown}s 后重发` : '发送验证码' }}
+            </n-button>
+          </div>
+        </n-form-item>
         <n-button type="primary" block size="large" :loading="submitting" attr-type="submit" @click="handleSubmit">
           立即注册
         </n-button>
@@ -218,6 +278,17 @@ async function handleSubmit() {
   display: grid;
   gap: 14px;
   margin-top: 4px;
+}
+.code-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.code-row :deep(.n-input) {
+  flex: 1;
+}
+.code-row :deep(.n-button) {
+  flex: none;
 }
 .invite-hint {
   font-size: 12px;

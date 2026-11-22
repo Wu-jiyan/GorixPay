@@ -181,15 +181,6 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	authService = authService.WithReviewRequired(func(ctx context.Context) bool {
 		return settingReader.Bool(ctx, "register.review_required", false)
 	})
-	identityhttp.Register(
-		router.Group("/api/v1"), authService, sessions,
-		// Behind a TLS terminator the inbound hop is plain HTTP, so the cookie
-		// only gets Secure when the operator declares an https public URL.
-		identityhttp.WithSecureCookies(strings.HasPrefix(strings.ToLower(cfg.HTTP.PublicURL), "https://")),
-		// 注册门禁读 register.mode（开启 / 关闭 / 仅邀请），上游 Epay 叫 reg_open。
-		identityhttp.WithSettings(settingReader),
-	)
-	security.Register(router.Group("/api/v1"), identityhttp.Authenticate(sessions), securityService)
 	// Without a real SMS/mail sender the service prints the reset token so a
 	// local deployment can finish the flow. Production must never log a working
 	// reset token, even when the operator has not configured a sender yet.
@@ -197,6 +188,19 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		router.Group("/api/v1"), db, sessions, cipher,
 		notify.WithTokenLogging(cfg.Environment != "production"),
 	)
+	identityhttp.Register(
+		router.Group("/api/v1"), authService, sessions,
+		// Behind a TLS terminator the inbound hop is plain HTTP, so the cookie
+		// only gets Secure when the operator declares an https public URL.
+		identityhttp.WithSecureCookies(strings.HasPrefix(strings.ToLower(cfg.HTTP.PublicURL), "https://")),
+		// 注册门禁读 register.mode（开启 / 关闭 / 仅邀请），上游 Epay 叫 reg_open。
+		identityhttp.WithSettings(settingReader),
+		// 注册验证（register.verify_channel）：要求先收邮箱/手机验证码。
+		identityhttp.WithCodeVerifier(notifyService, func(ctx context.Context) string {
+			return settingReader.TextOr(ctx, "register.verify_channel", "off")
+		}),
+	)
+	security.Register(router.Group("/api/v1"), identityhttp.Authenticate(sessions), securityService)
 
 	redisClient, redisErr := redisx.Open(redisx.Config{
 		Addr: cfg.Redis.Addr, Password: cfg.Redis.Password, DB: cfg.Redis.DB, Prefix: cfg.Redis.Prefix,

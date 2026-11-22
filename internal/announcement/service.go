@@ -21,12 +21,13 @@ const (
 	// only mirrors it so the login pages know whether to show a captcha box.
 	settingCaptchaRequired = "security.captcha_required"
 	// 注册门禁 / 首页模式 / 联系方式，对应上游 Epay 的 reg_open、homepage、kfqq 等。
-	settingRegisterMode = "register.mode"
-	settingHomepageMode = "site.homepage_mode"
-	settingHomepageURL  = "site.homepage_url"
-	settingContactEmail = "site.contact_email"
-	settingContactQQ    = "site.contact_qq"
-	settingICPNumber    = "site.icp_number"
+	settingRegisterMode  = "register.mode"
+	settingVerifyChannel = "register.verify_channel"
+	settingHomepageMode  = "site.homepage_mode"
+	settingHomepageURL   = "site.homepage_url"
+	settingContactEmail  = "site.contact_email"
+	settingContactQQ     = "site.contact_qq"
+	settingICPNumber     = "site.icp_number"
 )
 
 // firstNonEmpty returns the first non-empty argument.
@@ -62,6 +63,8 @@ type Site struct {
 	// RegisterMode is the registration gate: open / closed / invite. The register
 	// page renders from it instead of always showing the form.
 	RegisterMode string `json:"register_mode"`
+	// VerifyChannel is off / email / phone: whether signup needs a delivered code.
+	VerifyChannel string `json:"verify_channel"`
 	// HomepageMode says what "/" should do: landing / login / url (上游 Epay 的
 	// homepage 设置)。
 	HomepageMode string `json:"homepage_mode"`
@@ -215,6 +218,7 @@ func (service *Service) Site(ctx context.Context) (Site, error) {
 	site.CaptchaRequired = decodeBoolSetting(settings["security.captcha_required"])
 	// 注册门禁与首页模式：公开站点信息要带上，注册页和首页据此改变行为。
 	site.RegisterMode = firstNonEmpty(decodeSetting(settings[settingRegisterMode]), "open")
+	site.VerifyChannel = firstNonEmpty(decodeSetting(settings[settingVerifyChannel]), "off")
 	site.HomepageMode = firstNonEmpty(decodeSetting(settings[settingHomepageMode]), "landing")
 	site.HomepageURL = decodeSetting(settings[settingHomepageURL])
 	site.ContactEmail = decodeSetting(settings[settingContactEmail])
@@ -248,7 +252,7 @@ func (service *Service) paymentTypes(ctx context.Context) []string {
 func (service *Service) settings(ctx context.Context) (map[string]string, error) {
 	keys := []string{
 		settingSiteName, settingSiteLogo, settingSiteFooter, settingSiteSkin, settingCaptchaRequired,
-		settingRegisterMode, settingHomepageMode, settingHomepageURL,
+		settingRegisterMode, settingVerifyChannel, settingHomepageMode, settingHomepageURL,
 		settingContactEmail, settingContactQQ, settingICPNumber,
 	}
 	var records []systemSetting

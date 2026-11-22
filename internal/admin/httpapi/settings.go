@@ -81,6 +81,8 @@ var allowedSettings = map[string]bool{
 	// 注册门禁、首页模式、联系方式 —— 对应上游 Epay 的 reg_open / homepage / kfqq。
 	"register.mode":            true,
 	"register.review_required": true,
+	// 注册验证方式：off / email / phone（上游 Epay 的 verifytype）。
+	"register.verify_channel": true,
 	"site.homepage_mode":       true,
 	"site.homepage_url":        true,
 	"site.contact_email":       true,
@@ -115,6 +117,7 @@ type settingRule struct {
 
 var settingRules = map[string]settingRule{
 	"register.mode":                      {enum: []string{"open", "closed", "invite"}},
+	"register.verify_channel":            {enum: []string{"off", "email", "phone"}},
 	"site.homepage_mode":                 {enum: []string{"landing", "login", "url"}},
 	"site.skin":                          {enum: []string{"default", "dark", "compact"}},
 	"payment.order_expiry_minutes":       {min: 0, max: 1440, hasMin: true, hasMax: true, integer: true},

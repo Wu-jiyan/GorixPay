@@ -27,6 +27,9 @@ const (
 const (
 	SceneResetPassword = "reset_password"
 	SceneBindPhone     = "bind_phone"
+	// SceneRegister is the signup verification code, used when the operator wants
+	// 注册时验证邮箱或手机（上游 Epay 的 verifytype）。
+	SceneRegister = "register"
 )
 
 // principalTypeMerchant is the auth_sessions / password_resets principal tag for
@@ -109,7 +112,7 @@ func ValidStatus(value ChannelStatus) bool {
 func normalizeScene(value string) (string, bool) {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	switch normalized {
-	case SceneResetPassword, SceneBindPhone:
+	case SceneResetPassword, SceneBindPhone, SceneRegister:
 		return normalized, true
 	default:
 		return "", false

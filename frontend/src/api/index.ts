@@ -52,8 +52,13 @@ export const authApi = {
     const { data } = await http.post<LoginResult>('/auth/administrator/login', { identifier, password });
     return data;
   },
-  async register(identifier: string, password: string, invite?: string) {
-    const { data } = await http.post<LoginResult>('/auth/register', { identifier, password, invite });
+  async register(identifier: string, password: string, invite?: string, verifyCode?: string) {
+    const { data } = await http.post<LoginResult>('/auth/register', {
+      identifier,
+      password,
+      invite,
+      verify_code: verifyCode,
+    });
     return data;
   },
   async me() {

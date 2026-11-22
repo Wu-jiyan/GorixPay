@@ -12,6 +12,10 @@ export interface CaptchaChallenge {
 }
 
 export const accountSecurityApi = {
+  /** 发送注册验证码（scene=register）；后端按每目标每分钟 1 次、每天 10 次限流 */
+  async sendRegisterCode(target: string) {
+    await http.post('/auth/code', { scene: 'register', target });
+  },
   /** 发送重置邮件；无论账号是否存在后端都返回 202，不返回 token */
   async forgotPassword(identifier: string) {
     await http.post('/auth/merchant/password/forgot', { identifier });

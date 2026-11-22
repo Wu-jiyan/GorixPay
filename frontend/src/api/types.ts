@@ -198,6 +198,8 @@ export interface SiteInfo {
   captcha_required?: boolean;
   /** 注册门禁：open / closed / invite */
   register_mode?: string;
+  /** 注册验证方式：off / email / phone */
+  verify_channel?: string;
   /** 首页显示模式：landing / login / url */
   homepage_mode?: string;
   homepage_url?: string;

@@ -30,6 +30,10 @@ type Handler struct {
 	// settings reads the registration gate (register.mode). Nil means "always
 	// open", which keeps tests and embeddings of the service working.
 	settings *settings.Reader
+	// verifier checks the signup verification code; verifyChannel answers which
+	// channel the console requires ("off" disables the check).
+	verifier      CodeVerifier
+	verifyChannel func(context.Context) string
 }
 
 // Options for the registration gate, matching 上游 Epay 的 reg_open.
@@ -45,6 +49,36 @@ const (
 func WithSettings(reader *settings.Reader) Option {
 	return func(handler *Handler) {
 		handler.settings = reader
+	}
+}
+
+// CodeVerifier checks a delivered verification code against a scene+target pair.
+// internal/notify implements it; the identity package only needs the contract.
+type CodeVerifier interface {
+	VerifyCode(ctx context.Context, scene, target, code string) error
+}
+
+// WithCodeVerifier wires signup verification (register.verify_channel). The
+// channel callback answers "off", "email" or "phone" so the gate follows the
+// console setting on every request.
+func WithCodeVerifier(verifier CodeVerifier, channel func(context.Context) string) Option {
+	return func(handler *Handler) {
+		handler.verifier = verifier
+		handler.verifyChannel = channel
+	}
+}
+
+// requiredVerifyChannel answers "" when signup verification is off, otherwise
+// "email" or "phone".
+func (handler *Handler) requiredVerifyChannel(ctx context.Context) string {
+	if handler.verifier == nil || handler.verifyChannel == nil {
+		return ""
+	}
+	switch channel := strings.ToLower(strings.TrimSpace(handler.verifyChannel(ctx))); channel {
+	case "email", "phone":
+		return channel
+	default:
+		return ""
 	}
 }
 
@@ -131,6 +165,9 @@ type registerMerchantRequest struct {
 	// InviteCode is a registration invite code issued by the operator, separate
 	// from the inviter code above.
 	InviteCode string `json:"invite_code"`
+	// VerifyCode is the email/phone code sent for the register scene, required
+	// when the operator turned on 注册验证（register.verify_channel）.
+	VerifyCode string `json:"verify_code"`
 }
 
 func (handler *Handler) registerMerchant(ctx *gin.Context) {
@@ -148,6 +185,26 @@ func (handler *Handler) registerMerchant(ctx *gin.Context) {
 		}
 		if strings.TrimSpace(request.Invite) == "" && strings.TrimSpace(request.InviteCode) == "" {
 			ctx.JSON(http.StatusForbidden, gin.H{"code": "invite_required", "message": "本站仅限邀请注册，请填写邀请码"})
+			return
+		}
+	}
+	// 注册验证（register.verify_channel）：要求邮箱或手机收到的验证码。
+	if channel := handler.requiredVerifyChannel(ctx); channel != "" {
+		identifier := strings.TrimSpace(request.Identifier)
+		if channel == "email" && !strings.Contains(identifier, "@") {
+			ctx.JSON(http.StatusBadRequest, gin.H{"code": "verify_channel_mismatch", "message": "本站要求使用邮箱注册"})
+			return
+		}
+		if channel == "phone" && strings.Contains(identifier, "@") {
+			ctx.JSON(http.StatusBadRequest, gin.H{"code": "verify_channel_mismatch", "message": "本站要求使用手机号注册"})
+			return
+		}
+		if strings.TrimSpace(request.VerifyCode) == "" {
+			ctx.JSON(http.StatusBadRequest, gin.H{"code": "verify_code_required", "message": "请填写邮箱或手机收到的验证码"})
+			return
+		}
+		if err := handler.verifier.VerifyCode(ctx.Request.Context(), "register", identifier, request.VerifyCode); err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"code": "verify_code_invalid", "message": "验证码不正确或已过期"})
 			return
 		}
 	}

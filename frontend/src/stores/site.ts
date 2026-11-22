@@ -12,6 +12,7 @@ const state = ref<SiteInfo>({
   footer_text: '',
   payment_types: [],
   register_mode: 'open',
+  verify_channel: 'off',
   homepage_mode: 'landing',
 });
 
@@ -43,6 +44,7 @@ export function loadSite(): Promise<void> {
         announcement: site?.announcement ?? null,
         captcha_required: site?.captcha_required === true,
         register_mode: site?.register_mode || 'open',
+        verify_channel: site?.verify_channel || 'off',
         homepage_mode: site?.homepage_mode || 'landing',
         homepage_url: site?.homepage_url || '',
         contact_email: site?.contact_email || '',
