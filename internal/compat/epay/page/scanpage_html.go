@@ -105,6 +105,9 @@ border:1px solid var(--line);background:var(--card);color:var(--ink1);cursor:poi
 .link-row button:active{background:#f1f5f9}
 /* 信任说明 */
 .trust{margin:18px 0 0;padding:0;list-style:none;display:grid;gap:9px}
+/* 保障说明有两份：桌面放左栏摘要里，手机放到整页最下面 —— 手机上先给按钮，
+   这三条属于"看完再读"的安抚文案，不该挡在主操作前面。 */
+.trust-action{display:none}
 .trust li{position:relative;padding-left:22px;font-size:12.5px;line-height:1.6;color:var(--ink3)}
 .trust li::before{content:"";position:absolute;left:0;top:3px;width:14px;height:14px;border-radius:50%;
 background:{{.IconColor}};opacity:.12}
@@ -154,6 +157,9 @@ font-variant-numeric:tabular-nums;letter-spacing:.2px}
 @media (max-width:859px){
   .action-col .section-title{display:none}
   .recipe{margin-top:0}
+  /* 手机：按钮在前、安抚文案在后 */
+  .trust-summary{display:none}
+  .trust-action{display:grid;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
 }
 </style></head>
 <body>
@@ -185,7 +191,7 @@ font-variant-numeric:tabular-nums;letter-spacing:.2px}
         <p class="subject">{{.Name}}</p>
       </div>
 
-      <ul class="trust">
+      <ul class="trust trust-summary">
         <li>款项直接结算至商户账户，平台不经手你的资金。</li>
         <li>本页面全程 HTTPS 加密传输，不保存你的支付密码。</li>
         <li>付款后请停留在本页，页面会自动更新支付状态。</li>
@@ -264,6 +270,12 @@ font-variant-numeric:tabular-nums;letter-spacing:.2px}
       <div class="status" id="status"></div>
 
       <button class="btn ghost" type="button" onclick="confirmPaid(this)">我已完成支付</button>
+
+      <ul class="trust trust-action">
+        <li>款项直接结算至商户账户，平台不经手你的资金。</li>
+        <li>本页面全程 HTTPS 加密传输，不保存你的支付密码。</li>
+        <li>付款后请停留在本页，页面会自动更新支付状态。</li>
+      </ul>
     </div>
   </div>
 
