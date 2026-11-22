@@ -36,18 +36,19 @@ const year = new Date().getFullYear();
 .public-footer {
   border-top: 1px solid var(--gp-line);
   background: var(--gp-surface);
-  padding: 20px 0 24px;
+  /* 页脚底部留白给足，别让版权行贴着屏幕底边 */
+  padding: 28px 0 32px;
 }
 .foot-main {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 14px;
 }
 .copyright {
   display: block;
-  margin-top: 12px;
+  margin-top: 14px;
   font-size: 12px;
 }
 </style>

@@ -733,7 +733,7 @@ onBeforeUnmount(() => {
 .qr-frame {
   display: grid;
   place-items: center;
-  padding: 6px;
+  padding: 10px;
   border: 1px solid var(--gp-line);
   border-radius: var(--gp-radius);
   background: var(--gp-qr-bg, #fff);

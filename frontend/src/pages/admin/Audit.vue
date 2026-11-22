@@ -70,7 +70,7 @@ const columns = computed<DataTableColumns<AuditRow>>(() => [
     type: 'expand',
     width: 40,
     renderExpand: (row) =>
-      h('div', { style: 'padding: 4px 0 8px' }, [h(NCode, { code: prettyJson(row.payload), language: 'json', wordWrap: true })]),
+      h('div', { style: 'padding: 4px 12px 8px' }, [h(NCode, { code: prettyJson(row.payload), language: 'json', wordWrap: true })]),
   },
   {
     title: 'ID',

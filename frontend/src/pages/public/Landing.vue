@@ -399,7 +399,7 @@ const go = (path: string) => {
       <div class="block-head">
         <n-text tag="h2" class="block-title">常见问题</n-text>
       </div>
-      <n-card content-style="padding: 4px 8px">
+      <n-card content-style="padding: 12px 24px 20px">
         <n-collapse>
           <n-collapse-item v-for="faq in faqs" :key="faq.q" :title="faq.q" :name="faq.q">
             <n-text depth="2">{{ faq.a }}</n-text>
@@ -458,7 +458,7 @@ const go = (path: string) => {
   flex-wrap: wrap;
 }
 .calc-card :deep(.n-card-header) {
-  padding-bottom: 8px;
+  padding-bottom: 12px;
 }
 .field-label {
   display: block;
@@ -521,9 +521,6 @@ const go = (path: string) => {
 }
 .method-body {
   min-width: 0;
-}
-.steps-card {
-  padding: 6px 4px;
 }
 .step-card {
   height: 100%;

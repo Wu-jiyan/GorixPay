@@ -865,7 +865,7 @@ func main() {
   margin-top: 8px;
 }
 .doc-section {
-  padding: 18px 2px 10px;
+  padding: 18px 0 10px;
 }
 .doc-h2 {
   font-size: 18px;

@@ -337,7 +337,7 @@ onMounted(reloadAll);
 
           <n-grid v-else cols="1 m:2" responsive="screen" :x-gap="20" :y-gap="16" style="margin-top: 12px">
             <n-gi>
-              <n-space vertical align="center" :size="10" style="padding: 8px 0">
+              <n-space vertical align="center" :size="10" style="padding: 12px 8px">
                 <n-qr-code :value="setup.otpauth_url" :size="180" />
                 <n-text depth="3">用验证器 App 扫码</n-text>
               </n-space>

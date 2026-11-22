@@ -350,4 +350,9 @@ onMounted(reload);
     display: none;
   }
 }
+/* 平台公告卡是 size="small"（内容 12px 16px），而 n-list-item 自带 12px 20px，
+   两套左基线差 4px；这里把行内边距对齐卡片内容区，文字与标题同一条基线 */
+:deep(.n-list-item) {
+  padding: 10px 0;
+}
 </style>

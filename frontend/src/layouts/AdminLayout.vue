@@ -190,7 +190,7 @@ const narrow = ref(false);
 const drawerOpen = ref(false);
 let mql: MediaQueryList | null = null;
 const contentStyle = computed(() =>
-  narrow.value ? 'padding: 14px 12px 32px; height: 100%;' : 'padding: 20px 24px 40px; height: 100%;',
+  narrow.value ? 'padding: 14px var(--gp-gutter) 32px; height: 100%;' : 'padding: 20px 24px 40px; height: 100%;',
 );
 function syncNarrow(event: MediaQueryListEvent) {
   narrow.value = event.matches;

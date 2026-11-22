@@ -157,7 +157,7 @@ async function handleSubmit() {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 16px;
+  padding: 40px var(--gp-gutter);
   background: var(--gp-bg);
 }
 .auth-brand {
@@ -227,7 +227,7 @@ async function handleSubmit() {
 @media (max-width: 768px) {
   .auth-page {
     justify-content: flex-start;
-    padding: 28px 14px;
+    padding: 28px var(--gp-gutter);
   }
 }
 </style>
