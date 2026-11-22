@@ -123,18 +123,28 @@ font-variant-numeric:tabular-nums;letter-spacing:.2px}
 .status.ok{color:{{.IconColor}};font-weight:600}
 .foot{margin:16px auto 0;max-width:360px;text-align:center;font-size:12px;line-height:1.75;color:#94a3b8}
 .foot a{color:var(--ink3);text-decoration:none}
-/* 桌面：摘要 + 操作双栏 */
+/* 桌面：摘要 + 操作双栏。间距比手机紧一档，让 720/768 高度的笔记本也能一屏放下 */
 @media (min-width:860px){
-  :root{--card-w:900px;--pad:32px;--btn-h:50px}
-  body{padding-top:40px}
-  .card{display:grid;grid-template-columns:340px minmax(0,1fr)}
+  :root{--card-w:900px;--pad:26px;--btn-h:48px}
+  body{padding-top:28px}
+  .brand{padding-bottom:11px}
+  .card{display:grid;grid-template-columns:320px minmax(0,1fr)}
   .summary{background:var(--soft)}
   .statebar{grid-column:1 / -1}
   .action-col{border-top:0;border-left:1px solid var(--line);padding:var(--pad)}
-  .section-title{margin-top:0}
+  .section-title{margin-top:0;margin-bottom:10px}
   .recipe{display:none}
-  .amount-value{font-size:42px}
-  .foot{max-width:520px}
+  .amount{margin-top:14px;padding:12px 0}
+  .amount-value{font-size:38px}
+  .title{margin-top:10px;font-size:16px}
+  .qr-box{padding:12px}
+  .qr{width:164px;padding:10px}
+  .qr-hint{margin-top:9px}
+  .link{margin-top:14px}
+  .trust{margin-top:14px;gap:7px}
+  .meta{margin-top:14px;padding-top:13px;gap:11px 18px}
+  .btn.ghost{margin-top:12px}
+  .foot{margin-top:12px;max-width:520px}
 }
 @media (max-width:520px){
   .meta{grid-template-columns:1fr;gap:12px}
@@ -308,6 +318,28 @@ if(opener){
 }
 var statusEl=document.getElementById('status');
 var statetext=document.getElementById('statetext');
+// 一屏放下：内容比视口高时按比例整体缩放（不改字号层级、不改结构），
+// 保证底部那两行说明永远可见，而不是被折到视口外让人以为丢了。
+// 只在桌面生效 —— 手机上纵向滚动是正常交互，缩放反而伤可读性。
+var shell=document.querySelector('.shell');
+function fitToViewport(){
+  if(!shell){return;}
+  shell.style.zoom='';
+  if(window.innerWidth<860){return;}
+  // 以「真实是否还溢出」为准逐步收，而不是一次性算比例：Chrome 在 zoom 之后
+  // 报告的尺寸口径并不统一，算一次容易差几像素，底部那行照样被切。
+  var zoom=1;
+  for(var step=0; step<8; step++){
+    if(document.documentElement.scrollHeight<=window.innerHeight){break;}
+    zoom=Math.max(0.7, zoom-0.035);
+    shell.style.zoom=zoom.toFixed(3);
+    if(zoom<=0.7){break;}
+  }
+}
+fitToViewport();
+window.addEventListener('resize',function(){clearTimeout(fitToViewport._timer);fitToViewport._timer=setTimeout(fitToViewport,120);});
+window.addEventListener('load',fitToViewport);
+if(document.fonts&&document.fonts.ready){document.fonts.ready.then(fitToViewport);}
 // 主动确认：先查一次状态再决定去哪儿。已付才跳，没付只提示，
 // 这样点了不会瞬间被弹回原页面（那正是「返回商户」按钮被删掉的原因）。
 function confirmPaid(trigger){
