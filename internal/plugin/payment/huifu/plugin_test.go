@@ -217,9 +217,11 @@ func TestCreateHostingOrderPinsOnlyRunnableTradeTypes(t *testing.T) {
 		// 微信/支付宝内置浏览器：pin 对应的 JSAPI。
 		{"微信内", "wechat", "wxpay", "T_JSAPI", pluginpayment.ActionJump},
 		{"支付宝内", "alipay", "alipay", "A_JSAPI", pluginpayment.ActionJump},
-		// PC：支付宝直接出扫码页；微信托管没有 T_NATIVE，退回收银台。
-		{"PC-支付宝", "pc", "alipay", "A_NATIVE", pluginpayment.ActionQRCode},
+		// PC：一律不 pin。A_NATIVE/U_NATIVE 是托管产品级开关，商户没开就会回
+		// 「当前订单支付方式不支持」；不 pin 时汇付自己出的收银台是可用的。
+		{"PC-支付宝", "pc", "alipay", "", pluginpayment.ActionQRCode},
 		{"PC-微信", "pc", "wxpay", "", pluginpayment.ActionQRCode},
+		{"PC-银联", "pc", "bank", "", pluginpayment.ActionQRCode},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

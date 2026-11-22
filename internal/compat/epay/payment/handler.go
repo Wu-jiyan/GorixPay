@@ -121,7 +121,7 @@ func (handler *Handler) mapi(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{"code": -2, "msg": "支付通道请求失败"})
 		return
 	}
-	payload := handler.actionFields(order.TradeNo, action)
+	payload := handler.actionFields(order.TradeNo, order.PaymentType, action)
 	// The flat upstream fields above are the contract. pay_type/pay_info stay as
 	// additive aliases for the in-repo cashier; see deviation D1.
 	payType, payInfo := epayAction(action)
@@ -137,7 +137,7 @@ func (handler *Handler) mapi(ctx *gin.Context) {
 // Epay/includes/lib/Payment.php:246-296: jump publishes payurl, qrcode
 // publishes qrcode, scheme publishes urlscheme, html publishes html. Anything
 // else degrades to a payurl pointing at the payment page (Payment.php:293-295).
-func (handler *Handler) actionFields(tradeNo string, action pluginpayment.Action) gin.H {
+func (handler *Handler) actionFields(tradeNo, paymentType string, action pluginpayment.Action) gin.H {
 	fields := gin.H{}
 	switch action.Type {
 	case pluginpayment.ActionJump:
@@ -149,7 +149,7 @@ func (handler *Handler) actionFields(tradeNo string, action pluginpayment.Action
 	case pluginpayment.ActionHTML:
 		fields["html"] = action.Data
 	default:
-		fields["payurl"] = handler.cashierURL(tradeNo)
+		fields["payurl"] = handler.payURL(tradeNo, paymentType)
 	}
 	return fields
 }
@@ -159,7 +159,7 @@ func (handler *Handler) actionFields(tradeNo string, action pluginpayment.Action
 // cashier (Pay.php:168-171), and an order that was already started replays the
 // stored payment instead of calling the channel again (Pay.php:150-152).
 func (handler *Handler) startPayment(ctx *gin.Context, order paymentmodel.Order, options paymentorchestrator.StartOptions) (pluginpayment.Action, error) {
-	fallback := pluginpayment.Action{Type: pluginpayment.ActionJump, URL: handler.cashierURL(order.TradeNo)}
+	fallback := pluginpayment.Action{Type: pluginpayment.ActionJump, URL: handler.payURL(order.TradeNo, order.PaymentType)}
 	if handler.starter == nil {
 		return fallback, nil
 	}
@@ -456,6 +456,19 @@ func ParseAmount(value string) (int64, error) {
 
 func (handler *Handler) cashierURL(tradeNo string) string {
 	return handler.siteURL + "/cashier.php?trade_no=" + tradeNo
+}
+
+// payURL is the link a buyer should be sent to for one order: straight to the
+// site payment page when the order already names a payment method, and to the
+// cashier only when the buyer still has to pick one. Upstream does the same —
+// submit.php renders the channel page directly and cashier.php exists just for
+// the "no method chosen yet" case — so a phone does not take a detour through the
+// cashier SPA and then jump again.
+func (handler *Handler) payURL(tradeNo, paymentType string) string {
+	if path := epaypage.PagePathFor(tradeNo, paymentType); path != "" {
+		return handler.siteURL + path
+	}
+	return handler.cashierURL(tradeNo)
 }
 
 func handleOrderError(ctx *gin.Context, outTradeNo string, err error, htmlResponse bool) {

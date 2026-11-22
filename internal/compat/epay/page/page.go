@@ -309,7 +309,7 @@ func (handler *Handler) storedAction(ctx *gin.Context, orderID string) (pluginpa
 // cases where a code cannot be scanned.
 func (handler *Handler) renderScanPage(ctx *gin.Context, order model.Order, content, device string) {
 	ctx.Header("Content-Type", "text/html; charset=UTF-8")
-	if err := scanPageTemplate.Execute(ctx.Writer, handler.scanPageData(order, content, device)); err != nil {
+	if err := scanPageTemplate.Execute(ctx.Writer, handler.scanPageData(ctx.Request.Context(), order, content, device)); err != nil {
 		handler.serverError(ctx)
 	}
 }
@@ -329,6 +329,7 @@ func (handler *Handler) renderJumpPage(ctx *gin.Context, order model.Order, targ
 		BackURL:   handler.cashierPath(order.TradeNo),
 		DoneURL:   handler.siteURL + "/pay/checkpay/" + url.PathEscape(order.TradeNo) + "/",
 		ExpiresAt: 0,
+		Theme:     scanTheme(order.PaymentType),
 	}
 	if err := jumpPageTemplate.Execute(ctx.Writer, data); err != nil {
 		handler.serverError(ctx)

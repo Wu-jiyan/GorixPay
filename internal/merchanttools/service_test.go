@@ -187,7 +187,9 @@ func TestCreateTestOrder(t *testing.T) {
 	if order.TradeNo == "" || order.PayType != "qrcode" || order.PayInfo != "https://qr.example/pay" {
 		t.Fatalf("order=%+v", order)
 	}
-	if !strings.HasPrefix(order.CashierURL, "https://pay.example/cashier.php?trade_no=") {
+	// 已指定支付方式的订单直接给站内支付页链接（与上游 submit.php 一致），
+	// 不再先绕到 cashier.php 再跳一次。
+	if !strings.HasPrefix(order.CashierURL, "https://pay.example/pay/alipay/") {
 		t.Fatalf("cashier url=%q", order.CashierURL)
 	}
 	if len(starter.calls) != 1 || starter.calls[0] != order.TradeNo {

@@ -305,17 +305,14 @@ func (plugin *Plugin) createHosting(ctx context.Context, request pluginpayment.C
 // The pinned type only works in the browser it belongs to: T_JSAPI is 微信公众
 // 号支付 (needs the WeChat in-app browser), A_JSAPI needs the Alipay app. Sending
 // either from a plain Safari/Chrome makes 汇付's page answer「当前订单支付方式不
-// 支持」— which is what upstream Epay trips over too. On a desktop browser the
-// only 微信 type a 托管 product accepts is T_JSAPI (there is no T_NATIVE), so a
-// desktop 微信 order also has to fall back to the cashier.
+// 支持」.
 //
-// Pinning is therefore reserved for the cases that can actually run:
-//   - 微信 in-app browser → T_JSAPI
-//   - 支付宝 in-app browser → A_JSAPI
-//   - desktop → A_NATIVE / U_NATIVE, which render a scannable QR
-//
-// Everything else passes no trans_type, and 汇付 renders the cashier with the
-// methods the project and the browser support.
+// A desktop browser therefore pins nothing — not even A_NATIVE/U_NATIVE. Those
+// two are product-level switches a 托管 project may simply not have enabled, and
+// pinning one turns a working cashier into「当前订单支付方式不支持」 (observed on
+// 支付宝 from a PC browser while 微信 stayed fine, because 微信 never pinned).
+// Letting 汇付 render its own cashier on desktop is what upstream effectively
+// does, since Epay hands the desktop flow to 汇付 as a scannable page.
 func hostingTransType(paymentType, requestType, device string) string {
 	family := paymentFamily(paymentType)
 	switch {
@@ -323,10 +320,6 @@ func hostingTransType(paymentType, requestType, device string) string {
 		return "T_JSAPI"
 	case device == "alipay" && family == familyAlipay:
 		return "A_JSAPI"
-	case requestType == "P" && family == familyAlipay:
-		return "A_NATIVE"
-	case requestType == "P" && family == familyBank:
-		return "U_NATIVE"
 	default:
 		return ""
 	}

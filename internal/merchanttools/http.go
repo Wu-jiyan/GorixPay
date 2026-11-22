@@ -188,7 +188,8 @@ func (handler *Handler) payCodeSubmit(ctx *gin.Context) {
 		handler.payCodeFailure(ctx, http.StatusServiceUnavailable, "拉起支付失败，请稍后重试")
 		return
 	}
-	ctx.Redirect(http.StatusFound, handler.service.CashierURL(order.TradeNo))
+	// 收款码建单后直接落到站内支付页（订单已经带上支付方式），不再绕收银台 SPA 多跳一次。
+	ctx.Redirect(http.StatusFound, handler.service.PayPageURL(order.TradeNo, order.PaymentType))
 }
 
 // payCodeACK is the placeholder notify URL of a pay code order: the money lands

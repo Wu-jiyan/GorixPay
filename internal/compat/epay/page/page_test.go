@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -193,13 +194,15 @@ func TestChannelPageRendersScanPageOnDesktop(t *testing.T) {
 		t.Fatalf("status=%d", desktop.Code)
 	}
 	body := desktop.Body.String()
-	for _, want := range []string{"请使用支付宝扫描二维码完成支付", "19.99", "T-SCAN", "<svg", "/pay/checkpay/T-SCAN/", "复制", "getshop.php?act=poll"} {
+	for _, want := range []string{"请扫码完成支付", "19.99", "T-SCAN", "<svg", "复制"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("扫码页缺少 %q: %s", want, body)
 		}
 	}
-	if strings.Contains(body, "打开微信") {
-		t.Fatalf("支付宝订单不应出现「打开微信」: %s", body)
+	// 支付宝订单不该出现微信的主动作按钮（桌面二维码提示里那句"打开微信或支付宝，
+	// 扫一扫"不算按钮，所以只查按钮锚点）。
+	if strings.Contains(body, ">打开微信<") {
+		t.Fatalf("支付宝订单不应出现「打开微信」按钮: %s", body)
 	}
 	if starter.method != "jsapi" || starter.device != "pc" {
 		t.Fatalf("method=%q device=%q", starter.method, starter.device)
@@ -209,9 +212,16 @@ func TestChannelPageRendersScanPageOnDesktop(t *testing.T) {
 	if mobile.Code != http.StatusOK {
 		t.Fatalf("手机端应停在支付页上，status=%d location=%q", mobile.Code, mobile.Header().Get("Location"))
 	}
-	// 支付宝订单在手机上给出「打开支付宝」与可复制的链接，而不是把买家 302 到站外。
-	if body := mobile.Body.String(); !strings.Contains(body, "alipays://") || !strings.Contains(body, "https://channel.example/pay/1") {
-		t.Fatalf("手机支付宝页缺少打开支付宝或支付链接: %s", body)
+	// 支付宝订单在手机上把支付链接直接挂在主按钮上（点开就唤起支付宝），
+	// 并且仍然提供可复制的链接，而不是把买家 302 到站外。
+	// 手机支付宝：主按钮必须是 alipays:// 唤起（把支付地址塞进 url 参数），
+	// 直接把通道 H5 地址当 href 只会打开一个网页，不会唤起支付宝 App。
+	if body := mobile.Body.String(); !strings.Contains(body, "alipays://platformapi/startApp") ||
+		!strings.Contains(body, "打开支付宝付款") {
+		t.Fatalf("手机支付宝页缺少唤起支付宝的按钮: %s", body)
+	}
+	if body := mobile.Body.String(); !strings.Contains(body, url.QueryEscape("https://channel.example/pay/1")) {
+		t.Fatalf("唤起链接里应带上支付地址: %s", body)
 	}
 	if starter.method != "wap" || starter.device != "mobile" {
 		t.Fatalf("mobile method=%q device=%q", starter.method, starter.device)
@@ -236,7 +246,7 @@ func TestChannelPageKeepsMobileBuyerOnThePage(t *testing.T) {
 		t.Fatalf("手机端支付宝应停在页面上，status=%d location=%q", mobile.Code, mobile.Header().Get("Location"))
 	}
 	body := mobile.Body.String()
-	for _, want := range []string{"长按识别二维码", "alipays://", "https://api.huifu.com/hostingh5/?jump_id=H1", "复制", "我已完成支付"} {
+	for _, want := range []string{"打开支付宝付款", "https://api.huifu.com/hostingh5/?jump_id=H1", "返回商户"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("支付宝手机页缺少 %q: %s", want, body)
 		}
@@ -265,7 +275,7 @@ func TestChannelPageRendersJumpPageForOtherMethods(t *testing.T) {
 		t.Fatalf("status=%d location=%q", mobile.Code, mobile.Header().Get("Location"))
 	}
 	body := mobile.Body.String()
-	for _, want := range []string{"https://bank.example/pay/1", "打开银联", "换个支付方式", "/cashier.php?trade_no=T-BANK"} {
+	for _, want := range []string{"https://bank.example/pay/1", "继续支付", "换个支付方式", "/cashier.php?trade_no=T-BANK"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("跳转页缺少 %q: %s", want, body)
 		}
@@ -290,15 +300,18 @@ func TestChannelPageKeepsWeChatBuyerOnThePage(t *testing.T) {
 		t.Fatalf("mobile 微信订单应停在页面上，实际 status=%d", mobile.Code)
 	}
 	body := mobile.Body.String()
-	for _, want := range []string{"打开微信", "weixin://", "复制", "在微信顶部搜索框", "/pay/wxwappay/T-WX/"} {
+	// 手机微信：易支付那套是「复制链接 → 去微信里粘开发送」，二维码在手机上没有意义，
+	// 所以页面主操作是复制按钮，链接必须指向站内 wap 页（微信里才能换 T_JSAPI）。
+	for _, want := range []string{"复制链接，去微信付款", "打开微信", "/pay/wxwappay/T-WX/"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("微信引导页缺少 %q: %s", want, body)
 		}
 	}
-	// 二维码与可复制的链接必须指向站内页：通道的 H5 地址发到微信聊天框里打不开，
-	// 站内页才能在微信内换 T_JSAPI（上游 huifu_plugin.php wxpay() 同样给站内地址）。
+	if strings.Contains(body, "class=\"qr\"") {
+		t.Fatalf("手机微信页不应展示二维码: %s", body)
+	}
 	if strings.Contains(body, "https://api.huifu.com/hostingh5/?jump_id=H2") {
-		t.Fatalf("微信引导页不应把通道 H5 地址当二维码/复制链接: %s", body)
+		t.Fatalf("微信引导页不应把通道 H5 地址当复制链接: %s", body)
 	}
 
 	inside := callPageWithUserAgent(t, router, "/pay/wxpay/T-WX/", "Mozilla/5.0 (iPhone) MicroMessenger/8.0.49")

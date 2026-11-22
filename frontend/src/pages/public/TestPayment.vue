@@ -84,7 +84,15 @@ async function submit() {
   }
   submitting.value = true;
   try {
-    result.value = await publicTestApi.create({ payment_type: paymentType.value, amount_cents: cents });
+    const created = await publicTestApi.create({ payment_type: paymentType.value, amount_cents: cents });
+    result.value = created;
+    // 和易支付的 test.php 一样：下单后直接把浏览器送到支付页（服务端渲染二维码 /
+    // 复制链接 / 唤起按钮），不在这一页再解析一次二维码。后端已把 cashier_url
+    // 指向站内支付页（订单带了支付方式时不再绕收银台）。
+    if (created.cashier_url) {
+      window.location.assign(created.cashier_url);
+      return;
+    }
     message.success('测试订单已创建');
   } catch (error) {
     message.error(errorMessage(error));

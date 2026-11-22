@@ -85,8 +85,9 @@ func TestMerchantTestOrderEndpoint(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &order); err != nil {
 		t.Fatal(err)
 	}
+	// 订单已经指定了支付方式，链接直接指向站内支付页，不再绕收银台 SPA。
 	if order.TradeNo == "" || order.PayType != "qrcode" || order.PayInfo != "https://qr.example/pay" ||
-		!strings.HasPrefix(order.CashierURL, "https://pay.example/cashier.php?trade_no=") {
+		!strings.HasPrefix(order.CashierURL, "https://pay.example/pay/alipay/") {
 		t.Fatalf("order=%+v", order)
 	}
 	if response := perform(router, http.MethodPost, "/api/v1/merchant/test-order", `{"payment_type":"alipay","amount_cents":101}`, "merchant-1"); response.Code != http.StatusBadRequest {
@@ -127,7 +128,7 @@ func TestPublicPayCodePageAndCheckout(t *testing.T) {
 		t.Fatalf("checkout: %d %s", recorder.Code, recorder.Body.String())
 	}
 	location := recorder.Header().Get("Location")
-	if !strings.HasPrefix(location, "https://pay.example/cashier.php?trade_no=") {
+	if !strings.HasPrefix(location, "https://pay.example/pay/alipay/") {
 		t.Fatalf("location=%q", location)
 	}
 	if len(starter.calls) != 1 {

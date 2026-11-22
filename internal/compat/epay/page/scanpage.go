@@ -1,6 +1,8 @@
 package page
 
 import (
+	"context"
+	"encoding/json"
 	"html/template"
 	"net/url"
 	"strings"
@@ -26,9 +28,40 @@ type scanPage struct {
 	PollURL  string        // /getshop.php?act=poll&trade_no=… — order status JSON
 	RawURL   string        // the channel URL, shown verbatim for copying
 	SiteName string
+	// Theme picks the hero gradient: t-wechat / t-alipay / t-default.
+	Theme string
+	// PrimaryHref is what the big button opens on a phone. For 支付宝 it is the
+	// channel url itself, because that url wakes the 支付宝 app and lands on this
+	// payment; for 微信 it is the app scheme, since an H5 url cannot pay outside
+	// the WeChat browser and the buyer has to carry the link over by hand.
+	// template.URL keeps html/template from rewriting the weixin:// scheme to
+	// #ZgotmplZ.
+	PrimaryHref  template.URL
+	PrimaryLabel string
+	Recipe       string // step-by-step for the copy-the-link route
+	// CreatedText / ExpiresAtMS feed the "transparent order" block: when the order
+	// was created and how long it stays payable.
+	CreatedText string
+	ExpiresAtMS int64
+	// Desktop picks the QR layout; on a phone the page offers either the
+	// copy-the-link recipe (微信) or a button that wakes the wallet (支付宝).
+	Desktop   bool
+	IconPath  template.HTMLAttr
+	IconColor string
+	// MerchantName is the payee shown above the amount ("谁在收钱"), which is the
+	// first thing a buyer looks for on a page they did not open themselves.
+	MerchantName string
+	// Title is the one-line instruction for this device/wallet combination.
+	Title string
+	// AmountInt / AmountDec split the amount so the decimals can be set smaller.
+	AmountInt string
+	AmountDec string
+	// LogoURL is the configured site logo; empty means the wordmark stands alone
+	// (a drawn placeholder would read as a mock-up, not a brand).
+	LogoURL string
 }
 
-func (handler *Handler) scanPageData(order model.Order, content, device string) scanPage {
+func (handler *Handler) scanPageData(ctx context.Context, order model.Order, content, device string) scanPage {
 	// 微信支付的二维码和"复制链接"都指向站内页，和上游一样（Epay huifu_plugin.php
 	// wxpay() 给的 code_url 是 /pay/wxwappay/{trade_no}/）：只有站内页才知道打开它的是
 	// 不是微信，进而换 T_JSAPI；通道的 H5 地址直接发到聊天框里，在 App 内打不开。
@@ -48,6 +81,45 @@ func (handler *Handler) scanPageData(order model.Order, content, device string) 
 		PaidURL:  handler.siteURL + "/pay/return/" + url.PathEscape(order.TradeNo) + "/",
 		PollURL:  handler.siteURL + "/getshop.php?act=poll&trade_no=" + url.QueryEscape(order.TradeNo),
 		RawURL:   qrContent,
+		SiteName: handler.siteDisplayName(ctx),
+		Theme:    scanTheme(order.PaymentType),
+		// 透明清单：让买家看到这笔单子是什么时候建的、还有多久能付。
+		CreatedText:  order.CreatedAt.Local().Format("2006-01-02 15:04:05"),
+		Desktop:      device == "pc",
+		IconPath:     template.HTMLAttr(brandIconFor(order.PaymentType).Path), //nolint:gosec // static brand path
+		IconColor:    brandIconFor(order.PaymentType).Hex,
+		MerchantName: handler.merchantName(ctx, order.MerchantID),
+		AmountInt:    amountInt(formatAmount(order.Amount)),
+		AmountDec:    amountDec(formatAmount(order.Amount)),
+		LogoURL:      handler.siteLogo(ctx),
+	}
+	if !order.ExpiresAt.IsZero() {
+		page.ExpiresAtMS = order.ExpiresAt.UnixMilli()
+	}
+	switch {
+	case page.IsWeChat:
+		page.Title = "在微信中完成支付"
+		// 微信的 H5 链接离开微信就付不了，所以主动作是复制；「打开微信」只是把人
+		// 送到微信，链接还得自己粘过去（上游 wxpay_wap 的按钮也是 weixin:// 本体）。
+		page.PrimaryHref = template.URL("weixin://")
+		page.PrimaryLabel = "打开微信"
+		page.Recipe = "复制后打开微信，粘贴发送给「文件传输助手」或好友，点开这条链接即可付款。"
+	case page.IsAlipay:
+		// 支付宝：把支付链接装进 alipays:// 的 url 参数，点一下由系统唤起支付宝 App
+		// 并直接落在本笔订单上。直接把通道的 H5 地址当 href 只会打开一个网页，
+		// 不会唤起 App —— 这是「点了没反应、跳去通道页」的原因。
+		page.Title = "使用支付宝完成支付"
+		page.PrimaryHref = template.URL(alipayOpenScheme(qrContent)) //nolint:gosec // built from the channel url
+		page.PrimaryLabel = "打开支付宝付款"
+		page.Recipe = "没打开支付宝时，复制链接在支付宝或手机浏览器里粘贴打开。"
+	default:
+		page.Title = "完成支付"
+		page.PrimaryHref = template.URL(qrContent) //nolint:gosec // channel url
+		page.PrimaryLabel = "打开支付页"
+		page.Recipe = "如果二维码打不开，复制上面的链接在手机浏览器里打开。"
+	}
+	if page.Desktop {
+		page.Title = "请扫码完成支付"
 	}
 	// An image payload (data:image/...) is not a link the buyer can copy into a
 	// chat window; upstream checks the same prefix (wxpay_qrcode.php).
@@ -69,6 +141,103 @@ func scanBrand(paymentType string) string {
 		return "银联"
 	default:
 		return "扫码支付"
+	}
+}
+
+// siteLogo is the configured logo url, or "" so the page shows the wordmark alone.
+func (handler *Handler) siteLogo(ctx context.Context) string {
+	return handler.settingValue(ctx, "site.logo_url")
+}
+
+// settingValue reads one system_settings row, unwrapping the JSON string the
+// console writes. It answers "" for a missing database or a missing key.
+func (handler *Handler) settingValue(ctx context.Context, key string) string {
+	if handler.db == nil {
+		return ""
+	}
+	var raw string
+	if err := handler.db.WithContext(ctx).Table("system_settings").
+		Select("setting_value").Where("setting_key = ?", key).Limit(1).Scan(&raw).Error; err != nil {
+		return ""
+	}
+	trimmed := strings.TrimSpace(raw)
+	var decoded string
+	if json.Unmarshal([]byte(trimmed), &decoded) == nil {
+		trimmed = strings.TrimSpace(decoded)
+	}
+	return trimmed
+}
+
+// alipayOpenScheme wraps a payment url in 支付宝's "open this page in the app"
+// scheme: appId=20000067 is the built-in browser. Opening the raw channel url in a
+// mobile browser only renders a web page; this scheme is what actually wakes the
+// app and lands on the payment.
+func alipayOpenScheme(payURL string) string {
+	target := strings.TrimSpace(payURL)
+	if target == "" {
+		return "alipays://"
+	}
+	return "alipays://platformapi/startApp?appId=20000067&url=" + url.QueryEscape(target)
+}
+
+// merchantName is the payee's display name, shown above the amount. An empty
+// answer drops the line instead of inventing one.
+func (handler *Handler) merchantName(ctx context.Context, merchantID string) string {
+	if handler.db == nil || strings.TrimSpace(merchantID) == "" {
+		return ""
+	}
+	var name string
+	err := handler.db.WithContext(ctx).Table("merchants").
+		Select("display_name").Where("id = ?", merchantID).Limit(1).Scan(&name).Error
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(name)
+}
+
+// amountInt / amountDec split "12.34" so the page can render the decimals smaller.
+func amountInt(amount string) string {
+	if index := strings.IndexByte(amount, '.'); index >= 0 {
+		return amount[:index]
+	}
+	return amount
+}
+
+func amountDec(amount string) string {
+	if index := strings.IndexByte(amount, '.'); index >= 0 {
+		return amount[index:]
+	}
+	return ""
+}
+
+// siteDisplayName is the headline on the payment page: the configured site name,
+// falling back to the bare host so the page never looks unfinished.
+func (handler *Handler) siteDisplayName(ctx context.Context) string {
+	if name := handler.settingValue(ctx, "site.name"); name != "" {
+		return name
+	}
+	return siteHost(handler.siteURL)
+}
+
+// siteHost is the bare host of the public URL, used in the page footer.
+func siteHost(publicURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(publicURL))
+	if err != nil || parsed.Host == "" {
+		return ""
+	}
+	return parsed.Host
+}
+
+// scanTheme names the hero colour band: the brand colour of the wallet, or a
+// neutral blue for anything else.
+func scanTheme(paymentType string) string {
+	switch {
+	case isWeChatPayment(paymentType):
+		return "t-wechat"
+	case isAlipayPayment(paymentType):
+		return "t-alipay"
+	default:
+		return "t-default"
 	}
 }
 
@@ -95,146 +264,16 @@ type jumpPage struct {
 	BackURL   string // cashier, so the buyer can pick another method
 	DoneURL   string // /pay/checkpay/<trade_no>/ — "我已支付" check
 	ExpiresAt int64  // unused today, kept so the template reads like the others
+	Theme     string // t-wechat / t-alipay / t-default
 }
 
 // jumpPageTemplate mirrors Epay/includes/lib/Payment.php:60-72: upstream echoes a
 // script that replaces the location. The page adds a manual link and a way back,
 // because a 302 would throw away the cashier once the channel answers "no".
-var jumpPageTemplate = template.Must(template.New("jump").Parse(`<!doctype html>
-<html lang="zh-CN"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>正在前往{{.Brand}}</title>
-<style>
-:root{color-scheme:light}
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;
-background:#f5f7fa;color:#111827;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
-.card{background:#fff;border-radius:16px;box-shadow:0 8px 30px rgba(15,23,42,.08);padding:26px 22px;width:100%;max-width:380px;text-align:center}
-.brand{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#374151;background:#f3f4f6;border-radius:999px;padding:4px 12px;margin-bottom:14px}
-.amount{font-size:32px;font-weight:600;letter-spacing:-.5px;margin:0}
-.amount small{font-size:15px;font-weight:500;margin-right:2px}
-.name{color:#6b7280;font-size:13px;margin:6px 0 0;word-break:break-all}
-.tip{color:#6b7280;font-size:13px;margin:16px 0 0;line-height:1.7}
-.actions{display:flex;flex-direction:column;gap:10px;margin-top:18px}
-.actions a{text-decoration:none;border-radius:10px;padding:12px;font-size:14px;font-weight:500;border:1px solid #e5e7eb;color:#374151;background:#fff}
-.actions a.primary{background:#2563eb;border-color:#2563eb;color:#fff}
-.actions a.plain{font-size:12px;color:#9ca3af;border:none;background:none}
-.detail{margin-top:16px;border-top:1px solid #f1f3f5;padding-top:12px;text-align:left;font-size:12px;color:#6b7280;line-height:1.9}
-.detail b{color:#9ca3af;font-weight:400;display:inline-block;min-width:56px}
-</style></head>
-<body><div class="card">
-<div class="brand">{{.Brand}}</div>
-<div class="amount"><small>￥</small>{{.Amount}}</div>
-<p class="name">{{.Name}}</p>
-<p class="tip">正在前往{{.Brand}}完成付款，如果没有自动跳转，请点下面的按钮。</p>
-<div class="actions">
-<a class="primary" href="{{.Target}}">打开{{.Brand}}</a>
-<a href="{{.DoneURL}}">我已完成支付</a>
-<a class="plain" href="{{.BackURL}}">换个支付方式</a>
-</div>
-<div class="detail">
-<div><b>订单号</b>{{.TradeNo}}</div>
-</div>
-</div>
-<script>setTimeout(function(){window.location.replace({{printf "%q" .Target}});},600);</script>
-</body></html>`))
+var jumpPageTemplate = template.Must(template.New("jump").Parse(jumpPageHTML))
 
 // scanPageTemplate keeps the page dependency free — no CDN, no framework — while
-// matching the upstream flow: show the code, offer the copy/open-WeChat route for
+// matching the upstream flow: show the code, offer the copy/open-the-app route for
 // the cases where the code cannot be scanned, and poll the order so the browser
 // leaves on its own once the money arrives.
-var scanPageTemplate = template.Must(template.New("scan").Parse(`<!doctype html>
-<html lang="zh-CN"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>{{.Brand}}扫码支付</title>
-<style>
-:root{color-scheme:light}
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;
-background:#f5f7fa;color:#111827;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
-.card{background:#fff;border-radius:16px;box-shadow:0 8px 30px rgba(15,23,42,.08);padding:24px;width:100%;max-width:380px;text-align:center}
-.brand{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#374151;background:#f3f4f6;border-radius:999px;padding:4px 12px;margin-bottom:14px}
-.amount{font-size:34px;font-weight:600;letter-spacing:-.5px;margin:0}
-.amount small{font-size:16px;font-weight:500;margin-right:2px}
-.name{color:#6b7280;font-size:13px;margin:6px 0 0;word-break:break-all}
-.qr{margin:18px auto 0;width:min(220px,64vw)}
-.qr svg{display:block;width:100%;height:auto}
-.tip{color:#6b7280;font-size:13px;margin:12px 0 0}
-.actions{display:flex;gap:10px;margin-top:18px}
-.actions a{flex:1;text-decoration:none;border-radius:10px;padding:11px 12px;font-size:14px;font-weight:500;border:1px solid #e5e7eb;color:#374151;background:#fff}
-.actions a.primary{background:#2563eb;border-color:#2563eb;color:#fff}
-.copyblock{margin-top:18px;border-top:1px solid #f1f3f5;padding-top:16px;text-align:left}
-.copyblock .label{font-size:12px;color:#9ca3af;margin-bottom:6px}
-.linkrow{display:flex;gap:8px;align-items:center}
-.linkrow input{flex:1;min-width:0;font-size:12px;color:#374151;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;background:#fafafa}
-.linkrow button{white-space:nowrap;font-size:12px;padding:8px 12px;border-radius:8px;border:1px solid #2563eb;background:#2563eb;color:#fff;cursor:pointer}
-.recipe{font-size:12px;color:#9ca3af;line-height:1.7;margin-top:10px}
-.detail{margin-top:16px;border-top:1px solid #f1f3f5;padding-top:12px;text-align:left;font-size:12px;color:#6b7280;line-height:1.9}
-.detail b{color:#9ca3af;font-weight:400;display:inline-block;min-width:56px}
-.status{font-size:12px;color:#2563eb;margin-top:14px;min-height:16px}
-</style></head>
-<body><div class="card">
-<div class="brand">{{.Brand}}</div>
-<div class="amount"><small>￥</small>{{.Amount}}</div>
-<p class="name">{{.Name}}</p>
-{{if .QR}}<div class="qr">{{.QR}}</div>{{end}}
-{{if .IsMobile}}
-<p class="tip">{{if .IsWeChat}}请长按识别二维码，或用微信打开下面的链接完成支付{{else if .IsAlipay}}请长按识别二维码，或在支付宝中打开下面的链接完成支付{{else}}请长按识别二维码，或在对应的 App 里打开下面的链接完成支付{{end}}</p>
-<div class="actions">
-{{if .IsWeChat}}<a class="primary" href="weixin://">打开微信</a>{{end}}
-{{if .IsAlipay}}<a class="primary" href="alipays://">打开支付宝</a>{{end}}
-<a href="{{.DoneURL}}">我已完成支付</a>
-</div>
-{{else}}
-<p class="tip">请使用{{.Brand}}扫描二维码完成支付</p>
-<div class="actions">
-<a href="{{.RawURL}}">当前浏览器打开</a>
-<a href="{{.DoneURL}}">我已完成支付</a>
-</div>
-{{end}}
-<div class="copyblock">
-<div class="label">支付链接</div>
-<div class="linkrow">
-<input id="paylink" readonly value="{{.RawURL}}">
-<button type="button" onclick="copyLink()">复制</button>
-</div>
-<div class="recipe">{{if .IsWeChat}}操作流程：复制链接 → 在微信顶部搜索框搜到自己的微信 → 打开聊天框 → 粘贴并发送 → 点击蓝色链接 → 完成付款。{{else if .IsAlipay}}操作流程：复制链接 → 在支付宝或手机浏览器里打开 → 完成付款；也可以直接长按上面的二维码识别。{{else}}如果二维码打不开，复制上面的链接在手机浏览器里打开。{{end}}</div>
-</div>
-<div class="detail">
-<div><b>订单号</b>{{.TradeNo}}</div>
-<div><b>商品</b>{{.Name}}</div>
-</div>
-<div class="status" id="status"></div>
-</div>
-<script>
-var copyButton = document.querySelector('button');
-function copyLink() {
-  var input = document.getElementById('paylink');
-  input.select();
-  input.setSelectionRange(0, 99999);
-  var done = function () { copyButton.textContent = '已复制'; setTimeout(function () { copyButton.textContent = '复制'; }, 1500); };
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(input.value).then(done, fallback);
-  } else { fallback(); }
-  function fallback() {
-    try { document.execCommand('copy'); done(); } catch (error) { input.select(); }
-  }
-}
-// 每 2 秒问一次订单状态，付完自动走掉，和上游 wxpay_wap 的 loadmsg() 一样。
-var pollTimer = setInterval(function () {
-  fetch('{{.PollURL}}', { credentials: 'omit', cache: 'no-store' })
-    .then(function (response) { return response.json(); })
-    .then(function (data) {
-      if (data && data.paid) {
-        clearInterval(pollTimer);
-        document.getElementById('status').textContent = '支付成功，正在跳转…';
-        window.location.replace('{{.PaidURL}}');
-      }
-    })
-    .catch(function () {});
-}, 2000);
-document.addEventListener('visibilitychange', function () {
-  if (!document.hidden) { /* 回到页面立刻问一次 */ }
-});
-</script>
-</body></html>`))
+var scanPageTemplate = template.Must(template.New("scan").Parse(scanPageHTML))

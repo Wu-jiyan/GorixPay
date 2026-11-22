@@ -203,7 +203,7 @@ func TestTestPageUsesTheConfiguredDemoMerchant(t *testing.T) {
 	if stored.MerchantID != "merchant-2" {
 		t.Fatalf("merchant = %q, want merchant-2", stored.MerchantID)
 	}
-	if !strings.HasPrefix(order.CashierURL, "https://pay.example/cashier.php?trade_no=") {
+	if !strings.HasPrefix(order.CashierURL, "https://pay.example/pay/alipay/") {
 		t.Fatalf("cashier url = %q", order.CashierURL)
 	}
 	if order.PayType != string(pluginpayment.ActionQRCode) {

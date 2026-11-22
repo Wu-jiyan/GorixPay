@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	epaypage "gorixpay/internal/compat/epay/page"
 	identitymodel "gorixpay/internal/identity/model"
 	paymentmodel "gorixpay/internal/payment/model"
 	paymentservice "gorixpay/internal/payment/service"
@@ -54,6 +55,17 @@ func (service *Service) WithPayments(orders *paymentservice.Service, starter Pay
 // CashierURL builds the public cashier link for one order.
 func (service *Service) CashierURL(tradeNo string) string {
 	return service.publicURL + cashierPath + url.QueryEscape(tradeNo)
+}
+
+// PayPageURL is the link a buyer should land on: the site payment page when the
+// order already names a payment method, the cashier only when there is still a
+// choice to make. Without this a phone opens the cashier SPA, which then jumps to
+// the payment page — two screens for one payment.
+func (service *Service) PayPageURL(tradeNo, paymentType string) string {
+	if path := epaypage.PagePathFor(tradeNo, paymentType); path != "" {
+		return service.publicURL + path
+	}
+	return service.CashierURL(tradeNo)
 }
 
 // PayCode renders the aggregated receiving code of one merchant. An amount of
@@ -124,7 +136,7 @@ func (service *Service) CreateTestOrder(ctx context.Context, merchantID, payment
 	payType, payInfo := actionPayload(result.Action)
 	return TestOrder{
 		TradeNo: order.TradeNo, PayType: payType, PayInfo: payInfo,
-		CashierURL: service.CashierURL(order.TradeNo),
+		CashierURL: service.PayPageURL(order.TradeNo, order.PaymentType),
 	}, nil
 }
 

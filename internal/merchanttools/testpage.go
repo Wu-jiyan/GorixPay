@@ -195,7 +195,7 @@ func (service *Service) CreatePublicTestOrder(ctx context.Context, paymentType s
 		Amount:      order.Amount,
 		PayType:     payType,
 		PayInfo:     payInfo,
-		CashierURL:  service.CashierURL(order.TradeNo),
+		CashierURL:  service.PayPageURL(order.TradeNo, order.PaymentType),
 		ExpiresAt:   order.ExpiresAt,
 	}, nil
 }

@@ -39,6 +39,8 @@ export interface PublicTestOrder {
   amount: number;
   pay_type: string;
   pay_info: unknown;
+  /** 站内支付页（/pay/{func}/{trade_no}/），有值时直接跳过去，不再自行解析二维码 */
+  pay_page?: string;
   cashier_url: string;
   expires_at: string;
 }
