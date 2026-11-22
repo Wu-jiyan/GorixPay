@@ -66,8 +66,16 @@ func TestApproveAndRejectRaceKeepsMoneyAndStatusConsistent(t *testing.T) {
 	}
 	switch stored.Status {
 	case StatusApproved:
-		if balance.Available != 3000 {
-			t.Fatalf("approved available = %d, want 3000 (5000 - 1000 payout)", balance.Available)
+		// 创建时：available 5000 → 4000，frozen 0 → 1000（内部搬移，总量仍 5000）。
+		// 审核通过：先按 available 记 1000 的打款支出（4000 → 3000），再把冻结退回
+		// available（3000 → 4000），frozen 归零。净结果是 available 4000 + frozen 0，
+		// 也就是 5000 里少了真正打出去的 1000，账是平的。
+		//
+		// 这里曾经断言 3000，等于要求「冻结既退回又消耗」，商户凭空少 1000。断言一直
+		// 没被真正执行过 —— 两个 goroutine 并发时通常是 reject 先抢到状态，approve
+		// 分支只有加上 -race 改变调度后才真正跑到。
+		if balance.Available != 4000 {
+			t.Fatalf("approved available = %d, want 4000 (freeze released, then the 1000 payout debited)", balance.Available)
 		}
 		if settlements != 1 {
 			t.Fatalf("approved settlement transactions = %d, want 1", settlements)

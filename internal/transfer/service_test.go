@@ -3,6 +3,8 @@ package transfer
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -143,8 +145,15 @@ func TestListGetAndFindRespectMerchantScope(t *testing.T) {
 	}
 }
 
+// fixtureSeq keeps every in-memory SQLite database name unique per run, so
+// go test -count=N does not reuse the previous round's rows.
+var fixtureSeq atomic.Int64
+
 func transferFixture(t *testing.T, name string) (*Service, *gorm.DB, string) {
 	t.Helper()
+	// 内存库按 DSN 名共享连接池，同一个测试跑多轮（go test -count=N）会连到上一次
+	// 的库，播种第二个 merchant-1 时撞主键。给每轮一个唯一名，测试就与 -count 无关。
+	name = fmt.Sprintf("%s-%d", name, fixtureSeq.Add(1))
 	db, _, err := database.Open(context.Background(), config.DatabaseConfig{Driver: "sqlite", DSN: "file:" + name + "?mode=memory&cache=shared"})
 	if err != nil {
 		t.Fatal(err)
