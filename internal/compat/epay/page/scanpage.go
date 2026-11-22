@@ -39,6 +39,9 @@ type scanPage struct {
 	PrimaryHref  template.URL
 	PrimaryLabel string
 	Recipe       string // step-by-step for the copy-the-link route
+	// ActionTitle is the short heading of the action column ("扫码完成支付" /
+	// "打开支付宝付款"); Recipe is the longer helper sentence under it.
+	ActionTitle string
 	// CreatedText / ExpiresAtMS feed the "transparent order" block: when the order
 	// was created and how long it stays payable.
 	CreatedText string
@@ -64,6 +67,11 @@ type scanPage struct {
 	// LogoURL is the configured site logo; empty means the wordmark stands alone
 	// (a drawn placeholder would read as a mock-up, not a brand).
 	LogoURL string
+	// ContactQQ / ContactEmail are the operator's support channels. The page only
+	// renders the「支付遇到问题」block when at least one of them is configured —
+	// inventing an "online 08:00-22:00" line is worse than showing nothing.
+	ContactQQ    string
+	ContactEmail string
 }
 
 func (handler *Handler) scanPageData(ctx context.Context, order model.Order, content, device string) scanPage {
@@ -97,6 +105,8 @@ func (handler *Handler) scanPageData(ctx context.Context, order model.Order, con
 		AmountInt:    amountInt(formatAmount(order.Amount)),
 		AmountDec:    amountDec(formatAmount(order.Amount)),
 		LogoURL:      handler.siteLogo(ctx),
+		ContactQQ:    handler.settingValue(ctx, "site.contact_qq"),
+		ContactEmail: handler.settingValue(ctx, "site.contact_email"),
 	}
 	if !order.ExpiresAt.IsZero() {
 		page.ExpiresAtMS = order.ExpiresAt.UnixMilli()
@@ -112,6 +122,7 @@ func (handler *Handler) scanPageData(ctx context.Context, order model.Order, con
 		// 送到微信，链接还得自己粘过去（上游 wxpay_wap 的按钮也是 weixin:// 本体）。
 		page.PrimaryHref = template.URL("weixin://")
 		page.PrimaryLabel = "打开微信"
+		page.ActionTitle = "复制链接去微信付款"
 		page.Recipe = "复制后打开微信，粘贴发送给「文件传输助手」或好友，点开这条链接即可付款。"
 	case page.IsAlipay:
 		// 支付宝：把支付链接装进 alipays:// 的 url 参数，点一下由系统唤起支付宝 App
@@ -120,15 +131,20 @@ func (handler *Handler) scanPageData(ctx context.Context, order model.Order, con
 		page.Title = "使用支付宝完成支付"
 		page.PrimaryHref = template.URL(alipayOpenScheme(qrContent)) //nolint:gosec // built from the channel url
 		page.PrimaryLabel = "打开支付宝付款"
+		page.ActionTitle = "打开支付宝付款"
 		page.Recipe = "没打开支付宝时，复制链接在支付宝或手机浏览器里粘贴打开。"
 	default:
 		page.Title = "完成支付"
 		page.PrimaryHref = template.URL(qrContent) //nolint:gosec // channel url
 		page.PrimaryLabel = "打开支付页"
+		page.ActionTitle = "继续支付"
 		page.Recipe = "如果二维码打不开，复制上面的链接在手机浏览器里打开。"
 	}
 	if page.Desktop {
-		page.Title = "请扫码完成支付"
+		// 桌面左右两栏各说一件事：左栏「这是什么钱」，右栏「怎么付」。
+		// 左栏标题写成渠道名，右栏固定「扫码完成支付」，两处不重复。
+		page.Title = "使用" + page.Brand + "完成支付"
+		page.ActionTitle = "扫码完成支付"
 	}
 	// An image payload (data:image/...) is not a link the buyer can copy into a
 	// chat window; upstream checks the same prefix (wxpay_qrcode.php).

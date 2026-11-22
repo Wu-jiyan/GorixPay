@@ -194,7 +194,7 @@ func TestChannelPageRendersScanPageOnDesktop(t *testing.T) {
 		t.Fatalf("status=%d", desktop.Code)
 	}
 	body := desktop.Body.String()
-	for _, want := range []string{"请扫码完成支付", "19.99", "T-SCAN", "<svg", "复制"} {
+	for _, want := range []string{"扫码完成支付", "19.99", "T-SCAN", "<svg", "复制", "我已完成支付"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("扫码页缺少 %q: %s", want, body)
 		}
