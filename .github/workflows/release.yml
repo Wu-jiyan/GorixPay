@@ -89,7 +89,10 @@ jobs:
           mkdir -p "dist/${name}/docs"
           cp docs/*.md "dist/${name}/docs/"
           tar -C dist -czf "dist/${name}.tar.gz" "${name}"
-          sha256sum "dist/${name}.tar.gz" > "dist/${name}.tar.gz.sha256"
+          # 校验文件里写纯文件名：下载解包后 `sha256sum -c *.sha256` 就能直接用，
+          # 带 dist/ 前缀会让人必须先建同名目录才能校验。
+          ( cd dist && sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256" )
+          cat "dist/${name}.tar.gz.sha256"
           ls -lh "dist/${name}.tar.gz"
 
       - name: 上传构建产物
@@ -137,8 +140,12 @@ jobs:
           ' CHANGELOG.md > "${notes_file}"
           if [ ! -s "${notes_file}" ]; then
             echo "CHANGELOG.md 里没有 ${version_no_v} 段落，改用自动生成说明" >&2
-            gh release create "${tag}" artifacts/*.tar.gz artifacts/*.sha256 \
-              --title "${tag}" --generate-notes --verify-tag
+            if gh release view "${tag}" >/dev/null 2>&1; then
+              gh release upload "${tag}" artifacts/*.tar.gz artifacts/*.sha256 --clobber
+            else
+              gh release create "${tag}" artifacts/*.tar.gz artifacts/*.sha256 \
+                --title "${tag}" --generate-notes --verify-tag
+            fi
             exit 0
           fi
           {
@@ -151,11 +158,17 @@ jobs:
             echo '```bash'
             echo "tar -xzf gorixpay-${tag}-linux-amd64.tar.gz"
             echo "cd gorixpay-${tag}-linux-amd64"
+            echo "sha256sum -c ../gorixpay-${tag}-linux-amd64.tar.gz.sha256   # 校验完整性"
             echo "./gorixpay   # 首次启动会自动执行数据库迁移"
             echo '```'
             echo
-            echo "资产里的 dist/ 是前端构建产物，放到进程工作目录下会被直接服务。"
-            echo "校验完整性：\`sha256sum -c *.sha256\`。"
+            echo "资产里的 dist/ 是前端构建产物，和二进制放在同一工作目录就会被直接服务。"
           } > "${notes_file}.final"
-          gh release create "${tag}" artifacts/*.tar.gz artifacts/*.sha256 \
-            --title "${tag}" --notes-file "${notes_file}.final" --verify-tag
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            # tag 已经发过版（重跑场景）：只覆盖资产与说明，不重复创建
+            gh release upload "${tag}" artifacts/*.tar.gz artifacts/*.sha256 --clobber
+            gh release edit "${tag}" --notes-file "${notes_file}.final"
+          else
+            gh release create "${tag}" artifacts/*.tar.gz artifacts/*.sha256 \
+              --title "${tag}" --notes-file "${notes_file}.final" --verify-tag
+          fi
