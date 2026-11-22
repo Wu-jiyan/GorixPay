@@ -3,6 +3,7 @@ package risk
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -21,6 +22,10 @@ const (
 	SettingDailyAmountLimitCents = "risk.daily_amount_limit_cents"
 	SettingDailyOrderLimit       = "risk.daily_order_limit"
 	SettingIPDailyLimit          = "risk.ip_daily_limit"
+	// SettingIPWhitelist lists caller IPs (or CIDR blocks) exempt from the limits.
+	SettingIPWhitelist = "risk.ip_whitelist"
+	// SettingHumanVerify requires a solved captcha ticket on order creation.
+	SettingHumanVerify = "risk.require_human_verify"
 )
 
 // Generic rejection keeps blacklist hits opaque to the caller.
@@ -197,6 +202,11 @@ func (service *Service) checkBlacklist(ctx context.Context, command paymentservi
 }
 
 func (service *Service) checkLimits(ctx context.Context, command paymentservice.CreateCommand) error {
+	// IP 白名单里的来源不计数、不受下单限额约束（上游 pay_iplimit_white）：
+	// 自建站、监控探针、回归测试都从固定出口发起，不该被当刷单。
+	if service.ipWhitelisted(ctx, command.ClientIP) {
+		return nil
+	}
 	start := startOfDay(service.now())
 	dailyAmount := service.intSetting(ctx, SettingDailyAmountLimitCents)
 	if dailyAmount > 0 {
@@ -229,6 +239,57 @@ func (service *Service) checkLimits(ctx context.Context, command paymentservice.
 		}
 	}
 	return nil
+}
+
+// ipWhitelisted reports whether the caller's IP is in risk.ip_whitelist. The value
+// accepts commas, semicolons, whitespace or newlines as separators, and both bare
+// addresses and CIDR blocks.
+func (service *Service) ipWhitelisted(ctx context.Context, clientIP string) bool {
+	clientIP = strings.TrimSpace(clientIP)
+	if clientIP == "" {
+		return false
+	}
+	raw, ok := service.setting(ctx, SettingIPWhitelist)
+	if !ok {
+		return false
+	}
+	var text string
+	if err := json.Unmarshal([]byte(raw), &text); err != nil {
+		text = strings.Trim(strings.TrimSpace(raw), `"`)
+	}
+	parsed := net.ParseIP(clientIP)
+	fields := strings.FieldsFunc(text, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
+	})
+	for _, entry := range fields {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if _, network, err := net.ParseCIDR(entry); err == nil {
+			if parsed != nil && network.Contains(parsed) {
+				return true
+			}
+			continue
+		}
+		if strings.EqualFold(entry, clientIP) {
+			return true
+		}
+	}
+	return false
+}
+
+// HumanVerifyRequired reports whether orders must carry a solved captcha ticket.
+func (service *Service) HumanVerifyRequired(ctx context.Context) bool {
+	raw, ok := service.setting(ctx, SettingHumanVerify)
+	if !ok {
+		return false
+	}
+	var value bool
+	if err := json.Unmarshal([]byte(raw), &value); err == nil {
+		return value
+	}
+	return strings.EqualFold(strings.Trim(strings.TrimSpace(raw), `"`), "true")
 }
 
 func (service *Service) record(ctx context.Context, merchantID, ruleCode, detail, clientIP string) {

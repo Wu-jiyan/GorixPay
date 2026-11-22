@@ -53,6 +53,11 @@ func (service *Service) listMine(ctx *gin.Context) {
 
 func (service *Service) submit(ctx *gin.Context) {
 	merchantID := identityhttp.MustSession(ctx).PrincipalID
+	// 平台可以把「商户自助报备域名」关掉：这时只能由运营在后台加，商户这边直接拒绝。
+	if !service.SelfService(ctx.Request.Context()) {
+		ctx.JSON(http.StatusForbidden, gin.H{"code": "domain_self_service_disabled", "message": "平台已关闭商户自助报备域名，请联系运营添加"})
+		return
+	}
 	var payload submitPayload
 	if err := ctx.ShouldBindJSON(&payload); err != nil {
 		invalidRequest(ctx, "invalid request")

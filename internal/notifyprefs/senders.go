@@ -3,12 +3,17 @@ package notifyprefs
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/smtp"
+	"net/url"
 	"strconv"
 	"time"
 
+	"gorixpay/internal/platform/netguard"
 	"gorixpay/internal/platform/secret"
 
 	"gorixpay/internal/settings"
@@ -38,7 +43,13 @@ func (mailer *settingsMailer) Send(ctx context.Context, to, subject, body string
 	if port == "" {
 		port = "587"
 	}
-	if _, err := strconv.Atoi(port); err != nil {
+	portNumber, portErr := strconv.Atoi(port)
+	if portErr != nil || portNumber <= 0 || portNumber > 65535 {
+		return ErrChannelNotConfigured
+	}
+	// 运营可在控制台填任意 host：出站前按商户回调同一套 netguard 规则拦内网/回环，
+	// 否则这里就是一条能打内网端口 25/465/587 的 SSRF 通道。
+	if err := netguard.ValidateHostPort(host, portNumber); err != nil {
 		return ErrChannelNotConfigured
 	}
 	var auth smtp.Auth
@@ -47,10 +58,13 @@ func (mailer *settingsMailer) Send(ctx context.Context, to, subject, body string
 	}
 	message := []byte("From: " + from + "\r\nTo: " + to + "\r\nSubject: " + subject +
 		"\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" + body + "\r\n")
-	address := host + ":" + port
+	address := net.JoinHostPort(host, port)
+	// 拨号走 netguard 的受控 dialer：主机名解析出来的地址逐个检查，挡住
+	// 「域名解析到 169.254.169.254」这类绕过。
+	dialer := &net.Dialer{Timeout: 10 * time.Second, Control: netguard.Control()}
 	done := make(chan error, 1)
 	go func() {
-		done <- smtp.SendMail(address, auth, from, []string{to}, message)
+		done <- sendMailWithDialer(address, auth, from, []string{to}, message, dialer)
 	}()
 	select {
 	case err := <-done:
@@ -58,6 +72,62 @@ func (mailer *settingsMailer) Send(ctx context.Context, to, subject, body string
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// sendMailWithDialer is smtp.SendMail with a caller supplied dialer, so the SMTP
+// path can carry netguard's Control hook (the stdlib helper always dials plainly).
+func sendMailWithDialer(address string, auth smtp.Auth, from string, to []string, message []byte, dialer *net.Dialer) error {
+	connection, err := dialer.Dial("tcp", address)
+	if err != nil {
+		return err
+	}
+	client, err := smtp.NewClient(connection, smtpHostOnly(address))
+	if err != nil {
+		_ = connection.Close()
+		return err
+	}
+	defer client.Close()
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err := client.StartTLS(&tls.Config{ServerName: smtpHostOnly(address), MinVersion: tls.VersionTLS12}); err != nil {
+			return err
+		}
+	}
+	if auth != nil {
+		if ok, _ := client.Extension("AUTH"); !ok {
+			return errors.New("smtp server does not support auth")
+		}
+		if err := client.Auth(auth); err != nil {
+			return err
+		}
+	}
+	if err := client.Mail(from); err != nil {
+		return err
+	}
+	for _, recipient := range to {
+		if err := client.Rcpt(recipient); err != nil {
+			return err
+		}
+	}
+	writer, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := writer.Write(message); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	return client.Quit()
+}
+
+// smtpHostOnly drops the port from a host:port pair (the TLS server name and
+// smtp.NewClient both want the bare host).
+func smtpHostOnly(address string) string {
+	if host, _, err := net.SplitHostPort(address); err == nil {
+		return host
+	}
+	return address
 }
 
 // settingsSMS posts to a webhook style SMS gateway. Without notify.sms_endpoint
@@ -75,6 +145,14 @@ func (sender *settingsSMS) Send(ctx context.Context, phone, message string) erro
 	}
 	endpoint := settings["notify.sms_endpoint"]
 	if endpoint == "" {
+		return ErrChannelNotConfigured
+	}
+	// 运营填的 webhook 地址同样要过 netguard：这是设置项里唯一的出站 URL。
+	parsed, parseErr := url.Parse(endpoint)
+	if parseErr != nil {
+		return ErrChannelNotConfigured
+	}
+	if err := netguard.ValidateURL(parsed); err != nil {
 		return ErrChannelNotConfigured
 	}
 	payload, err := json.Marshal(map[string]string{"phone": phone, "message": message})

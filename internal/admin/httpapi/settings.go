@@ -90,6 +90,10 @@ var allowedSettings = map[string]bool{
 	"payment.merchant_refund_enabled": true,
 	"payment.min_amount_cents":        true,
 	"payment.max_amount_cents":        true,
+	// 授权支付域名拆成两个开关：谁能改 + 不做会不会被拦（上游 pay_domain_open / pay_domain_forbid）。
+	"payment.domain_self_service": true,
+	// 风控：IP 白名单（逗号分隔或 CIDR，命中的来源不计数、不受下单限额约束）。
+	"risk.ip_whitelist": true,
 }
 
 // settingRules bounds the values the console may write. Without them every key

@@ -20,6 +20,12 @@ import (
 // SettingWhitelistRequired toggles the pre-create domain whitelist check.
 const SettingWhitelistRequired = "payment.domain_whitelist_required"
 
+// SettingSelfService toggles whether a merchant may whitelist a domain itself.
+// 上游 Epay 把这件事拆成两个键（pay_domain_open：商户可自助添加；
+// pay_domain_forbid：未报备禁止支付），我们原来只有一个总开关，等于把「谁能改」
+// 和「不做会不会被拦」压成了一个布尔。
+const SettingSelfService = "payment.domain_self_service"
+
 // RejectionReason is returned when a notify/return host is not authorized.
 const RejectionReason = "当前支付域名未授权"
 
@@ -190,6 +196,21 @@ func (service *Service) Required(ctx context.Context) bool {
 	raw, ok := service.setting(ctx, SettingWhitelistRequired)
 	if !ok {
 		return false
+	}
+	var value bool
+	if err := json.Unmarshal([]byte(raw), &value); err == nil {
+		return value
+	}
+	return strings.EqualFold(strings.Trim(strings.TrimSpace(raw), `"`), "true")
+}
+
+// SelfService reports whether merchants may whitelist their own domains. Default
+// true: the merchant console has always offered it, and an operator who wants to
+// approve each domain turns it off.
+func (service *Service) SelfService(ctx context.Context) bool {
+	raw, ok := service.setting(ctx, SettingSelfService)
+	if !ok {
+		return true
 	}
 	var value bool
 	if err := json.Unmarshal([]byte(raw), &value); err == nil {

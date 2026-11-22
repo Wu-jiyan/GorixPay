@@ -98,6 +98,7 @@ const tabs: Tab[] = [
     fields: [
       { key: 'payment.order_expiry_minutes', label: '订单有效期', type: 'number', hint: '单位分钟，超时后收银台不可支付', min: 1, max: 1440 },
       { key: 'payment.domain_whitelist_required', label: '强制 notify_url 域名白名单', type: 'bool', hint: '开启后商户必须先报备域名' },
+      { key: 'payment.domain_self_service', label: '允许商户自助报备域名', type: 'bool', hint: '关闭后只能由运营在「域名审核」里添加' },
       { key: 'certification.required', label: '强制实名认证', type: 'bool', hint: '未通过实名的商户不能下单' },
       { key: 'certification.fee_cents', label: '实名认证费', type: 'cents', hint: '从商户余额扣，0 表示免费', min: 0 },
       { key: 'invite.enabled', label: '开启邀请返佣', type: 'bool' },
@@ -114,6 +115,7 @@ const tabs: Tab[] = [
       { key: 'risk.daily_amount_limit_cents', label: '单商户单日交易额上限', type: 'cents', hint: '0 表示不限制', min: 0 },
       { key: 'risk.daily_order_limit', label: '单商户单日订单数上限', type: 'number', hint: '0 表示不限制', min: 0 },
       { key: 'risk.ip_daily_limit', label: '单 IP 单日下单上限', type: 'number', hint: '0 表示不限制', min: 0 },
+      { key: 'risk.ip_whitelist', label: 'IP 白名单', type: 'textarea', hint: '逗号或换行分隔，支持 CIDR；命中的来源不计数、不受下单限额约束' },
       { key: 'merchant.deposit_required_cents', label: '店铺保证金要求', type: 'cents', hint: '未达标的商户不能发起销售单', min: 0 },
       { key: 'security.captcha_required', label: '登录需要图形验证码', type: 'bool', hint: '后台与商户登录都会要求验证码' },
     ],
@@ -131,7 +133,7 @@ const tabs: Tab[] = [
       { key: 'notify.sms_endpoint', label: '短信网关地址', type: 'text', hint: 'POST JSON：{phone, message}；留空表示不启用短信' },
       { key: 'notify.sms_token', label: '短信网关 Token', type: 'secret', hint: '以 Bearer 头发送，加密存储' },
       { key: 'wechat.mp.template_id', label: '公众号模板消息 ID', type: 'text', hint: '需认证服务号；留空则不发送模板消息' },
-    ],
+      ],
   },
   {
     name: 'oauth',

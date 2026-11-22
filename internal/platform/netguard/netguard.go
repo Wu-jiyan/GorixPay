@@ -128,8 +128,39 @@ func ValidateURLWith(target *url.URL, allowPrivate bool) error {
 	return nil
 }
 
+// ValidateHostPort checks a host:port target the way ValidateURLWith checks a URL.
+// The SMTP path has no URL at all, so it needs the same rules applied to a bare
+// host: literal loopback, link-local and metadata addresses are refused, and a
+// private range needs the operator's opt-in.
+func ValidateHostPort(host string, port int) error {
+	trimmed := strings.TrimSpace(host)
+	if trimmed == "" {
+		return fmt.Errorf("%w: missing host", ErrBlockedTarget)
+	}
+	if port <= 0 || port > 65535 {
+		return fmt.Errorf("%w: port %d", ErrBlockedTarget, port)
+	}
+	if ip := net.ParseIP(strings.Trim(trimmed, "[]")); ip != nil {
+		if blocked(ip, false) {
+			return fmt.Errorf("%w: address %s", ErrBlockedTarget, ip)
+		}
+		return nil
+	}
+	lower := strings.ToLower(strings.TrimSuffix(trimmed, "."))
+	if lower == "localhost" || strings.HasSuffix(lower, ".localhost") {
+		return fmt.Errorf("%w: host %s", ErrBlockedTarget, trimmed)
+	}
+	return nil
+}
+
+// Control is the exported dial hook: it applies the strict policy to every address
+// a dialer resolves, which is what stops a hostname that resolves to an internal
+// address from slipping past ValidateHostPort.
+func Control() func(network, address string, conn syscall.RawConn) error {
+	return control(false)
+}
+
 // IsLocalTarget reports whether a URL points at this host or a private network.
-// It is used to keep features that only make sense on a developer machine (the
 // sandbox payment channel) from being registered on a publicly reachable
 // deployment.
 func IsLocalTarget(raw string) bool {
