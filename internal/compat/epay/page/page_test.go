@@ -206,34 +206,69 @@ func TestChannelPageRendersScanPageOnDesktop(t *testing.T) {
 	}
 
 	mobile := callPageWithUserAgent(t, router, "/pay/wxwappay/T-SCAN/", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148")
-	if mobile.Code != http.StatusFound || mobile.Header().Get("Location") != "https://channel.example/pay/1" {
-		t.Fatalf("mobile status=%d location=%q", mobile.Code, mobile.Header().Get("Location"))
+	if mobile.Code != http.StatusOK {
+		t.Fatalf("手机端应停在支付页上，status=%d location=%q", mobile.Code, mobile.Header().Get("Location"))
+	}
+	// 支付宝订单在手机上给出「打开支付宝」与可复制的链接，而不是把买家 302 到站外。
+	if body := mobile.Body.String(); !strings.Contains(body, "alipays://") || !strings.Contains(body, "https://channel.example/pay/1") {
+		t.Fatalf("手机支付宝页缺少打开支付宝或支付链接: %s", body)
 	}
 	if starter.method != "wap" || starter.device != "mobile" {
 		t.Fatalf("mobile method=%q device=%q", starter.method, starter.device)
 	}
 }
 
-// TestChannelPageMobileRedirectsWebQRCode pins the "a phone cannot scan its own
-// screen" rule: when the channel hands back a page URL as the code, a mobile
-// browser is sent to it instead of being shown a QR it cannot use. A scannable
-// scheme (weixin://) still renders the page, because there is nothing to open.
-func TestChannelPageMobileRedirectsWebQRCode(t *testing.T) {
+// TestChannelPageKeepsMobileBuyerOnThePage pins the upstream rule that a phone
+// never gets bounced to an off-site url: Epay renders wxpay_wap / alipay_h5 with
+// the code, a button for the app and a copyable link, because a 微信 H5 url is
+// dead outside WeChat and an 支付宝 url is dead outside 支付宝. A bare 302 also
+// loses the cashier, so the buyer cannot pick another method when it fails.
+func TestChannelPageKeepsMobileBuyerOnThePage(t *testing.T) {
 	starter := &stubStarter{action: pluginpayment.Action{Type: pluginpayment.ActionQRCode, URL: "https://api.huifu.com/hostingh5/?jump_id=H1"}}
 	router, db := newPageRouter(t, WithStarter(starter))
-	order := model.Order{ID: "order-qr", TradeNo: "T-QR", OutTradeNo: "OUT-QR", Status: model.StatusPending, Amount: 100}
+	order := model.Order{ID: "order-qr", TradeNo: "T-QR", OutTradeNo: "OUT-QR", Status: model.StatusPending, Amount: 100,
+		PaymentType: "alipay"}
 	if err := db.Create(&order).Error; err != nil {
 		t.Fatal(err)
 	}
 	mobile := callPageWithUserAgent(t, router, "/pay/alipay/T-QR/", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148")
-	if mobile.Code != http.StatusFound || mobile.Header().Get("Location") != "https://api.huifu.com/hostingh5/?jump_id=H1" {
-		t.Fatalf("mobile status=%d location=%q", mobile.Code, mobile.Header().Get("Location"))
+	if mobile.Code != http.StatusOK {
+		t.Fatalf("手机端支付宝应停在页面上，status=%d location=%q", mobile.Code, mobile.Header().Get("Location"))
+	}
+	body := mobile.Body.String()
+	for _, want := range []string{"长按识别二维码", "alipays://", "https://api.huifu.com/hostingh5/?jump_id=H1", "复制", "我已完成支付"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("支付宝手机页缺少 %q: %s", want, body)
+		}
 	}
 
 	starter.action = pluginpayment.Action{Type: pluginpayment.ActionQRCode, URL: "weixin://wxpay/bizpayurl?pr=x"}
 	inApp := callPageWithUserAgent(t, router, "/pay/wxpay/T-QR/", "Mozilla/5.0 (iPhone) MicroMessenger/8.0.49")
 	if inApp.Code != http.StatusOK || !strings.Contains(inApp.Body.String(), "<svg") {
 		t.Fatalf("scheme code status=%d", inApp.Code)
+	}
+}
+
+// TestChannelPageRendersJumpPageForOtherMethods keeps the upstream jump branch: a
+// non-wallet channel is carried to its own page, but through a rendered page so a
+// blocked redirect still leaves a manual link and a way back to the cashier.
+func TestChannelPageRendersJumpPageForOtherMethods(t *testing.T) {
+	starter := &stubStarter{action: pluginpayment.Action{Type: pluginpayment.ActionJump, URL: "https://bank.example/pay/1"}}
+	router, db := newPageRouter(t, WithStarter(starter))
+	order := model.Order{ID: "order-bank", TradeNo: "T-BANK", OutTradeNo: "OUT-BANK", Status: model.StatusPending,
+		Name: "银行卡订单", Amount: 2000, PaymentType: "bank"}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+	mobile := callPageWithUserAgent(t, router, "/pay/bank/T-BANK/", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148")
+	if mobile.Code != http.StatusOK {
+		t.Fatalf("status=%d location=%q", mobile.Code, mobile.Header().Get("Location"))
+	}
+	body := mobile.Body.String()
+	for _, want := range []string{"https://bank.example/pay/1", "打开银联", "换个支付方式", "/cashier.php?trade_no=T-BANK"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("跳转页缺少 %q: %s", want, body)
+		}
 	}
 }
 
@@ -255,10 +290,15 @@ func TestChannelPageKeepsWeChatBuyerOnThePage(t *testing.T) {
 		t.Fatalf("mobile 微信订单应停在页面上，实际 status=%d", mobile.Code)
 	}
 	body := mobile.Body.String()
-	for _, want := range []string{"打开微信", "weixin://", "复制", "在微信顶部搜索框"} {
+	for _, want := range []string{"打开微信", "weixin://", "复制", "在微信顶部搜索框", "/pay/wxwappay/T-WX/"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("微信引导页缺少 %q: %s", want, body)
 		}
+	}
+	// 二维码与可复制的链接必须指向站内页：通道的 H5 地址发到微信聊天框里打不开，
+	// 站内页才能在微信内换 T_JSAPI（上游 huifu_plugin.php wxpay() 同样给站内地址）。
+	if strings.Contains(body, "https://api.huifu.com/hostingh5/?jump_id=H2") {
+		t.Fatalf("微信引导页不应把通道 H5 地址当二维码/复制链接: %s", body)
 	}
 
 	inside := callPageWithUserAgent(t, router, "/pay/wxpay/T-WX/", "Mozilla/5.0 (iPhone) MicroMessenger/8.0.49")

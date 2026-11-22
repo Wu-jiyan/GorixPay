@@ -256,6 +256,8 @@ export interface CashierOrder {
   expires_at: string;
   pay_type?: string;
   pay_info?: string | Record<string, unknown>;
+  /** 站内支付页（/pay/{func}/{trade_no}/），手机端交给它渲染二维码与复制链接 */
+  pay_page?: string;
   channel?: { id: string; name: string; plugin_code: string };
 }
 

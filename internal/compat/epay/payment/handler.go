@@ -17,6 +17,7 @@ import (
 
 	channelrouter "gorixpay/internal/channel/router"
 	epayauth "gorixpay/internal/compat/epay/auth"
+	epaypage "gorixpay/internal/compat/epay/page"
 	epayrequest "gorixpay/internal/compat/epay/request"
 	epayv2 "gorixpay/internal/compat/epay/v2"
 	"gorixpay/internal/merchant/credential"
@@ -339,6 +340,11 @@ func (handler *Handler) cashierOrder(ctx *gin.Context) {
 		"return_url":   order.ReturnURL,
 		"created_at":   order.CreatedAt,
 		"expires_at":   order.ExpiresAt,
+		// pay_page is the site-local page that renders the payment (code, the
+		// copy-the-link recipe, the app button). A phone is sent there instead of
+		// having the cashier open the channel url in a second window: that url is
+		// dead outside the wallet's own browser and the buyer loses the cashier.
+		"pay_page": epaypage.PagePathFor(order.TradeNo, order.PaymentType),
 	})
 }
 

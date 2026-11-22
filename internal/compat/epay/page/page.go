@@ -126,6 +126,21 @@ var channelPageFuncs = map[string]string{
 	"wap":    "wap",
 }
 
+// PagePathFor reports the site-local payment page for an order, or "" when the
+// payment type has none (a custom pay-type code the compatibility layer never
+// knew). The cashier uses it to hand a phone over to the server-rendered page
+// instead of opening the channel url in a second window.
+func PagePathFor(tradeNo, paymentType string) string {
+	name := strings.ToLower(strings.TrimSpace(paymentType))
+	if name == "" {
+		return ""
+	}
+	if _, ok := channelPageFuncs[name]; !ok {
+		return ""
+	}
+	return "/pay/" + name + "/" + url.PathEscape(tradeNo) + "/"
+}
+
 // submit2 is the retry page upstream links from a failed channel attempt
 // (Epay/submit2.php). It re-opens an unpaid order: a missing order and a paid
 // order both answer with the upstream sysmsg page, anything else goes back to the
@@ -200,20 +215,33 @@ func (handler *Handler) channelPage(ctx *gin.Context, name string) {
 		ctx.Redirect(http.StatusFound, handler.cashierPath(order.TradeNo))
 		return
 	}
-	// A phone can open most channel pages directly, but two cases still need the
-	// page in front of them:
-	//   - a desktop browser, which cannot follow an H5 cashier at all;
-	//   - a 微信 payment outside the WeChat app, where the buyer has to carry the
-	//     link over by hand (upstream renders wxpay_wap for exactly this case
-	//     instead of redirecting into a page that cannot pay).
-	// Inside WeChat, and for 支付宝 on a phone, the redirect is the happy path.
-	showPage := device == "pc" || (isWeChatPayment(order.PaymentType) && device != "wechat")
+	// Upstream never answers a payment with a bare HTTP redirect except for the one
+	// combination that can pay in place: a 微信 order opened inside the WeChat
+	// browser (Epay/includes/lib/api/Pay.php:131-133 sends it straight to the JSAPI
+	// trade, Epay/includes/lib/Payment.php:60-72 puts the jump inside a page).
+	// Everything else renders a page, because a 微信 H5 url is dead outside WeChat
+	// and an 支付宝 url dead outside 支付宝:
+	//   - 手机 + 微信支付 → wxpay_wap: code, 「打开微信」, and the copy-the-link recipe
+	//   - 手机 + 支付宝 → alipay_h5: the amount, an 「打开支付宝」 button and the link
+	//   - PC → the scan page
+	inAppWeChat := device == "wechat" && isWeChatPayment(order.PaymentType)
 	switch {
-	case !showPage && action.Type == pluginpayment.ActionJump:
+	case inAppWeChat && action.Type == pluginpayment.ActionJump:
 		ctx.Redirect(http.StatusFound, action.URL)
-	case !showPage && action.Type == pluginpayment.ActionQRCode && isWebURL(action.URL):
+	case inAppWeChat && action.Type == pluginpayment.ActionQRCode && isWebURL(action.URL):
 		ctx.Redirect(http.StatusFound, action.URL)
-	case action.Type == pluginpayment.ActionJump, action.Type == pluginpayment.ActionQRCode:
+	// A jump is rendered as a page rather than a 302 so the address bar keeps a
+	// history entry and the buyer can come back to the cashier (upstream does the
+	// same with <script>window.location.replace</script>). A 微信 or 支付宝 order
+	// gets the code page even for a jump: the link only pays inside that app, so
+	// the buyer needs something to carry over by hand.
+	case action.Type == pluginpayment.ActionJump:
+		if device != "pc" && !isWeChatPayment(order.PaymentType) && !isAlipayPayment(order.PaymentType) {
+			handler.renderJumpPage(ctx, order, action.URL)
+			return
+		}
+		handler.renderScanPage(ctx, order, action.URL, device)
+	case action.Type == pluginpayment.ActionQRCode:
 		handler.renderScanPage(ctx, order, action.URL, device)
 	case action.Type == pluginpayment.ActionURLScheme:
 		ctx.Header("Content-Type", "text/html; charset=UTF-8")
@@ -282,6 +310,27 @@ func (handler *Handler) storedAction(ctx *gin.Context, orderID string) (pluginpa
 func (handler *Handler) renderScanPage(ctx *gin.Context, order model.Order, content, device string) {
 	ctx.Header("Content-Type", "text/html; charset=UTF-8")
 	if err := scanPageTemplate.Execute(ctx.Writer, handler.scanPageData(order, content, device)); err != nil {
+		handler.serverError(ctx)
+	}
+}
+
+// renderJumpPage paints the page upstream emits for a jump result
+// (Epay/includes/lib/Payment.php:60-72): a script that replaces the location, plus
+// a manual link so a blocked redirect still leaves the buyer a way in.
+func (handler *Handler) renderJumpPage(ctx *gin.Context, order model.Order, target string) {
+	ctx.Header("Content-Type", "text/html; charset=UTF-8")
+	data := jumpPage{
+		Brand:     scanBrand(order.PaymentType),
+		IsWeChat:  isWeChatPayment(order.PaymentType),
+		Amount:    formatAmount(order.Amount),
+		Name:      strings.TrimSpace(order.Name),
+		TradeNo:   order.TradeNo,
+		Target:    target,
+		BackURL:   handler.cashierPath(order.TradeNo),
+		DoneURL:   handler.siteURL + "/pay/checkpay/" + url.PathEscape(order.TradeNo) + "/",
+		ExpiresAt: 0,
+	}
+	if err := jumpPageTemplate.Execute(ctx.Writer, data); err != nil {
 		handler.serverError(ctx)
 	}
 }

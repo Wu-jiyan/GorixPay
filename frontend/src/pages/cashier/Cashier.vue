@@ -99,6 +99,23 @@ const canPay = computed(() => {
 // 二维码尺寸跟着屏幕走：手机上固定 220 会顶出卡片，180 才放得下（390px 宽实测）。
 const viewportWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth);
 const isNarrow = computed(() => viewportWidth.value <= 768);
+
+// 手机浏览器不在这里直接打开通道地址：微信 H5 链接离开微信就付不了，支付宝链接
+// 离开支付宝也付不了，而且弹出新窗口会把收银台留在后台，买家回不来。上游的做法是
+// 把手机交给服务端页面（cashier.php → submit2.php → wxpay_wap / alipay_h5）：页面里
+// 有二维码、「打开微信/支付宝」按钮和可复制的链接。所以这里只要服务端给了 pay_page
+// 就整页跳过去。
+const isPhone = computed(() => {
+  if (typeof navigator === 'undefined') return false;
+  const agent = navigator.userAgent.toLowerCase();
+  if (/ipad|tablet/.test(agent)) return false;
+  return /android|iphone|ipod|harmony|mobile|micromessenger|alipayclient/.test(agent);
+});
+const phonePayPage = computed(() => {
+  if (!isPhone.value) return '';
+  const page = order.value?.pay_page ?? '';
+  return /^\/pay\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\/$/.test(page) ? page : '';
+});
 const qrSize = computed(() => (isNarrow.value ? 180 : 220));
 
 const panelTitle = computed(() => {
@@ -226,6 +243,12 @@ async function loadOrder() {
 
 async function handleStart() {
   if (starting.value || !canPay.value) return;
+  // 手机端：交给服务端支付页，避免把买家弹到站外（见 phonePayPage 的注释）。
+  if (phonePayPage.value) {
+    starting.value = true;
+    window.location.assign(phonePayPage.value);
+    return;
+  }
   starting.value = true;
   try {
     const res = await cashierApi.start(tradeNo);
@@ -234,11 +257,17 @@ async function handleStart() {
     const info = typeof res.pay_info === 'string' ? res.pay_info : '';
     if (res.pay_type === 'jump' || res.pay_type === 'urlscheme') {
       if (info && /^https?:\/\//i.test(info)) {
-        const opened = window.open(info, '_blank', 'noopener,noreferrer');
-        if (!opened) {
-          message.warning('浏览器拦截了新窗口，请点击下方链接手动打开支付页面');
+        if (isPhone.value) {
+          // 手机上不弹新窗口：微信/支付宝的支付链接离开它们自己的浏览器就打不开，
+          // 而且新窗口会把收银台挤到后台。给按钮和可复制的链接，让买家自己决定。
+          message.info('请点击下方按钮，或复制链接到微信/支付宝中打开完成支付');
         } else {
-          message.info('已打开支付页面，请在新窗口完成支付');
+          const opened = window.open(info, '_blank', 'noopener,noreferrer');
+          if (!opened) {
+            message.warning('浏览器拦截了新窗口，请点击下方链接手动打开支付页面');
+          } else {
+            message.info('已打开支付页面，请在新窗口完成支付');
+          }
         }
       } else {
         message.info('请按收银台展示的支付指引完成付款');
@@ -511,7 +540,7 @@ onBeforeUnmount(() => {
 
             <div v-else-if="payLink" class="link-box">
               <n-text depth="3" class="qr-tip">
-                已在新窗口打开支付页面，如未打开请点击下方按钮。
+                {{ isPhone ? '请点击下方按钮，或复制链接到微信 / 支付宝里打开完成支付' : '已在新窗口打开支付页面，如未打开请点击下方按钮。' }}
               </n-text>
               <n-button
                 type="primary"
@@ -522,6 +551,9 @@ onBeforeUnmount(() => {
                 rel="noopener noreferrer"
               >
                 打开支付页面
+              </n-button>
+              <n-button v-if="isPhone" size="small" block secondary @click="handleCopy(payLink)">
+                复制支付链接
               </n-button>
             </div>
 
