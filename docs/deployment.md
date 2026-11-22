@@ -146,6 +146,19 @@ sha256sum -c ../gorixpay-v2.3.0-linux-amd64.tar.gz.sha256   # 校验完整性
 
 包内已含二进制、`dist/`（前端产物）、`README.md`、`CHANGELOG.md`、`docs/`。放置时二进制与 `dist/` 必须在同一工作目录。
 
+国内服务器直连 GitHub 常常卡在 TLS 或几十年不变的几 KB/s，换成镜像前缀即可（把 GitHub 原地址整段跟在镜像域名后面）：
+
+```bash
+MIRROR=https://gh.acmsz.top
+curl -sSL -o gorixpay-v2.3.1-linux-amd64.tar.gz \
+  "$MIRROR/https://github.com/Wu-jiyan/GorixPay/releases/download/v2.3.1/gorixpay-v2.3.1-linux-amd64.tar.gz"
+curl -sSL -o gorixpay-v2.3.1-linux-amd64.tar.gz.sha256 \
+  "$MIRROR/https://github.com/Wu-jiyan/GorixPay/releases/download/v2.3.1/gorixpay-v2.3.1-linux-amd64.tar.gz.sha256"
+sha256sum -c gorixpay-v2.3.1-linux-amd64.tar.gz.sha256
+```
+
+镜像只解决下载速度，校验文件仍然对着官方 sha256，下载完一定要跑一次 `sha256sum -c`。
+
 二进制需要同目录下有 `frontend/dist`（或者用 `--public-url` 反代到别处的静态服务）。迁移 SQL 已经 `//go:embed` 进二进制，不用额外拷 `migrations/`。
 
 ### 3.2 配置

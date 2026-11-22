@@ -64,7 +64,7 @@ GorixPay 是彩虹易支付（Epay）的 Go 重写版，验收标准只有一条
 | 运营补口 | 后台手动与批量付款（批量失败整批回滚）、注册邀请码（并发不超发）、客诉自动规则（自动回复与超时关闭）、聚合收款码（真 QR）、商户自助测试支付、插件定时钩子 |
 | 可靠性 | Transactional Outbox（租约认领 + CAS 更新），商户通知重试，Redis 可选 |
 | 历史数据迁移 | `cmd/migrate-epay`，从 MySQL 或 SQLite 迁到 GorixPay，预检、dry-run、幂等 |
-| 发版 | `v2.3.0`（2026-11-22）：首个 tag 是 2026-11-13 的 `v2.0.0`；打 tag 即由 CI 构建 linux/amd64 与 arm64 包并附到 Release |
+| 发版 | `v2.3.1`（2026-11-22）：打 tag 即由 CI 构建 linux/amd64 与 arm64 包并附到 Release；`/health/live` 回 `version`/`commit`/`built_at` |
 
 ## 界面
 
