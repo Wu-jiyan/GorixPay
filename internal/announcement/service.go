@@ -20,7 +20,24 @@ const (
 	// settingCaptchaRequired is owned by internal/security; the public site payload
 	// only mirrors it so the login pages know whether to show a captcha box.
 	settingCaptchaRequired = "security.captcha_required"
+	// 注册门禁 / 首页模式 / 联系方式，对应上游 Epay 的 reg_open、homepage、kfqq 等。
+	settingRegisterMode = "register.mode"
+	settingHomepageMode = "site.homepage_mode"
+	settingHomepageURL  = "site.homepage_url"
+	settingContactEmail = "site.contact_email"
+	settingContactQQ    = "site.contact_qq"
+	settingICPNumber    = "site.icp_number"
 )
+
+// firstNonEmpty returns the first non-empty argument.
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
 
 type Service struct {
 	db  *gorm.DB
@@ -42,6 +59,17 @@ type Site struct {
 	// CaptchaRequired mirrors security.captcha_required so the login pages only show
 	// a captcha box when the platform actually asks for one.
 	CaptchaRequired bool `json:"captcha_required"`
+	// RegisterMode is the registration gate: open / closed / invite. The register
+	// page renders from it instead of always showing the form.
+	RegisterMode string `json:"register_mode"`
+	// HomepageMode says what "/" should do: landing / login / url (上游 Epay 的
+	// homepage 设置)。
+	HomepageMode string `json:"homepage_mode"`
+	HomepageURL  string `json:"homepage_url"`
+	// Contact details the footer and the payment page can show.
+	ContactEmail string `json:"contact_email"`
+	ContactQQ    string `json:"contact_qq"`
+	ICPNumber    string `json:"icp_number"`
 }
 
 type systemSetting struct {
@@ -185,6 +213,13 @@ func (service *Service) Site(ctx context.Context) (Site, error) {
 	// security.captcha_required is stored as a JSON boolean, so it needs its own
 	// decoder: decodeSetting only understands JSON strings and would answer "" here.
 	site.CaptchaRequired = decodeBoolSetting(settings["security.captcha_required"])
+	// 注册门禁与首页模式：公开站点信息要带上，注册页和首页据此改变行为。
+	site.RegisterMode = firstNonEmpty(decodeSetting(settings[settingRegisterMode]), "open")
+	site.HomepageMode = firstNonEmpty(decodeSetting(settings[settingHomepageMode]), "landing")
+	site.HomepageURL = decodeSetting(settings[settingHomepageURL])
+	site.ContactEmail = decodeSetting(settings[settingContactEmail])
+	site.ContactQQ = decodeSetting(settings[settingContactQQ])
+	site.ICPNumber = decodeSetting(settings[settingICPNumber])
 	latest, err := service.LatestPublished(ctx)
 	if err != nil {
 		return Site{}, err
@@ -211,7 +246,11 @@ func (service *Service) paymentTypes(ctx context.Context) []string {
 }
 
 func (service *Service) settings(ctx context.Context) (map[string]string, error) {
-	keys := []string{settingSiteName, settingSiteLogo, settingSiteFooter, settingSiteSkin, settingCaptchaRequired}
+	keys := []string{
+		settingSiteName, settingSiteLogo, settingSiteFooter, settingSiteSkin, settingCaptchaRequired,
+		settingRegisterMode, settingHomepageMode, settingHomepageURL,
+		settingContactEmail, settingContactQQ, settingICPNumber,
+	}
 	var records []systemSetting
 	if err := service.db.WithContext(ctx).Where("setting_key IN ?", keys).Find(&records).Error; err != nil {
 		return nil, err

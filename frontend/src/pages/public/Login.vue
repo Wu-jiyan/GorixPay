@@ -313,8 +313,6 @@ onBeforeUnmount(() => {
       <router-link to="/">返回首页</router-link>
       <span class="sep">·</span>
       <router-link to="/doc">开发文档</router-link>
-      <span class="sep">·</span>
-      <router-link to="/admin/login">运营登录</router-link>
     </div>
   </div>
 </template>

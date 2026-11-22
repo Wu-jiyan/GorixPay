@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"gorixpay/internal/identity/auth"
 	"gorixpay/internal/identity/model"
 	"gorixpay/internal/identity/session"
+	"gorixpay/internal/settings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,6 +27,39 @@ type Handler struct {
 	// forwards plain HTTP, so ctx.Request.TLS is nil on the only hop this process
 	// sees; without the flag the session cookie would travel over cleartext.
 	secureCookies bool
+	// settings reads the registration gate (register.mode). Nil means "always
+	// open", which keeps tests and embeddings of the service working.
+	settings *settings.Reader
+}
+
+// Options for the registration gate, matching 上游 Epay 的 reg_open.
+const (
+	registrationOpen    = "open"
+	registrationClosed  = "closed"
+	registrationInvite  = "invite"
+	settingRegisterMode = "register.mode"
+	defaultRegisterMode = registrationOpen
+)
+
+// WithSettings wires the setting reader used by the registration gate.
+func WithSettings(reader *settings.Reader) Option {
+	return func(handler *Handler) {
+		handler.settings = reader
+	}
+}
+
+// registrationMode answers the configured gate, defaulting to open when nothing
+// is configured (and when the reader is absent).
+func (handler *Handler) registrationMode(ctx context.Context) string {
+	if handler.settings == nil {
+		return registrationOpen
+	}
+	switch mode := strings.ToLower(handler.settings.TextOr(ctx, settingRegisterMode, defaultRegisterMode)); mode {
+	case registrationOpen, registrationClosed, registrationInvite:
+		return mode
+	default:
+		return registrationOpen
+	}
 }
 
 // Option tweaks what Register builds.
@@ -103,6 +138,18 @@ func (handler *Handler) registerMerchant(ctx *gin.Context) {
 	if err := ctx.ShouldBindJSON(&request); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "invalid request"})
 		return
+	}
+	// 注册门禁：上游 Epay 的「开放注册」是 开启 / 关闭 / 仅邀请 三态（admin/set.php
+	// 的 reg_open），关掉或只允许邀请时这里必须拦住，否则注册通道永远敞着。
+	if mode := handler.registrationMode(ctx); mode != registrationOpen {
+		if mode == registrationClosed {
+			ctx.JSON(http.StatusForbidden, gin.H{"code": "register_closed", "message": "站点暂未开放注册"})
+			return
+		}
+		if strings.TrimSpace(request.Invite) == "" && strings.TrimSpace(request.InviteCode) == "" {
+			ctx.JSON(http.StatusForbidden, gin.H{"code": "invite_required", "message": "本站仅限邀请注册，请填写邀请码"})
+			return
+		}
 	}
 	result, err := handler.auth.RegisterMerchantWithCodes(ctx.Request.Context(), request.Identifier, request.Password, request.Invite, request.InviteCode, auth.LoginMetadata{
 		IPAddress: ctx.ClientIP(),

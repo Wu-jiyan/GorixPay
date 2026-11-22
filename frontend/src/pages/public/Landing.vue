@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import {
   NAlert,
   NButton,
@@ -36,7 +36,7 @@ import {
 import PublicShell from '@/components/PublicShell.vue';
 import PaymentBrandIcon from '@/components/PaymentBrandIcon.vue';
 import { copyText, formatDateTime, paymentTypeText } from '@/utils/format';
-import { siteInfo } from '@/stores/site';
+import { siteInfo, loadSite } from '@/stores/site';
 
 const message = useMessage();
 
@@ -194,13 +194,35 @@ const features = [
 const faqs = [
   { q: '接入需要改多少代码？', a: '原来提交到易支付的表单，把域名换成这里即可；接口下单只需换 mapi.php 的地址。' },
   { q: '签名和密钥在哪里看？', a: '注册后进入商户中心「账号与密钥」，可自助轮换 MD5 密钥，也可生成 V2 的 RSA 密钥对。' },
-  { q: '结算怎么算？', a: '订单支付成功后进入可结算余额，按用户组的结算周期自动生成结算单，运营后台与商户端都能看到明细。' },
+  { q: '结算怎么算？', a: '订单支付成功后进入可结算余额，按用户组的结算周期自动生成结算单，平台侧与商户端都能看到明细。' },
   { q: '出问题怎么排查？', a: '每笔订单都能看到通道请求、回调投递、账本流水三条链路，定位不用猜。' },
 ];
 
 const go = (path: string) => {
   window.location.href = path;
 };
+
+// 首页显示模式（site.homepage_mode，对应上游 Epay 的 homepage 设置）：
+//   login → 直接跳商户登录页；url → 跳指定网址；landing → 正常显示首页。
+// 站点信息是异步拉的，所以放在 onMounted 里判断，避免首屏闪一下首页再跳走。
+onMounted(async () => {
+  await loadSite();
+  const mode = siteInfo.value.homepage_mode ?? 'landing';
+  if (mode === 'login') {
+    window.location.replace('/login');
+    return;
+  }
+  if (mode === 'url') {
+    const target = (siteInfo.value.homepage_url ?? '').trim();
+    if (/^https?:\/\//i.test(target)) {
+      window.location.replace(target);
+      return;
+    }
+    if (target.startsWith('/') && !target.startsWith('//')) {
+      window.location.replace(target);
+    }
+  }
+});
 </script>
 
 <template>

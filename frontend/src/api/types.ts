@@ -196,6 +196,14 @@ export interface SiteInfo {
   payment_types: string[];
   /** 平台是否要求登录图形验证码（security.captcha_required） */
   captcha_required?: boolean;
+  /** 注册门禁：open / closed / invite */
+  register_mode?: string;
+  /** 首页显示模式：landing / login / url */
+  homepage_mode?: string;
+  homepage_url?: string;
+  contact_email?: string;
+  contact_qq?: string;
+  icp_number?: string;
 }
 
 export interface AdminDashboard {

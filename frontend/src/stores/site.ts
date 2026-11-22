@@ -11,6 +11,8 @@ const state = ref<SiteInfo>({
   logo_url: '',
   footer_text: '',
   payment_types: [],
+  register_mode: 'open',
+  homepage_mode: 'landing',
 });
 
 let pending: Promise<void> | null = null;
@@ -40,6 +42,12 @@ export function loadSite(): Promise<void> {
         payment_types: site?.payment_types ?? [],
         announcement: site?.announcement ?? null,
         captcha_required: site?.captcha_required === true,
+        register_mode: site?.register_mode || 'open',
+        homepage_mode: site?.homepage_mode || 'landing',
+        homepage_url: site?.homepage_url || '',
+        contact_email: site?.contact_email || '',
+        contact_qq: site?.contact_qq || '',
+        icp_number: site?.icp_number || '',
       };
       applySkin();
       if (lastPageTitle) setPageTitle(lastPageTitle);

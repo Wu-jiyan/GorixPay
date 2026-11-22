@@ -71,6 +71,7 @@ import (
 	"gorixpay/internal/reporting"
 	"gorixpay/internal/risk"
 	"gorixpay/internal/security"
+	"gorixpay/internal/settings"
 	"gorixpay/internal/settlement"
 	"gorixpay/internal/transfer"
 	"gorixpay/migrations"
@@ -173,11 +174,15 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	securityService := security.New(db, cipher)
 	inviteCodes := invitecode.New(db)
 	authService := auth.NewService(db, sessions).WithChallenge(securityService).WithInviteCodes(inviteCodes)
+	// 一个 reader 贯穿全站只读设置（注册门禁、首页模式、通知重试等）。
+	settingReader := settings.NewReader(db)
 	identityhttp.Register(
 		router.Group("/api/v1"), authService, sessions,
 		// Behind a TLS terminator the inbound hop is plain HTTP, so the cookie
 		// only gets Secure when the operator declares an https public URL.
 		identityhttp.WithSecureCookies(strings.HasPrefix(strings.ToLower(cfg.HTTP.PublicURL), "https://")),
+		// 注册门禁读 register.mode（开启 / 关闭 / 仅邀请），上游 Epay 叫 reg_open。
+		identityhttp.WithSettings(settingReader),
 	)
 	security.Register(router.Group("/api/v1"), identityhttp.Authenticate(sessions), securityService)
 	// Without a real SMS/mail sender the service prints the reset token so a
@@ -279,7 +284,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		merchanthttp.RegisterOrders(merchant, merchantOrders)
 		merchanthttp.RegisterOrderNotify(merchant, merchantOrders, outboxQuery)
 		merchanthttp.RegisterPrinters(merchant, deviceService)
-		merchanthttp.RegisterFinance(merchant, finance)
+		merchanthttp.RegisterFinanceWithSettings(merchant, finance, settingReader)
 		merchanthttp.RegisterProfile(merchant, db)
 
 		adminGroup := router.Group("/api/v1/admin", identityhttp.Authenticate(sessions), identityhttp.RequireAdministrator())
@@ -354,7 +359,12 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		epaypage.Register(router, db, cfg.HTTP.PublicURL, notifier,
 			epaypage.WithCaptchaVerifier(securityService.VerifyCaptcha),
 			epaypage.WithStarter(orchestrator))
-		worker := outbox.NewWorker(db, notifier, time.Now, outbox.Options{})
+		worker := outbox.NewWorker(db, notifier, time.Now, outbox.Options{
+			// 通知重试次数与轮询间隔来自控制台（notification.*），以前这里传空
+			// Options，设置项存了却一直是编译期默认值。
+			MaxAttempts:  settingReader.Int(context.Background(), "notification.max_attempts", 0),
+			PollInterval: time.Duration(settingReader.Int(context.Background(), "notification.poll_interval_seconds", 0)) * time.Second,
+		})
 		workerContext, workerCancel := context.WithCancel(context.Background())
 		background := newBackgroundGroup(logger)
 		application.workerCancel = workerCancel

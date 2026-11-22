@@ -24,7 +24,6 @@ const year = new Date().getFullYear();
           <n-button text @click="router.push('/doc')">开发文档</n-button>
           <n-button text @click="router.push('/login')">商户登录</n-button>
           <n-button text @click="router.push('/register')">免费注册</n-button>
-          <n-button text @click="router.push('/admin/login')">运营入口</n-button>
         </n-space>
       </div>
       <n-text depth="3" class="copyright">© {{ year }} {{ siteName }}</n-text>

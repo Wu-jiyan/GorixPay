@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { useMessage, type FormInst, type FormItemRule, type FormRules } from 'naive-ui';
 import { authApi } from '@/api';
 import { errorMessage } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
+import { loadSite, siteInfo } from '@/stores/site';
 import BrandMark from '@/components/BrandMark.vue';
 
 const route = useRoute();
@@ -16,6 +17,16 @@ const auth = useAuthStore();
 const formRef = ref<FormInst | null>(null);
 const submitting = ref(false);
 const form = reactive({ identifier: '', password: '', confirm: '' });
+
+// 注册门禁（register.mode）：关掉或仅邀请时不再展示注册表单，避免填完才被后端拒。
+const registerMode = computed(() => siteInfo.value.register_mode || 'open');
+const canRegister = computed(
+  () => registerMode.value === 'open' || (registerMode.value === 'invite' && invite.value !== ''),
+);
+
+onMounted(() => {
+  void loadSite();
+});
 
 // 邀请码由分享链接带入（/register?invite=XXXXXXXX），只做去空白 + 大写透传，合法性由后端判定
 const invite = computed(() => {
@@ -113,7 +124,23 @@ async function handleSubmit() {
         <n-tag type="info" :bordered="false" size="small">邀请码：{{ invite }}</n-tag>
         <span class="invite-hint">注册成功后自动绑定邀请关系</span>
       </div>
-      <n-form ref="formRef" :model="form" :rules="rules" label-placement="top" size="large" @submit.prevent="handleSubmit">
+      <div v-if="!canRegister" class="closed-box">
+        <n-alert :type="registerMode === 'closed' ? 'warning' : 'info'" :bordered="false">
+          {{ registerMode === 'closed'
+            ? '本站暂未开放注册。如需开通商户号，请联系平台运营。'
+            : '本站仅限邀请注册，请使用带邀请码的注册链接，或联系邀请你的人。' }}
+        </n-alert>
+        <n-button block size="large" @click="router.push('/login')">去登录</n-button>
+      </div>
+      <n-form
+        v-else
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-placement="top"
+        size="large"
+        @submit.prevent="handleSubmit"
+      >
         <n-form-item label="邮箱或手机号" path="identifier">
           <n-input v-model:value="form.identifier" placeholder="you@example.com 或 13800000000" clearable />
         </n-form-item>
@@ -179,6 +206,11 @@ async function handleSubmit() {
   gap: 8px;
   flex-wrap: wrap;
   margin-bottom: 14px;
+}
+.closed-box {
+  display: grid;
+  gap: 14px;
+  margin-top: 4px;
 }
 .invite-hint {
   font-size: 12px;

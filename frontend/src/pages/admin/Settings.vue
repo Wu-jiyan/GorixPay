@@ -52,6 +52,43 @@ const tabs: Tab[] = [
       { key: 'site.test_payment_pid', label: '测试订单商户 UID', type: 'number', hint: '易支付老 UID；留空取最早注册的启用商户', min: 0 },
       { key: 'site.test_payment_max_cents', label: '支付测试单笔上限', type: 'cents', hint: '默认 ￥1，防止被当作付款通道滥用', min: 0 },
       { key: 'site.test_payment_hourly_limit', label: '支付测试每 IP 每小时笔数', type: 'number', hint: '按创建时间统计，默认 10', min: 1, max: 1000 },
+      {
+        key: 'site.homepage_mode',
+        label: '首页显示模式',
+        type: 'select',
+        hint: '「跳转登录」会把访问 / 的人直接送到商户登录页',
+        options: [
+          { label: '正常显示首页', value: 'landing' },
+          { label: '直接跳转登录页', value: 'login' },
+          { label: '显示指定网址', value: 'url' },
+        ],
+      },
+      { key: 'site.homepage_url', label: '指定网址', type: 'text', hint: '仅在首页显示模式为「显示指定网址」时使用，例如 https://example.com' },
+      { key: 'site.contact_qq', label: '客服 QQ', type: 'text', hint: '显示在官网与支付页的联系入口' },
+      { key: 'site.contact_email', label: '联系邮箱', type: 'text', hint: '显示在官网与支付页的联系入口' },
+      { key: 'site.icp_number', label: '备案号', type: 'text', hint: '填了会显示在官网页脚，例如 京ICP备00000000号' },
+    ],
+  },
+  {
+    name: 'register',
+    label: '注册与入驻',
+    intro: '是否开放注册、注册审核与商户自助能力。',
+    fields: [
+      {
+        key: 'register.mode',
+        label: '开放注册',
+        type: 'select',
+        hint: '「仅邀请」要求注册时填写邀请码（或邀请链接里的邀请码）',
+        options: [
+          { label: '开启', value: 'open' },
+          { label: '关闭', value: 'closed' },
+          { label: '仅邀请注册', value: 'invite' },
+        ],
+      },
+      { key: 'register.review_required', label: '注册后需审核', type: 'bool', hint: '开启后新商户默认不可下单，需运营审核通过' },
+      { key: 'payment.merchant_refund_enabled', label: '允许商户自助退款', type: 'bool', hint: '关闭后仅运营可发起退款' },
+      { key: 'payment.min_amount_cents', label: '单笔最小金额', type: 'cents', hint: '低于此金额的下单会被拒绝', min: 1 },
+      { key: 'payment.max_amount_cents', label: '单笔最大金额', type: 'cents', hint: '高于此金额的下单会被拒绝', min: 1 },
     ],
   },
   {

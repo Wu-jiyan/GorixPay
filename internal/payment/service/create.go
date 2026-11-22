@@ -13,6 +13,7 @@ import (
 	"time"
 
 	paymentmodel "gorixpay/internal/payment/model"
+	"gorixpay/internal/settings"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -26,6 +27,9 @@ const (
 	// settingOrderTTL is the system_settings key holding that window in minutes.
 	// 0 means "never expires".
 	settingOrderTTL = "payment.order_expiry_minutes"
+	// 单笔金额上下限（分），0/缺失沿用模型默认。
+	settingMinAmount = "payment.min_amount_cents"
+	settingMaxAmount = "payment.max_amount_cents"
 )
 
 // orderExpiry is when the order stops being payable.
@@ -105,13 +109,15 @@ type Service struct {
 	db     *gorm.DB
 	now    func() time.Time
 	guards []Guard
+	// settings reads the operator's per-order amount limits.
+	settings *settings.Reader
 }
 
 func New(db *gorm.DB, now func() time.Time) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{db: db, now: now}
+	return &Service{db: db, now: now, settings: settings.NewReader(db)}
 }
 
 // WithGuards returns a copy of the service with the given policy guards. The
@@ -124,6 +130,10 @@ func (service *Service) WithGuards(guards ...Guard) *Service {
 
 func (service *Service) Create(ctx context.Context, command CreateCommand) (paymentmodel.Order, bool, error) {
 	if err := validateCommand(command); err != nil {
+		return paymentmodel.Order{}, false, err
+	}
+	// 平台侧单笔金额上下限（payment.min_amount_cents / max_amount_cents）。
+	if err := service.amountWithinLimits(ctx, command.Amount); err != nil {
 		return paymentmodel.Order{}, false, err
 	}
 	for _, guard := range service.guards {
@@ -188,6 +198,24 @@ func validateCommand(command CreateCommand) error {
 		!validHTTPURL(command.NotifyURL) || (command.ReturnURL != "" && !validHTTPURL(command.ReturnURL)) ||
 		!validKind(command.Kind) {
 		return ErrInvalidCommand
+	}
+	return nil
+}
+
+// amountWithinLimits applies the operator's per-order floor and ceiling
+// (payment.min_amount_cents / payment.max_amount_cents). Both default to the
+// model bounds, so behaviour is unchanged until the console narrows them.
+func (service *Service) amountWithinLimits(ctx context.Context, amount int64) error {
+	if paymentmodel.ValidateAmount(amount) != nil {
+		return paymentmodel.ErrInvalidAmount
+	}
+	minimum := int64(service.settings.Int(ctx, settingMinAmount, 1))
+	maximum := int64(service.settings.Int(ctx, settingMaxAmount, int(paymentmodel.MaxAmount)))
+	if minimum > 0 && amount < minimum {
+		return paymentmodel.ErrInvalidAmount
+	}
+	if maximum > 0 && amount > maximum {
+		return paymentmodel.ErrInvalidAmount
 	}
 	return nil
 }

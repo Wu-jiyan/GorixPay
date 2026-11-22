@@ -9,22 +9,46 @@ import (
 	financemodel "gorixpay/internal/finance/model"
 	financeservice "gorixpay/internal/finance/service"
 	identityhttp "gorixpay/internal/identity/httpapi"
+	"gorixpay/internal/settings"
 
 	"github.com/gin-gonic/gin"
 )
 
 type FinanceHandler struct {
 	finance *financeservice.Service
+	// settings reads payment.merchant_refund_enabled: the operator can take the
+	// self-service refund button away from every merchant at once.
+	settings *settings.Reader
 }
 
 func RegisterFinance(group *gin.RouterGroup, finance *financeservice.Service) {
 	handler := &FinanceHandler{finance: finance}
+	registerFinanceRoutes(group, handler)
+}
+
+// RegisterFinanceWithSettings mounts the same routes with the setting reader that
+// gates merchant self-service refunds.
+func RegisterFinanceWithSettings(group *gin.RouterGroup, finance *financeservice.Service, reader *settings.Reader) {
+	handler := &FinanceHandler{finance: finance, settings: reader}
+	registerFinanceRoutes(group, handler)
+}
+
+func registerFinanceRoutes(group *gin.RouterGroup, handler *FinanceHandler) {
 	group.GET("/refunds", handler.refunds)
 	group.POST("/refunds", handler.createRefund)
 	group.GET("/refunds/:id", handler.refund)
 	group.POST("/settlements", handler.createSettlement)
 	group.GET("/settlements", handler.settlements)
 	group.GET("/settlements/:id", handler.settlement)
+}
+
+// refundAllowed answers whether merchants may start refunds themselves. Missing
+// setting or missing reader means enabled, which is the historical behaviour.
+func (handler *FinanceHandler) refundAllowed(ctx *gin.Context) bool {
+	if handler.settings == nil {
+		return true
+	}
+	return handler.settings.Bool(ctx.Request.Context(), "payment.merchant_refund_enabled", true)
 }
 
 func (handler *FinanceHandler) refunds(ctx *gin.Context) {
@@ -39,6 +63,10 @@ func (handler *FinanceHandler) refunds(ctx *gin.Context) {
 }
 
 func (handler *FinanceHandler) createRefund(ctx *gin.Context) {
+	if !handler.refundAllowed(ctx) {
+		ctx.JSON(http.StatusForbidden, gin.H{"code": "refund_disabled", "message": "平台未开放商户自助退款，请联系运营"})
+		return
+	}
 	merchantID := identityhttp.MustSession(ctx).PrincipalID
 	var request struct {
 		PaymentOrderID string `json:"payment_order_id" binding:"required"`

@@ -2,7 +2,11 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,6 +78,55 @@ var allowedSettings = map[string]bool{
 	"notify.sms_token":                   true,
 	"notification.max_attempts":          true,
 	"notification.poll_interval_seconds": true,
+	// 注册门禁、首页模式、联系方式 —— 对应上游 Epay 的 reg_open / homepage / kfqq。
+	"register.mode":            true,
+	"register.review_required": true,
+	"site.homepage_mode":       true,
+	"site.homepage_url":        true,
+	"site.contact_email":       true,
+	"site.contact_qq":          true,
+	"site.icp_number":          true,
+	// 平台级敞口：允许商户自助退款、单笔金额上下限。
+	"payment.merchant_refund_enabled": true,
+	"payment.min_amount_cents":        true,
+	"payment.max_amount_cents":        true,
+}
+
+// settingRules bounds the values the console may write. Without them every key
+// accepted anything that was valid JSON: invite.rate_bp could be stored as 50000
+// (a 500% rebate), site.skin as any string (a skin class that styles nothing), and
+// a negative risk limit read as "off" instead of being rejected.
+//
+// The zero value means "no rule"; only keys listed here are checked.
+type settingRule struct {
+	min    float64
+	max    float64
+	hasMin bool
+	hasMax bool
+	// enum restricts a text value to a fixed set.
+	enum []string
+	// integer rejects fractional numbers.
+	integer bool
+}
+
+var settingRules = map[string]settingRule{
+	"register.mode":                      {enum: []string{"open", "closed", "invite"}},
+	"site.homepage_mode":                 {enum: []string{"landing", "login", "url"}},
+	"site.skin":                          {enum: []string{"default", "dark", "compact"}},
+	"payment.order_expiry_minutes":       {min: 0, max: 1440, hasMin: true, hasMax: true, integer: true},
+	"payment.min_amount_cents":           {min: 1, max: 100_000_000, hasMin: true, hasMax: true, integer: true},
+	"payment.max_amount_cents":           {min: 1, max: 100_000_000, hasMin: true, hasMax: true, integer: true},
+	"invite.rate_bp":                     {min: 0, max: 10000, hasMin: true, hasMax: true, integer: true},
+	"risk.daily_amount_limit_cents":      {min: 0, max: 1_000_000_000, hasMin: true, hasMax: true, integer: true},
+	"risk.daily_order_limit":             {min: 0, max: 1_000_000, hasMin: true, hasMax: true, integer: true},
+	"risk.ip_daily_limit":                {min: 0, max: 1_000_000, hasMin: true, hasMax: true, integer: true},
+	"certification.fee_cents":            {min: 0, max: 100_000_000, hasMin: true, hasMax: true, integer: true},
+	"merchant.deposit_required_cents":    {min: 0, max: 100_000_000, hasMin: true, hasMax: true, integer: true},
+	"site.test_payment_pid":              {min: 0, max: 10_000_000_000, hasMin: true, hasMax: true, integer: true},
+	"site.test_payment_max_cents":        {min: 1, max: 100_000_000, hasMin: true, hasMax: true, integer: true},
+	"site.test_payment_hourly_limit":     {min: 1, max: 1000, hasMin: true, hasMax: true, integer: true},
+	"notification.max_attempts":          {min: 1, max: 50, hasMin: true, hasMax: true, integer: true},
+	"notification.poll_interval_seconds": {min: 1, max: 3600, hasMin: true, hasMax: true, integer: true},
 }
 
 // settings lists the operator editable settings. Credential keys are never
@@ -125,6 +178,12 @@ func (handler *Handler) updateSetting(ctx *gin.Context) {
 		handler.updateSecretSetting(ctx, key, request.Value, now)
 		return
 	}
+	if err := validateSettingValue(key, request.Value); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"code": "invalid_setting_value", "message": err.Error(), "key": key,
+		})
+		return
+	}
 	encoded, err := json.Marshal(request.Value)
 	if err != nil || len(encoded) > 4096 {
 		invalidRequest(ctx)
@@ -136,6 +195,60 @@ func (handler *Handler) updateSetting(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{"key": key, "value": request.Value, "updated_at": now})
+}
+
+// validateSettingValue enforces the bounds and enumerations declared in
+// settingRules. A key without a rule accepts whatever the console sends.
+func validateSettingValue(key string, value any) error {
+	rule, ok := settingRules[key]
+	if !ok {
+		return nil
+	}
+	if len(rule.enum) > 0 {
+		text, isText := value.(string)
+		if !isText {
+			return errors.New("该设置需要文本值")
+		}
+		for _, allowed := range rule.enum {
+			if strings.EqualFold(strings.TrimSpace(text), allowed) {
+				return nil
+			}
+		}
+		return fmt.Errorf("只能是 %s 之一", strings.Join(rule.enum, " / "))
+	}
+	number, err := numericSetting(value)
+	if err != nil {
+		return err
+	}
+	if rule.integer && math.Trunc(number) != number {
+		return errors.New("该设置需要整数")
+	}
+	if rule.hasMin && number < rule.min {
+		return fmt.Errorf("不能小于 %v", rule.min)
+	}
+	if rule.hasMax && number > rule.max {
+		return fmt.Errorf("不能大于 %v", rule.max)
+	}
+	return nil
+}
+
+// numericSetting accepts the JSON number the console sends and the quoted form an
+// older page may still send.
+func numericSetting(value any) (float64, error) {
+	switch typed := value.(type) {
+	case float64:
+		return typed, nil
+	case int:
+		return float64(typed), nil
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		if err != nil {
+			return 0, errors.New("该设置需要数字")
+		}
+		return parsed, nil
+	default:
+		return 0, errors.New("该设置需要数字")
+	}
 }
 
 // updateSecretSetting stores a credential encrypted. An empty value means "keep
