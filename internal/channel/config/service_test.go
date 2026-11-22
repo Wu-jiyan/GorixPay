@@ -41,12 +41,16 @@ func TestServiceEncryptsAndDecryptsChannelBoundConfig(t *testing.T) {
 
 func TestServiceEncryptsExtraConfigurationForNonEpayPlugins(t *testing.T) {
 	service := NewService(testCipher(t))
-	want := Config{Extra: map[string]string{"app_id": " 2021000000 ", "private_key": "PEM", "blank": "  "}}
+	// 这里的标记故意做长、做高熵：密文是随机字节的 base64，短标记（原来只有
+	// "PEM" 三个字母）有约 1/26 万/位置的几率恰好出现在密文里，-race 下跑得多
+	// 就会偶发红 —— 那是标记太短，不是加密坏了。
+	const privateKeyMarker = "PEM-MARKER-8f3a9c2e5b7d1046c8a1"
+	want := Config{Extra: map[string]string{"app_id": " 2021000000 ", "private_key": privateKeyMarker, "blank": "  "}}
 	encrypted, err := service.Encrypt("channel-alipay", want)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(encrypted, "PEM") {
+	if strings.Contains(encrypted, privateKeyMarker) {
 		t.Fatal("encrypted config contains plaintext private key")
 	}
 	got, err := service.Decrypt("channel-alipay", encrypted)
@@ -56,7 +60,7 @@ func TestServiceEncryptsExtraConfigurationForNonEpayPlugins(t *testing.T) {
 	if got.APIURL != "" || got.PID != "" || got.Key != "" {
 		t.Fatalf("legacy fields unexpectedly populated: %+v", got)
 	}
-	if got.Extra["app_id"] != "2021000000" || got.Extra["private_key"] != "PEM" {
+	if got.Extra["app_id"] != "2021000000" || got.Extra["private_key"] != privateKeyMarker {
 		t.Fatalf("extra=%+v", got.Extra)
 	}
 	if _, ok := got.Extra["blank"]; ok {
