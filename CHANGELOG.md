@@ -33,6 +33,9 @@
 - **电脑端支付宝不再报「当前订单支付方式不支持」**：PC 上不再 pin `A_NATIVE`/`U_NATIVE` —— 这两个是汇付托管的产品级开关，商户没开就会回这个错；微信一直正常正是因为它从没 pin 过 `T_NATIVE`。现在只有「微信内 + 微信支付」pin `T_JSAPI`、「支付宝内 + 支付宝」pin `A_JSAPI`。
 - **去掉「返回商户」按钮**：未支付时它指向 `checkpay`，而 `checkpay` 又会把人送回支付页，点一下等于原地闪跳。
 - 页面加厚：品牌色状态条、支付方式徽标 + 待支付 chip、操作区浅底框、勾选式信任说明、订单状态行；支付链接截断展示 + 复制按钮取 hidden 全量值。
+- **版面改成「摘要 + 操作」双栏**（参考正规收银台的结构，不借它的配色）：桌面左栏说清这是什么钱（支付方式、收款方、金额、信任说明、客服），右栏说清怎么付（扫码 / 唤起 App、支付链接、明细两列、主按钮）；手机仍单列，右栏标题自动隐藏避免与按钮文字撞车。明细从纵向列表改为两列并排，手机回落单列。
+- **新增「我已完成支付」按钮**：先查一次状态，已付才跳转，没付只提示「暂未收到付款」。不直接跳 `checkpay`，否则又变成那个点了会闪回原页的按钮。
+- **新增客服块**：只在运营填了 `site.contact_qq` / `site.contact_email` 时出现，不编造「客服在线 08:00-22:00」这类没有数据支撑的文案。
 - 手机微信保留「复制链接，去微信付款」主操作与「打开微信」次按钮（`weixin://`）。
 - 测试支付页提交后直接跳到服务端支付页，与易支付 `test.php` 一致，不再在本页二次解析二维码。
 
@@ -42,8 +45,9 @@
 - 22 处区块间距从内联 `margin-top: 16px` 换成 `.gp-section-gap`；11 处元素内部间距刻意跳过，避免与弹窗自身节奏打架。
 
 ### 工程
-- CI 增加 `go mod tidy` 漂移检查、`go test -race ./internal/...` 独立 job、前端类型检查独立步骤。
-- 新增 `.github/workflows/release.yml`：打 tag 构建 linux/amd64 与 arm64 二进制 + 前端产物，用 `gh release create` 发布并附 sha256；release notes 直接取本文件的版本段落。
+- CI 增加 `go mod tidy` 漂移检查、`go test -race ./internal/...` 独立 job、前端类型检查独立步骤。`-race` 第一次跑就抓出一条错误断言（整改见下）与内存库复用问题。
+- `internal/transfer` 的两处测试修正：`approval_race_test.go` 的 approve 分支原本断言 available 3000，等于要求「冻结既退回又消耗」（商户凭空少 1000），实际正确值是 4000；这条断言一直被 reject 先抢到状态掩盖着。`transferFixture` 的内存 SQLite 改成每轮唯一名，`go test -count=N` 不再撞主键。
+- 新增 `.github/workflows/release.yml`：打 tag 构建 linux/amd64 与 arm64 二进制 + 前端产物，用 `gh release create` 发布并附 sha256（校验文件写纯文件名，`sha256sum -c` 开箱可用）；release notes 直接取本文件的版本段落；支持 `workflow_dispatch` 重跑已存在的 tag（覆盖资产与说明，不重复创建）。
 - `/health/live` 与 `/health/ready` 返回 `version` / `commit` / `built_at`，由 link time 注入，可在生产直接确认跑的是哪个 tag。
 ## [2.2.2] - 2026-11-14
 
