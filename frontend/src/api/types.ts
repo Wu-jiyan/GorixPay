@@ -32,7 +32,7 @@ export interface Merchant {
 export interface LoginResult {
   token: string;
   expires_at: string;
-  merchant?: { id: string; display_name: string; legacy_uid?: number | null };
+  merchant?: { id: string; display_name: string; legacy_uid?: number | null; status?: string };
   administrator?: Administrator;
 }
 

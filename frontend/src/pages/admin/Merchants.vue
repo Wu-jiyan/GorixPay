@@ -96,10 +96,15 @@ function settleModeTag(row: Merchant) {
 }
 
 async function toggleStatus(row: Merchant) {
+  // pending 是「注册审核未通过」：运营点一下就是审核通过（→ active）。
   const next = row.status === 'active' ? 'disabled' : 'active';
   try {
     await adminApi.setMerchantStatus(row.id, next);
-    message.success(next === 'active' ? '商户已启用' : '商户已禁用');
+    if (row.status === 'pending' && next === 'active') {
+      message.success('审核通过，商户已启用');
+    } else {
+      message.success(next === 'active' ? '商户已启用' : '商户已禁用');
+    }
     await load();
   } catch (error) {
     message.error(errorMessage(error));

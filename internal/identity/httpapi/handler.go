@@ -164,6 +164,10 @@ func (handler *Handler) registerMerchant(ctx *gin.Context) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"code": "invite_code_invalid", "message": "invite code is invalid"})
 			return
 		}
+		if errors.Is(err, auth.ErrMerchantPending) {
+			ctx.JSON(http.StatusForbidden, gin.H{"code": "merchant_pending", "message": "账号待审核，审核通过后即可使用"})
+			return
+		}
 		ctx.JSON(http.StatusInternalServerError, gin.H{"code": "internal_error", "message": "internal server error"})
 		return
 	}
@@ -184,6 +188,8 @@ func (handler *Handler) registerMerchant(ctx *gin.Context) {
 			"legacy_uid":   result.Merchant.LegacyUID,
 			"display_name": result.Merchant.DisplayName,
 			"invite_code":  auth.InviteCodeOf(result.Merchant),
+			// pending 表示注册审核未通过，前端据此提示「待审核」而不是直接进后台。
+			"status": result.Merchant.Status,
 		},
 	})
 }
@@ -202,6 +208,10 @@ func (handler *Handler) loginMerchant(ctx *gin.Context) {
 		TOTPCode:    request.TOTPCode,
 	})
 	if err != nil {
+		if errors.Is(err, auth.ErrMerchantPending) {
+			ctx.JSON(http.StatusForbidden, gin.H{"code": "merchant_pending", "message": "账号待审核，审核通过后即可登录"})
+			return
+		}
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			ctx.JSON(http.StatusUnauthorized, gin.H{"code": "invalid_credentials", "message": "invalid credentials"})
 			return
@@ -237,6 +247,8 @@ func (handler *Handler) loginMerchant(ctx *gin.Context) {
 			"legacy_uid":   result.Merchant.LegacyUID,
 			"display_name": result.Merchant.DisplayName,
 			"invite_code":  auth.InviteCodeOf(result.Merchant),
+			// pending 表示注册审核未通过，前端据此提示「待审核」而不是直接进后台。
+			"status": result.Merchant.Status,
 		},
 	})
 }

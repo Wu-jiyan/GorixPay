@@ -17,6 +17,11 @@ import (
 var ErrInvalidCredentials = errors.New("invalid credentials")
 var ErrMerchantExists = errors.New("merchant already exists")
 
+// ErrMerchantPending reports an account that exists but is waiting for the
+// operator's review. It is distinct from bad credentials so the login page can
+// say「待审核」instead of「账号或密码错误」.
+var ErrMerchantPending = errors.New("merchant pending review")
+
 // Second-factor and anti-bot failures surfaced to the login endpoint.
 var (
 	ErrCaptchaRequired = errors.New("captcha required")
@@ -72,10 +77,29 @@ type Service struct {
 	sessions    *session.Service
 	challenge   Challenge
 	inviteCodes InviteCodeConsumer
+	// reviewRequired decides whether a new merchant starts as pending (上游 Epay
+	// 的「开启注册审核」). Nil means every signup is active immediately.
+	reviewRequired func(context.Context) bool
 }
 
 func NewService(db *gorm.DB, sessions *session.Service) *Service {
 	return &Service{db: db, sessions: sessions}
+}
+
+// WithReviewRequired returns a copy of the service whose new merchants start as
+// pending when the callback answers true.
+func (service *Service) WithReviewRequired(reviewRequired func(context.Context) bool) *Service {
+	copied := *service
+	copied.reviewRequired = reviewRequired
+	return &copied
+}
+
+// statusForNewMerchant is the status a fresh signup gets.
+func (service *Service) statusForNewMerchant(ctx context.Context) model.Status {
+	if service.reviewRequired != nil && service.reviewRequired(ctx) {
+		return model.StatusPending
+	}
+	return model.StatusActive
 }
 
 // WithChallenge returns a copy of the service with the captcha and TOTP hook
@@ -105,6 +129,9 @@ func (service *Service) LoginMerchant(ctx context.Context, identifier, secret st
 			return MerchantLogin{}, ErrInvalidCredentials
 		}
 		return MerchantLogin{}, err
+	}
+	if merchant.Status == model.StatusPending {
+		return MerchantLogin{}, ErrMerchantPending
 	}
 	if merchant.Status != model.StatusActive || merchant.PasswordHash == nil {
 		return MerchantLogin{}, ErrInvalidCredentials

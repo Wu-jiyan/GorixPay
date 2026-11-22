@@ -176,6 +176,11 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	authService := auth.NewService(db, sessions).WithChallenge(securityService).WithInviteCodes(inviteCodes)
 	// 一个 reader 贯穿全站只读设置（注册门禁、首页模式、通知重试等）。
 	settingReader := settings.NewReader(db)
+	// 「开启注册审核」（register.review_required）：新商户注册后先落在 pending，
+	// 由运营在商户列表里改成 active 才算通过。
+	authService = authService.WithReviewRequired(func(ctx context.Context) bool {
+		return settingReader.Bool(ctx, "register.review_required", false)
+	})
 	identityhttp.Register(
 		router.Group("/api/v1"), authService, sessions,
 		// Behind a TLS terminator the inbound hop is plain HTTP, so the cookie

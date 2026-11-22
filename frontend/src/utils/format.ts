@@ -56,6 +56,7 @@ export function financeStatus(status?: string) {
 export function activeStatus(status?: string) {
   if (status === 'active') return { text: '启用', type: 'success' as const };
   if (status === 'disabled') return { text: '禁用', type: 'default' as const };
+  if (status === 'pending') return { text: '待审核', type: 'warning' as const };
   return { text: status || '-', type: 'default' as const };
 }
 

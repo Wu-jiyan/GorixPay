@@ -95,6 +95,13 @@ async function handleSubmit() {
       message.error('注册成功但未返回商户信息，请使用登录页登录');
       return;
     }
+    // 平台开启了注册审核：账号先落 pending，运营通过后才能真正使用，
+    // 这时不要把用户送进商户中心（会被权限守卫弹回来）。
+    if (res.merchant.status === 'pending') {
+      message.success('注册已提交，等待平台审核通过后即可登录使用', { duration: 5000 });
+      await router.replace('/login');
+      return;
+    }
     auth.setMerchantLogin(res.merchant);
     message.success('注册成功，正在进入商户中心');
     await router.replace('/merchant');

@@ -110,7 +110,7 @@ func (service *Service) RegisterMerchantWithInvite(ctx context.Context, identifi
 		Phone:        phone,
 		PasswordHash: &hash,
 		DisplayName:  identifier,
-		Status:       model.StatusActive,
+		Status:       service.statusForNewMerchant(ctx),
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}

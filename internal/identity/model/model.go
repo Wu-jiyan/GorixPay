@@ -12,7 +12,11 @@ const (
 type Status string
 
 const (
-	StatusActive   Status = "active"
+	StatusActive Status = "active"
+	// StatusPending is a merchant waiting for the operator's review (上游 Epay 的
+	// 「开启注册审核」)。Such a merchant can sign in and configure, but must not be
+	// able to create orders until an administrator flips it to active.
+	StatusPending  Status = "pending"
 	StatusDisabled Status = "disabled"
 )
 
