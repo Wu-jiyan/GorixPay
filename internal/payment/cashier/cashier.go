@@ -110,7 +110,8 @@ func (handler *Handler) start(ctx *gin.Context) {
 		ctx.JSON(http.StatusConflict, gin.H{"code": "order_closed", "message": "订单已关闭"})
 		return
 	}
-	if !order.ExpiresAt.After(handler.now().UTC()) {
+	// 零值表示「不设过期」（payment.order_ttl_minutes=0），这时不做超时判断。
+	if !order.ExpiresAt.IsZero() && !order.ExpiresAt.After(handler.now().UTC()) {
 		ctx.JSON(http.StatusGone, gin.H{"code": "order_expired", "message": "订单已过期"})
 		return
 	}

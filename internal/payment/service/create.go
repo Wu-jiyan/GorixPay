@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +17,43 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+const (
+	// defaultOrderTTL is how long an order stays payable when the console has not
+	// configured payment.order_ttl_minutes. 上游 Epay 的订单超时也是运营可配的
+	// 清理周期（默认 30 分钟）。
+	defaultOrderTTL = 30 * time.Minute
+	// settingOrderTTL is the system_settings key holding that window in minutes.
+	// 0 means "never expires".
+	settingOrderTTL = "payment.order_expiry_minutes"
+)
+
+// orderExpiry is when the order stops being payable.
+//
+// 以前这里硬编码 5 分钟：买家选通道、跳 App、输密码，稍微慢一点收银台就回
+// 「订单已过期」，是真实的掉单来源。现在读设置，缺失或非法用 30 分钟，0 表示不过期。
+func (service *Service) orderExpiry(ctx context.Context, now time.Time) time.Time {
+	ttl := defaultOrderTTL
+	if service.db != nil {
+		var raw string
+		err := service.db.WithContext(ctx).Table("system_settings").
+			Select("setting_value").Where("setting_key = ?", settingOrderTTL).Limit(1).Scan(&raw).Error
+		if err == nil {
+			trimmed := strings.TrimSpace(raw)
+			var decoded string
+			if json.Unmarshal([]byte(trimmed), &decoded) == nil {
+				trimmed = strings.TrimSpace(decoded)
+			}
+			if minutes, parseErr := strconv.Atoi(trimmed); parseErr == nil && minutes >= 0 {
+				ttl = time.Duration(minutes) * time.Minute
+			}
+		}
+	}
+	if ttl <= 0 {
+		return time.Time{}
+	}
+	return now.Add(ttl)
+}
 
 var (
 	ErrInvalidCommand      = errors.New("invalid create order command")
@@ -127,7 +166,7 @@ func (service *Service) Create(ctx context.Context, command CreateCommand) (paym
 		ClientIP:    optional(command.ClientIP),
 		Buyer:       optional(command.Buyer),
 		Attach:      optional(command.Attach),
-		ExpiresAt:   now.Add(5 * time.Minute),
+		ExpiresAt:   service.orderExpiry(ctx, now),
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}

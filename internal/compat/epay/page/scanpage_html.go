@@ -181,11 +181,7 @@ font-variant-numeric:tabular-nums;letter-spacing:.3px}
           <p class="hint">也可以复制下方链接，在对应的 App 里打开。</p>
         {{end}}
 
-        <div class="countdown-bar">
-          <div class="countdown-top"><span>剩余支付时间</span><b id="countdown">--:--</b></div>
-          <div class="track" id="track"><i id="trackbar" style="width:100%"></i></div>
         </div>
-      </div>
 
       <div class="link">
         <span class="link-label">{{if .Desktop}}支付链接{{else}}支付链接（复制到 {{.Brand}} 打开）{{end}}</span>
@@ -263,40 +259,9 @@ if(opener){
     },120);
   });
 }
-// 倒计时：数字 + 进度条一起走，归零后停下动作区并给出下一步
-var deadline={{.ExpiresAtMS}}, total={{.TotalMS}};
-var countdown=document.getElementById('countdown');
-var bar=document.getElementById('trackbar');
-var track=document.getElementById('track');
-var card=document.getElementById('card');
+// 轮询：付完自动走，和上游 wxpay_wap 的 loadmsg() 一样
 var statusEl=document.getElementById('status');
 var statetext=document.getElementById('statetext');
-function tick(){
-  if(!deadline){countdown.textContent='—';return false;}
-  var left=deadline-Date.now();
-  if(left<=0){
-    countdown.textContent='已超时';
-    countdown.style.color='#dc2626';
-    if(bar){bar.style.width='0%';}
-    if(track){track.className='track warn';}
-    card.className='card is-expired';
-    if(statetext){statetext.textContent='已超时';}
-    statusEl.className='status error';
-    statusEl.textContent='订单已超时，请返回商户重新下单';
-    return true;
-  }
-  var totalSec=Math.floor(left/1000),h=Math.floor(totalSec/3600),m=Math.floor(totalSec%3600/60),s=totalSec%60;
-  var pad=function(n){return n<10?'0'+n:''+n;};
-  countdown.textContent=(h>0?h+':':'')+pad(m)+':'+pad(s);
-  if(bar&&total>0){bar.style.width=Math.max(0,Math.min(100,(left/total)*100)).toFixed(1)+'%';}
-  if(left<60000){
-    countdown.style.color='#dc2626';
-    if(track){track.className='track warn';}
-  }
-  return false;
-}
-if(!tick()){setInterval(tick,1000);}
-// 轮询：付完自动走，和上游 wxpay_wap 的 loadmsg() 一样
 var pollTimer=setInterval(function(){
   fetch('{{.PollURL}}',{credentials:'omit',cache:'no-store'})
     .then(function(r){return r.json();})
