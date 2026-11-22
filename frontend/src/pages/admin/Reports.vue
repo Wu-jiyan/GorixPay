@@ -268,7 +268,7 @@ onMounted(() => {
       </n-grid-item>
     </n-grid>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-tabs type="line" animated>
         <n-tab-pane name="buyers">
           <template #tab>

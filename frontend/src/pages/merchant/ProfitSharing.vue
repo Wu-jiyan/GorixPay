@@ -332,7 +332,7 @@ onMounted(() => {
       </n-space>
     </template>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-tabs v-model:value="activeTab" type="line" animated>
         <n-tab-pane name="receivers" tab="我的接收方">
           <n-alert type="info" :bordered="false" style="margin-bottom: 12px">

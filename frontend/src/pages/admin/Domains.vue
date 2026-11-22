@@ -232,7 +232,7 @@ onMounted(load);
       域名审核接口未启用：后端 <n-text code>/admin/domains</n-text> 尚未就绪（404），完成后本页自动可用。
     </n-alert>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">
         <n-gi>
           <n-select

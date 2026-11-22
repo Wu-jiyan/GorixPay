@@ -577,7 +577,7 @@ onMounted(load);
       代付接口未启用：后端 <n-text class="mono">/admin/transfers</n-text> 尚未就绪（404），完成后本页自动可用。
     </n-alert>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-form :show-feedback="false" :label-placement="isNarrow ? 'top' : 'left'">
         <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12">
           <n-gi>

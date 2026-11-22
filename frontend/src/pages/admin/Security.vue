@@ -388,7 +388,7 @@ onMounted(reloadAll);
       </n-spin>
     </n-card>
 
-    <n-card size="small" :bordered="false" title="登录审计">
+    <n-card :bordered="false" title="登录审计">
       <template #header-extra>
         <n-text depth="3">当前页失败 {{ failedCount }} 条</n-text>
       </template>

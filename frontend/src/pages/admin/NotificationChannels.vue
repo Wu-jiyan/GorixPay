@@ -339,7 +339,7 @@ onMounted(load);
       配置值加密存储、后端只回键名：留空表示不修改，填新值才会覆盖。没有接真实短信/邮件网关时，测试消息只会打到服务端日志，不会真的发出去。
     </n-alert>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-tabs :value="activeTab" type="line" animated @update:value="handleTab">
         <n-tab-pane v-for="tab in kindTabs" :key="tab.name" :name="tab.name" :tab="tab.label">
           <n-alert v-if="tab.name === 'wechat'" type="info" :bordered="false">

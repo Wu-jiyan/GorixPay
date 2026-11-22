@@ -218,7 +218,7 @@ const columns = computed<DataTableColumns<CleanupResultRow>>(() => [
       </n-alert>
     </n-card>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <template #header>
         <n-space align="center" :size="8">
           <n-text>执行结果</n-text>

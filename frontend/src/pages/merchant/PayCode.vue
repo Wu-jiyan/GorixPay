@@ -153,7 +153,7 @@ onMounted(() => {
       </n-button>
     </template>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-tabs v-model:value="activeTab" type="line" animated>
         <n-tab-pane name="code" tab="收款码">
           <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16">

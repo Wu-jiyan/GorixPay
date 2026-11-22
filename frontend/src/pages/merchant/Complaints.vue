@@ -223,7 +223,7 @@ onMounted(() => {
       投诉由平台运营与渠道处理中，商户端不提供回复入口；如需补充材料请联系平台运营。
     </n-alert>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-data-table
         remote
         :columns="columns"
@@ -274,7 +274,7 @@ onMounted(() => {
               </n-descriptions-item>
             </n-descriptions>
 
-            <n-card size="small" :bordered="false" title="沟通记录" style="margin-top: 16px">
+            <n-card :bordered="false" title="沟通记录" class="gp-section-gap">
               <n-timeline v-if="detail.messages && detail.messages.length">
                 <n-timeline-item
                   v-for="(msg, index) in detail.messages"
@@ -287,7 +287,7 @@ onMounted(() => {
               <n-empty v-else description="暂无沟通记录" size="small" />
             </n-card>
 
-            <n-card size="small" :bordered="false" title="回复投诉" style="margin-top: 16px">
+            <n-card :bordered="false" title="回复投诉" class="gp-section-gap">
               <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
                 <n-form-item label="回复内容">
                   <n-input

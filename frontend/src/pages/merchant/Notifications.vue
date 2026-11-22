@@ -134,7 +134,7 @@ onMounted(reload);
     </template>
 
     <n-spin :show="loading">
-      <n-card size="small" :bordered="false">
+      <n-card :bordered="false">
         <template #header>通知场景</template>
         <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
           <n-form-item label="支付成功">
@@ -158,7 +158,7 @@ onMounted(reload);
         </n-form>
       </n-card>
 
-      <n-card size="small" :bordered="false" class="gp-section-gap">
+      <n-card :bordered="false" class="gp-section-gap">
         <template #header>通知渠道</template>
         <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
           <n-form-item label="送达方式">

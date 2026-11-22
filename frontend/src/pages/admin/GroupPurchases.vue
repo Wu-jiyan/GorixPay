@@ -229,7 +229,7 @@ onMounted(() => {
       </n-space>
     </template>
 
-    <n-card size="small" :bordered="false" class="gp-section-gap">
+    <n-card :bordered="false" class="gp-section-gap">
       <template #header>套餐目录</template>
       <template #header-extra>
         <n-text depth="3" class="gp-hint">只读；改价请到「用户组与费率」页</n-text>
@@ -250,7 +250,7 @@ onMounted(() => {
       </n-data-table>
     </n-card>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">
         <n-gi>
           <n-input

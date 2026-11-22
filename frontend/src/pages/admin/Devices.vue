@@ -518,7 +518,7 @@ onMounted(() => {
       设备端用「device_no + secret」轮询取任务；支付成功钩子会把播报文案与打印小票写入队列。创建时返回的 secret 只显示一次，丢了用操作列的「重置密钥」换一个新的。
     </n-alert>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-tabs :value="tab" type="line" animated @update:value="handleTab">
         <n-tab-pane name="voice" tab="语音设备">
           <n-data-table

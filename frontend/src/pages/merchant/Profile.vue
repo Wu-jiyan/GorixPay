@@ -276,7 +276,7 @@ onMounted(reload);
       </n-button>
     </template>
 
-    <n-card size="small" :bordered="false" title="账户资料">
+    <n-card :bordered="false" title="账户资料">
       <n-spin :show="loading">
         <n-form
           ref="formRef"
@@ -324,7 +324,7 @@ onMounted(reload);
       </n-spin>
     </n-card>
 
-    <n-card size="small" :bordered="false" title="基本信息" style="margin-top: 16px">
+    <n-card :bordered="false" title="基本信息" class="gp-section-gap">
       <n-spin :show="loading">
         <n-descriptions :column="isNarrow ? 1 : 2" bordered size="small" :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 120">
           <n-descriptions-item label="商户 ID">
@@ -348,7 +348,7 @@ onMounted(reload);
       </n-spin>
     </n-card>
 
-    <n-card size="small" :bordered="false" title="修改密码" style="margin-top: 16px">
+    <n-card :bordered="false" title="修改密码" class="gp-section-gap">
       <n-form
         ref="pwdFormRef"
         :model="pwdForm"
@@ -407,7 +407,7 @@ onMounted(reload);
       </n-form>
     </n-card>
 
-    <n-card size="small" :bordered="false" title="通知偏好" style="margin-top: 16px">
+    <n-card :bordered="false" title="通知偏好" class="gp-section-gap">
       <n-spin :show="prefsLoading">
         <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
           <n-form-item label="支付成功通知">
@@ -436,7 +436,7 @@ onMounted(reload);
       <n-text depth="3" class="gp-hint">选择接收哪些业务通知，以及通知发送渠道。短信需要先绑定手机号。</n-text>
     </n-card>
 
-    <n-card size="small" :bordered="false" title="第三方账号绑定" style="margin-top: 16px">
+    <n-card :bordered="false" title="第三方账号绑定" class="gp-section-gap">
       <n-spin :show="oauthLoading">
         <n-list v-if="bindings.length" bordered>
           <n-list-item v-for="item in bindings" :key="item.provider">

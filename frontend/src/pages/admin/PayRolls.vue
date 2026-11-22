@@ -431,7 +431,7 @@ onMounted(() => {
       收银台按当天的权重在渠道之间轮询：当天没配置的渠道沿用自身权重，配置了但停用的同样按未配置处理。
     </n-alert>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <template #header>
         <n-grid cols="1 s:2" responsive="screen" :x-gap="12" :y-gap="8" style="width: 100%">
           <n-gi>

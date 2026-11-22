@@ -2,14 +2,14 @@ package page
 
 // 买家支付页（服务端直出，不依赖前端构建产物）。
 //
-// 视觉规范取自 Stripe Checkout 的分层外观、支付宝收银台的元素分级与微信支付二维码规范，
-// 落地成一句话：单列、一个金额、一个主动作、没有干扰。配色沿用站点令牌（浅灰底 / 白卡 /
-// 1px 细边 / 14px 圆角 / 克制阴影 / 无渐变），品牌色只出现在主按钮与极小徽标上。
+// 结构对标 Stripe Checkout 与两家钱包官方收银台：单列、一个金额、一个主动作。
+// 配色沿用站点令牌（浅灰底 / 白卡 / 1px 细边 / 14px 圆角 / 克制阴影 / 无渐变），
+// 品牌色只出现在徽标、状态条与主按钮上。
 //
 // 三种形态：
 //   - 电脑：展示二维码，扫了就付；
 //   - 手机 + 微信：微信 H5 链接在浏览器里付不了，主操作是「复制链接，去微信付款」；
-//   - 手机 + 支付宝：按钮直接指支付链接，由支付宝唤起 App 落到本单，不需要二维码。
+//   - 手机 + 支付宝：按钮装成 alipays:// 唤起 App，直接落到本笔订单。
 const scanPageHTML = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -18,7 +18,7 @@ const scanPageHTML = `<!doctype html>
 <title>支付 ¥{{.Amount}}</title>
 <style>
 :root{
---ink1:#0f172a;--ink2:#475569;--ink3:#64748b;--line:#e2e8f0;--bg:#f5f7fb;--card:#fff;
+--ink1:#0f172a;--ink2:#475569;--ink3:#64748b;--line:#e2e8f0;--bg:#f5f7fb;--card:#fff;--soft:#f8fafc;
 --primary:#2563eb;--disabled:#cbd5e1;
 --r-sm:8px;--r-md:12px;--r-lg:14px;
 --shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px rgba(15,23,42,.06);
@@ -29,35 +29,46 @@ html,body{margin:0;padding:0}
 body{
 background:var(--bg);color:var(--ink1);font-size:15px;line-height:1.6;
 font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
--webkit-font-smoothing:antialiased;padding:20px 16px calc(24px + env(safe-area-inset-bottom));
+-webkit-font-smoothing:antialiased;padding:18px 16px calc(24px + env(safe-area-inset-bottom));
 display:flex;flex-direction:column;align-items:center;
 }
 .shell{width:100%;max-width:var(--card-w)}
-/* 站点标识：先回答"我在谁的页面" */
+/* 顶部：谁的页面 + 安全标识 */
 .brand{display:flex;align-items:center;gap:8px;padding:0 4px 14px}
 .brand img{height:22px;width:auto;display:block;border-radius:6px}
+.brand-mark{width:22px;height:22px;border-radius:7px;background:var(--primary);position:relative;flex:none}
+.brand-mark::after{content:"";position:absolute;inset:7px;border-radius:2px;background:#fff;opacity:.95}
 .brand span{font-size:16px;font-weight:600;color:var(--ink1);letter-spacing:-.1px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow)}
+.brand-secure{margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:11.5px;
+color:var(--ink3);border:1px solid var(--line);border-radius:999px;padding:3px 9px;background:var(--card)}
+.brand-secure svg{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);overflow:hidden}
+/* 状态条：一条细的品牌色，把"进行中"讲清楚 */
+.statebar{height:3px;background:{{.IconColor}};opacity:.9}
 .head{padding:var(--pad) var(--pad) 0}
-.body{padding:0 var(--pad) var(--pad)}
-/* 收款方：人话一行，不用表单字段的样子 */
-.payee{margin:0;font-size:14px;line-height:1.6;color:var(--ink2)}
-.payee b{font-weight:600;color:var(--ink1)}
-.title{margin:12px 0 0;font-size:17px;font-weight:600;line-height:1.45;color:var(--ink1)}
-/* 金额：视觉唯一中心 */
-.amount{margin-top:20px}
+.payline{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.payline svg{flex:none;display:block}
+.pay-name{font-size:14px;font-weight:600;color:var(--ink1)}
+.pay-chip{margin-left:auto;font-size:11px;font-weight:600;color:var(--ink3);background:var(--soft);
+border:1px solid var(--line);border-radius:999px;padding:3px 9px}
+.payee{margin:0;font-size:13px;line-height:1.6;color:var(--ink3)}
+.payee b{font-weight:600;color:var(--ink2)}
+.title{margin:10px 0 0;font-size:17px;font-weight:600;line-height:1.45;color:var(--ink1)}
+/* 金额 */
+.amount{margin:18px 0 0;padding:16px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .amount-label{display:block;font-size:12px;color:var(--ink3);letter-spacing:.02em}
 .amount-value{margin:2px 0 0;font-size:40px;font-weight:600;line-height:1.1;letter-spacing:-.02em;
 color:var(--ink1);font-variant-numeric:tabular-nums}
-.amount-value i{font-style:normal;font-size:22px;font-weight:600;margin-right:1px;vertical-align:baseline}
+.amount-value i{font-style:normal;font-size:22px;font-weight:600;margin-right:1px}
 .amount-value em{font-style:normal;font-size:.68em;font-weight:600}
 .subject{margin:8px 0 0;font-size:16px;line-height:1.5;color:var(--ink1);
 display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
-/* 主动作 */
-.action{margin-top:24px}
-.qr{width:208px;margin:0 auto;padding:16px;background:#fff;border:1px solid var(--line);border-radius:var(--r-lg)}
+.body{padding:0 var(--pad) var(--pad)}
+/* 操作区：浅底框把"要你做的那件事"圈起来 */
+.action{margin-top:20px;padding:18px;background:var(--soft);border:1px solid var(--line);border-radius:var(--r-md)}
+.qr{width:196px;margin:0 auto;padding:12px;background:#fff;border:1px solid var(--line);border-radius:var(--r-md)}
 .qr svg{display:block;width:100%;height:auto}
-.qr-hint{margin:14px 0 0;text-align:center;font-size:12.5px;line-height:1.65;color:var(--ink3)}
+.qr-hint{margin:12px 0 0;text-align:center;font-size:12.5px;line-height:1.65;color:var(--ink3)}
 .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:var(--btn-h);
 border:0;border-radius:var(--r-md);font-size:16px;font-weight:600;font-family:inherit;text-decoration:none;
 cursor:pointer;transition:filter .12s ease;padding:0 20px}
@@ -66,25 +77,34 @@ cursor:pointer;transition:filter .12s ease;padding:0 20px}
 .btn.primary{background:{{.IconColor}};color:#fff}
 .btn.secondary{background:var(--card);color:var(--ink1);border:1px solid var(--line);height:48px;margin-top:10px}
 .btn[aria-disabled="true"]{background:var(--disabled);cursor:not-allowed}
-.hint{margin:12px 0 0;font-size:13px;line-height:1.65;color:var(--ink3)}
-.textlink{display:flex;align-items:center;justify-content:center;height:32px;margin-top:8px;
-font-size:14px;font-weight:500;color:var(--ink3);text-decoration:none}
-.textlink:active{color:var(--ink1)}
-/* 支付链接：微信场景的核心证据，不折叠、不藏 */
+.hint{margin:10px 0 0;font-size:12.5px;line-height:1.65;color:var(--ink3);text-align:center}
+/* 倒计时进度条 */
+.countdown-bar{margin-top:16px}
+.countdown-top{display:flex;align-items:center;justify-content:space-between;
+font-size:12px;color:var(--ink3);margin-bottom:6px}
+.countdown-top b{font-weight:600;color:var(--ink2);font-variant-numeric:tabular-nums;
+font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.track{height:4px;border-radius:999px;background:var(--soft);overflow:hidden}
+.track i{display:block;height:100%;border-radius:999px;background:{{.IconColor}};transition:width 1s linear}
+.track.warn i{background:#dc2626}
+/* 支付链接 */
 .link{margin-top:16px}
 .link-label{display:block;font-size:12px;color:var(--ink3);margin-bottom:6px}
 .link-row{display:flex;gap:8px;align-items:stretch}
 .link-text{flex:1;min-width:0;display:block;line-height:40px;height:42px;font-size:12.5px;color:var(--ink2);
-border:1px solid var(--line);border-radius:var(--r-sm);padding:0 12px;background:#f8fafc;
+border:1px solid var(--line);border-radius:var(--r-sm);padding:0 12px;background:var(--soft);
 font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.2px;
 white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .link-row button{flex:none;height:42px;padding:0 16px;font-size:13px;font-weight:600;border-radius:var(--r-sm);
 border:1px solid var(--line);background:var(--card);color:var(--ink1);cursor:pointer;font-family:inherit}
 .link-row button:active{background:#f1f5f9}
-/* 信任与透明 */
-.trust{margin:18px 0 0;padding:0;list-style:none;display:grid;gap:7px}
-.trust li{position:relative;padding-left:16px;font-size:12.5px;line-height:1.6;color:var(--ink3)}
-.trust li::before{content:"";position:absolute;left:0;top:7px;width:5px;height:5px;border-radius:50%;background:#cbd5e1}
+/* 信任说明：带勾选图标，比裸圆点更像"保障" */
+.trust{margin:18px 0 0;padding:0;list-style:none;display:grid;gap:9px}
+.trust li{position:relative;padding-left:22px;font-size:12.5px;line-height:1.6;color:var(--ink3)}
+.trust li::before{content:"";position:absolute;left:0;top:3px;width:14px;height:14px;border-radius:50%;
+background:{{.IconColor}};opacity:.12}
+.trust li::after{content:"";position:absolute;left:4px;top:7px;width:6px;height:3px;
+border-left:1.6px solid {{.IconColor}};border-bottom:1.6px solid {{.IconColor}};transform:rotate(-45deg)}
 .divider{height:1px;background:var(--line);margin:18px 0}
 /* 明细 */
 .meta{margin:0;padding:0;display:grid;gap:12px}
@@ -93,15 +113,14 @@ border:1px solid var(--line);background:var(--card);color:var(--ink1);cursor:poi
 .val{margin:0;color:var(--ink1);text-align:right;word-break:break-all}
 .val.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
 font-variant-numeric:tabular-nums;letter-spacing:.3px}
-.countdown{font-variant-numeric:tabular-nums;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.countdown.warn{color:#dc2626}
 .status{margin:12px 0 0;min-height:20px;text-align:center;font-size:13px;line-height:1.6;color:var(--ink2)}
 .status.error{color:#dc2626}
-.foot{margin:18px auto 0;max-width:320px;text-align:center;font-size:12px;line-height:1.75;color:#94a3b8}
+.status.ok{color:{{.IconColor}};font-weight:600}
+.foot{margin:16px auto 0;max-width:320px;text-align:center;font-size:12px;line-height:1.75;color:#94a3b8}
 .is-expired .action,.is-expired .link{opacity:.55;pointer-events:none}
 @media (min-width:768px){
   :root{--card-w:460px;--pad:32px;--btn-h:48px}
-  body{padding-top:40px}
+  body{padding-top:36px}
   .amount-value{font-size:42px}
   .amount-value i{font-size:23px}
 }
@@ -109,14 +128,25 @@ font-variant-numeric:tabular-nums;letter-spacing:.3px}
 <body>
 <div class="shell">
   <div class="brand">
-    {{if .LogoURL}}<img src="{{.LogoURL}}" alt="{{.SiteName}}">{{end}}
+    {{if .LogoURL}}<img src="{{.LogoURL}}" alt="{{.SiteName}}">{{else}}<span class="brand-mark"></span>{{end}}
     <span>{{if .SiteName}}{{.SiteName}}{{else}}收银台{{end}}</span>
+    <span class="brand-secure">
+      <svg width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11z" fill="#94a3b8"/></svg>
+      安全支付
+    </span>
   </div>
 
   <div class="card" id="card">
+    <div class="statebar"></div>
     <div class="head">
+      <div class="payline">
+        <svg width="22" height="22" viewBox="0 0 24 24" role="img" aria-label="{{.Brand}}"><path d="{{.IconPath}}" fill="{{.IconColor}}"/></svg>
+        <span class="pay-name">{{.Brand}}</span>
+        <span class="pay-chip">{{.StatusText}}</span>
+      </div>
       {{if .MerchantName}}<p class="payee">收款方：<b>{{.MerchantName}}</b></p>{{end}}
       <h1 class="title">{{.Title}}</h1>
+
       <div class="amount">
         <span class="amount-label">应付金额</span>
         <p class="amount-value"><i>¥</i>{{.AmountInt}}<em>{{.AmountDec}}</em></p>
@@ -150,6 +180,11 @@ font-variant-numeric:tabular-nums;letter-spacing:.3px}
           <a class="btn primary" href="{{.PrimaryHref}}">打开支付页</a>
           <p class="hint">也可以复制下方链接，在对应的 App 里打开。</p>
         {{end}}
+
+        <div class="countdown-bar">
+          <div class="countdown-top"><span>剩余支付时间</span><b id="countdown">--:--</b></div>
+          <div class="track" id="track"><i id="trackbar" style="width:100%"></i></div>
+        </div>
       </div>
 
       <div class="link">
@@ -173,7 +208,7 @@ font-variant-numeric:tabular-nums;letter-spacing:.3px}
         <div class="row"><dt class="key">订单号</dt><dd class="val mono">{{.TradeNo}}</dd></div>
         <div class="row"><dt class="key">支付方式</dt><dd class="val">{{.Brand}}</dd></div>
         <div class="row"><dt class="key">下单时间</dt><dd class="val">{{.CreatedText}}</dd></div>
-        <div class="row"><dt class="key">剩余时间</dt><dd class="val"><span class="countdown" id="countdown">--:--</span></dd></div>
+        <div class="row"><dt class="key">订单状态</dt><dd class="val" id="statetext">{{.StatusText}}</dd></div>
       </dl>
 
       <div class="status" id="status"></div>
@@ -211,7 +246,6 @@ function copyLink(trigger){
     navigator.clipboard.writeText(value).then(flash,fallback);
   }else{fallback();}
 }
-// 唤起型按钮：点一次就短暂禁用，避免连点重复下单
 var opener=document.querySelector('[data-open="1"]');
 if(opener){
   opener.addEventListener('click',function(){
@@ -229,26 +263,36 @@ if(opener){
     },120);
   });
 }
-// 倒计时：归零后停下动作区并给出下一步，不弹窗遮挡
-var deadline={{.ExpiresAtMS}};
+// 倒计时：数字 + 进度条一起走，归零后停下动作区并给出下一步
+var deadline={{.ExpiresAtMS}}, total={{.TotalMS}};
 var countdown=document.getElementById('countdown');
+var bar=document.getElementById('trackbar');
+var track=document.getElementById('track');
 var card=document.getElementById('card');
 var statusEl=document.getElementById('status');
+var statetext=document.getElementById('statetext');
 function tick(){
   if(!deadline){countdown.textContent='—';return false;}
   var left=deadline-Date.now();
   if(left<=0){
     countdown.textContent='已超时';
-    countdown.className='countdown warn';
+    countdown.style.color='#dc2626';
+    if(bar){bar.style.width='0%';}
+    if(track){track.className='track warn';}
     card.className='card is-expired';
+    if(statetext){statetext.textContent='已超时';}
     statusEl.className='status error';
     statusEl.textContent='订单已超时，请返回商户重新下单';
     return true;
   }
-  var total=Math.floor(left/1000),h=Math.floor(total/3600),m=Math.floor(total%3600/60),s=total%60;
+  var totalSec=Math.floor(left/1000),h=Math.floor(totalSec/3600),m=Math.floor(totalSec%3600/60),s=totalSec%60;
   var pad=function(n){return n<10?'0'+n:''+n;};
   countdown.textContent=(h>0?h+':':'')+pad(m)+':'+pad(s);
-  if(left<60000){countdown.className='countdown warn';}
+  if(bar&&total>0){bar.style.width=Math.max(0,Math.min(100,(left/total)*100)).toFixed(1)+'%';}
+  if(left<60000){
+    countdown.style.color='#dc2626';
+    if(track){track.className='track warn';}
+  }
   return false;
 }
 if(!tick()){setInterval(tick,1000);}
@@ -258,7 +302,8 @@ var pollTimer=setInterval(function(){
     .then(function(r){return r.json();})
     .then(function(d){
       if(d&&d.paid){clearInterval(pollTimer);
-        statusEl.className='status';
+        if(statetext){statetext.textContent='已支付';}
+        statusEl.className='status ok';
         statusEl.textContent='支付成功，正在返回商户…';
         window.location.replace('{{.PaidURL}}');}
     }).catch(function(){});

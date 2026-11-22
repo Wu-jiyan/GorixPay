@@ -43,6 +43,11 @@ type scanPage struct {
 	// was created and how long it stays payable.
 	CreatedText string
 	ExpiresAtMS int64
+	// TotalMS is the whole payable window, so the page can draw a countdown bar
+	// instead of only printing mm:ss.
+	TotalMS int64
+	// StatusText is the small state chip on the card (待支付 / 已支付 / 已超时).
+	StatusText string
 	// Desktop picks the QR layout; on a phone the page offers either the
 	// copy-the-link recipe (微信) or a button that wakes the wallet (支付宝).
 	Desktop   bool
@@ -95,7 +100,11 @@ func (handler *Handler) scanPageData(ctx context.Context, order model.Order, con
 	}
 	if !order.ExpiresAt.IsZero() {
 		page.ExpiresAtMS = order.ExpiresAt.UnixMilli()
+		if !order.CreatedAt.IsZero() {
+			page.TotalMS = order.ExpiresAt.Sub(order.CreatedAt).Milliseconds()
+		}
 	}
+	page.StatusText = "待支付"
 	switch {
 	case page.IsWeChat:
 		page.Title = "在微信中完成支付"

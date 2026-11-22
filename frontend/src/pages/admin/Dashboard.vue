@@ -191,7 +191,7 @@ onMounted(load);
         </n-gi>
       </n-grid>
 
-      <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="16" :y-gap="16" style="margin-top: 16px">
+      <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="16" :y-gap="16" class="gp-section-gap">
         <n-gi>
           <n-card size="small" :bordered="false">
             <n-statistic label="商户总数" :value="dashboard?.merchant_count ?? 0">
@@ -234,7 +234,7 @@ onMounted(load);
         </n-gi>
       </n-grid>
 
-      <n-card size="small" :bordered="false" style="margin-top: 16px">
+      <n-card :bordered="false" class="gp-section-gap">
         <template #header>近 14 天支付走势</template>
         <template #header-extra>
           <n-space :size="16" :wrap="true">
@@ -256,7 +256,7 @@ onMounted(load);
         <n-empty v-if="!dailyStats.length && !loading" description="还没有订单数据" size="small" />
       </n-card>
 
-      <n-card size="small" :bordered="false" style="margin-top: 16px">
+      <n-card size="small" :bordered="false" class="gp-section-gap">
         <template #header>
           <n-space align="center" :size="8">
             <n-icon :component="NotificationsOutline" />
@@ -274,7 +274,7 @@ onMounted(load);
         <n-text v-if="!outboxCards.length" depth="3">队列为空</n-text>
       </n-card>
 
-      <n-card size="small" :bordered="false" style="margin-top: 16px">
+      <n-card size="small" :bordered="false" class="gp-section-gap">
         <template #header>快捷入口</template>
         <n-space :wrap="true">
           <n-button v-for="link in quickLinks" :key="link.path" secondary @click="router.push(link.path)">

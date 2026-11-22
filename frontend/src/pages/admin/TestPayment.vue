@@ -152,7 +152,7 @@ onMounted(loadChannels);
 
     <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16">
       <n-gi>
-        <n-card size="small" :bordered="false" title="下单参数">
+        <n-card :bordered="false" title="下单参数">
           <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
             <n-form-item label="支付渠道">
               <n-select
@@ -217,7 +217,7 @@ onMounted(loadChannels);
       </n-gi>
 
       <n-gi>
-        <n-card size="small" :bordered="false" title="订单结果">
+        <n-card :bordered="false" title="订单结果">
           <n-empty v-if="!result" description="还没有创建测试订单" size="small" />
           <n-form v-else :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
             <n-form-item label="订单号">

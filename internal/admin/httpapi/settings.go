@@ -37,10 +37,16 @@ func (auditEvent) TableName() string {
 }
 
 var allowedSettings = map[string]bool{
-	"site.name":                          true,
-	"site.logo_url":                      true,
-	"site.footer_text":                   true,
-	"site.skin":                          true,
+	"site.name":        true,
+	"site.logo_url":    true,
+	"site.footer_text": true,
+	"site.skin":        true,
+	// 官网「支付测试」页的开关与限额。internal/merchanttools 读这几个键，
+	// 不在白名单里会导致运营在设置页保存时报 invalid key。
+	"site.test_payment_enabled":          true,
+	"site.test_payment_pid":              true,
+	"site.test_payment_max_cents":        true,
+	"site.test_payment_hourly_limit":     true,
 	"security.captcha_required":          true,
 	"oauth.wechat.app_id":                true,
 	"oauth.wechat.app_secret":            true,

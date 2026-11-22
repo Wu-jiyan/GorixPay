@@ -145,7 +145,7 @@ onMounted(load);
       返佣接口未启用：后端 <span class="mono">/admin/invites</span> 尚未就绪（404），完成后本页自动可用。
     </n-alert>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <template #header>
         <n-space :size="6" align="center">
           <n-icon :component="LinkOutline" />

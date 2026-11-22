@@ -157,7 +157,7 @@ onMounted(() => {
       </n-button>
     </template>
 
-    <n-card size="small" :bordered="false" title="当前用户组">
+    <n-card :bordered="false" title="当前用户组">
       <n-spin :show="loading">
         <n-descriptions :column="isNarrow ? 1 : 3" bordered size="small" label-placement="top">
           <n-descriptions-item label="用户组">{{ currentGroupName }}</n-descriptions-item>
@@ -170,7 +170,7 @@ onMounted(() => {
       </n-spin>
     </n-card>
 
-    <n-card size="small" :bordered="false" title="可购买用户组" style="margin-top: 16px">
+    <n-card :bordered="false" title="可购买用户组" class="gp-section-gap">
       <n-data-table
         :columns="columns"
         :data="plans"

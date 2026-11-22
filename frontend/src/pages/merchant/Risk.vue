@@ -152,7 +152,7 @@ onMounted(() => {
       <n-text class="mono">*_limit</n-text>）会拒绝新建支付订单。反复出现请检查接入域名与来源 IP。
     </n-alert>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-data-table
         remote
         :columns="columns"

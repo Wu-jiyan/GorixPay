@@ -267,7 +267,7 @@ onMounted(reload);
 
     <n-tabs v-model:value="activeTab" type="line" animated>
       <n-tab-pane v-for="tab in tabs" :key="tab.name" :name="tab.name" :tab="tab.label">
-        <n-card size="small" :bordered="false">
+        <n-card :bordered="false">
           <template #header>
             <n-text depth="2">{{ tab.intro }}</n-text>
           </template>

@@ -198,7 +198,7 @@ onMounted(reload);
       </n-grid>
     </n-spin>
 
-    <n-card size="small" :bordered="false" style="margin-top: 16px">
+    <n-card size="small" :bordered="false" class="gp-section-gap">
       <n-grid cols="1 s:3" responsive="screen" :x-gap="16" :y-gap="16">
         <n-gi>
           <n-statistic label="累计收款" :value="formatMoney(stats?.total_paid_amount)">
@@ -224,7 +224,7 @@ onMounted(reload);
       </n-grid>
     </n-card>
 
-    <n-card size="small" :bordered="false" style="margin-top: 16px">
+    <n-card size="small" :bordered="false" class="gp-section-gap">
       <template #header>近 7 天成交趋势</template>
       <template #header-extra>
         <n-space :size="16" :wrap="true">
@@ -247,9 +247,9 @@ onMounted(reload);
       </n-spin>
     </n-card>
 
-    <n-grid cols="1 m:3" responsive="screen" item-responsive :x-gap="16" :y-gap="16" style="margin-top: 16px">
+    <n-grid cols="1 m:3" responsive="screen" item-responsive :x-gap="16" :y-gap="16" class="gp-section-gap">
       <n-gi span="1 m:2">
-        <n-card size="small" :bordered="false" title="最近订单">
+        <n-card :bordered="false" title="最近订单">
           <template #header-extra>
             <n-button text type="primary" @click="router.push('/merchant/orders')">查看全部</n-button>
           </template>
@@ -271,7 +271,7 @@ onMounted(reload);
       </n-gi>
 
       <n-gi>
-        <n-card size="small" :bordered="false" title="平台公告">
+        <n-card :bordered="false" title="平台公告">
           <template #header-extra>
             <n-tag v-if="announcements.length" size="small" :bordered="false" type="info">
               {{ announcements.length }} 条

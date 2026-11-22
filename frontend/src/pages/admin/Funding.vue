@@ -212,7 +212,7 @@ onMounted(() => {
       </n-button>
     </template>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-form :show-feedback="false" :label-placement="isNarrow ? 'top' : 'left'">
         <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12">
           <n-gi>

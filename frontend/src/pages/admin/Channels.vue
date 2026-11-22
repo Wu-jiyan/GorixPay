@@ -480,7 +480,7 @@ onMounted(() => {
       </n-space>
     </template>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-data-table
         :bordered="false"
         :loading="loading"

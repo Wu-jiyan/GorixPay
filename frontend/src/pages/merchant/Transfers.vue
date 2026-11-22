@@ -199,7 +199,7 @@ onMounted(() => {
       代付接口未启用：当前平台未开放代付能力，或该接口尚未部署。请联系平台运营开通后再试。
     </n-alert>
 
-    <n-card v-if="!notEnabled" size="small" :bordered="false" title="申请代付">
+    <n-card v-if="!notEnabled" :bordered="false" title="申请代付">
       <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160" @submit.prevent="submit">
         <n-grid cols="1 m:2" responsive="screen" :x-gap="16">
           <n-gi>
@@ -255,7 +255,7 @@ onMounted(() => {
       </n-form>
     </n-card>
 
-    <n-card v-if="!notEnabled" size="small" :bordered="false" title="代付记录" style="margin-top: 16px">
+    <n-card v-if="!notEnabled" :bordered="false" title="代付记录" class="gp-section-gap">
       <n-data-table
         remote
         :columns="columns"

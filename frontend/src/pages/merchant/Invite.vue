@@ -203,7 +203,7 @@ onMounted(() => {
       </n-grid>
     </n-spin>
 
-    <n-card size="small" :bordered="false" title="邀请链接" style="margin-top: 16px">
+    <n-card :bordered="false" title="邀请链接" class="gp-section-gap">
       <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-form-item label="邀请码">
           <n-input :value="info?.invite_code || ''" readonly placeholder="暂未生成邀请码">
@@ -241,7 +241,7 @@ onMounted(() => {
       </n-text>
     </n-card>
 
-    <n-card size="small" :bordered="false" title="返佣记录" style="margin-top: 16px">
+    <n-card :bordered="false" title="返佣记录" class="gp-section-gap">
       <n-data-table
         remote
         :columns="columns"

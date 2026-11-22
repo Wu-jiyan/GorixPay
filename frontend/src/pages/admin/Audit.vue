@@ -123,7 +123,7 @@ onMounted(load);
       </n-button>
     </template>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12" style="margin-bottom: 12px">
         <n-gi>
           <n-input

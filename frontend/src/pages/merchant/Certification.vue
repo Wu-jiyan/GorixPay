@@ -189,7 +189,7 @@ onMounted(() => {
 
       <n-grid v-if="status !== 'none'" cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16">
         <n-gi>
-          <n-card size="small" :bordered="false" title="认证信息（脱敏）">
+          <n-card :bordered="false" title="认证信息（脱敏）">
             <n-descriptions :column="1" label-placement="left" :label-width="120" size="small" bordered>
               <n-descriptions-item label="认证类型">{{ certTypeText }}</n-descriptions-item>
               <n-descriptions-item label="证件姓名">{{ info?.real_name_masked || '-' }}</n-descriptions-item>
@@ -224,10 +224,9 @@ onMounted(() => {
 
       <n-card
         v-if="canSubmit && !notEnabled"
-        size="small"
         :bordered="false"
         title="提交认证资料"
-        style="margin-top: 16px"
+        class="gp-section-gap"
       >
         <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
           <n-form-item label="认证类型">
@@ -272,7 +271,7 @@ onMounted(() => {
         </n-form>
       </n-card>
 
-      <n-card v-if="status === 'approved'" size="small" :bordered="false" title="后续操作" style="margin-top: 16px">
+      <n-card v-if="status === 'approved'" size="small" :bordered="false" title="后续操作" class="gp-section-gap">
         <n-text depth="2">认证已通过。若需要变更认证主体，请联系平台运营先撤销当前认证，再重新提交。</n-text>
       </n-card>
     </n-spin>

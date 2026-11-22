@@ -266,7 +266,7 @@ onMounted(() => {
       </n-button>
     </template>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-tabs v-model:value="activeTab" type="line" animated>
         <n-tab-pane name="recharge" tab="余额充值">
           <n-alert v-if="rechargeNotEnabled" type="warning" :bordered="false" style="margin-bottom: 16px">
@@ -276,7 +276,7 @@ onMounted(() => {
           <template v-if="!rechargeNotEnabled">
             <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16">
               <n-gi>
-                <n-card size="small" :bordered="false" title="充值金额">
+                <n-card :bordered="false" title="充值金额">
                   <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
                     <n-form-item label="充值金额（元）">
                       <n-input-number
@@ -358,7 +358,7 @@ onMounted(() => {
               </n-gi>
             </n-grid>
 
-            <n-card size="small" :bordered="false" title="充值订单" style="margin-top: 16px">
+            <n-card :bordered="false" title="充值订单" class="gp-section-gap">
               <n-data-table
                 remote
                 :columns="orderColumns"
@@ -425,14 +425,14 @@ onMounted(() => {
               v-if="depositShortfall > 0"
               type="warning"
               :bordered="false"
-              style="margin-top: 16px"
+              class="gp-section-gap"
             >
               保证金不足：当前还需缴纳 {{ formatMoney(depositShortfall) }}，未满足要求可能影响结算与代付。
             </n-alert>
 
-            <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16" style="margin-top: 16px">
+            <n-grid cols="1 m:2" responsive="screen" :x-gap="16" :y-gap="16" class="gp-section-gap">
               <n-gi>
-                <n-card size="small" :bordered="false" title="缴纳保证金">
+                <n-card :bordered="false" title="缴纳保证金">
                   <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
                     <n-form-item label="缴纳金额（元）">
                       <n-input-number
@@ -498,7 +498,7 @@ onMounted(() => {
               </n-gi>
             </n-grid>
 
-            <n-card size="small" :bordered="false" title="保证金订单" style="margin-top: 16px">
+            <n-card :bordered="false" title="保证金订单" class="gp-section-gap">
               <n-data-table
                 remote
                 :columns="orderColumns"

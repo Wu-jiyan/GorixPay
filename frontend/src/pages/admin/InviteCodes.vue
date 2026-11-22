@@ -235,7 +235,7 @@ onMounted(load);
       邀请码由服务端生成，创建后可复制发给商户；可用次数填 0 表示不限次，过期时间留空表示不过期。
     </n-alert>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-data-table
         :bordered="false"
         :columns="columns"

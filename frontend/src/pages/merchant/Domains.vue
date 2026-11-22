@@ -175,7 +175,7 @@ onMounted(() => {
       支持填写 <n-text class="mono" code>example.com</n-text> 或 <n-text class="mono" code>*.example.com</n-text>。
     </n-alert>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-data-table
         :columns="columns"
         :data="items"

@@ -238,7 +238,7 @@ onMounted(() => {
       <n-text class="mono">ack</n-text> 确认，任务才算完成并出纸。
     </n-alert>
 
-    <n-card size="small" :bordered="false">
+    <n-card :bordered="false">
       <n-data-table
         :bordered="false"
         :columns="columns"

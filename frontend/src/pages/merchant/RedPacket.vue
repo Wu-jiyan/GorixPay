@@ -257,7 +257,7 @@ onMounted(() => {
       </n-button>
     </template>
 
-    <n-card size="small" :bordered="false" title="创建红包">
+    <n-card :bordered="false" title="创建红包">
       <n-form :label-placement="isNarrow ? 'top' : 'left'" :label-width="isNarrow ? undefined : 160">
         <n-grid cols="1 m:2" responsive="screen" item-responsive :x-gap="16">
           <n-gi>
@@ -300,11 +300,11 @@ onMounted(() => {
       </n-form>
     </n-card>
 
-    <n-alert v-if="cancelUnavailable" type="info" :bordered="false" style="margin-top: 16px">
+    <n-alert v-if="cancelUnavailable" type="info" :bordered="false" class="gp-section-gap">
       当前平台未开放商户自助撤销红包批次，如需整批退回请联系平台运营。
     </n-alert>
 
-    <n-card size="small" :bordered="false" title="我的红包批次" style="margin-top: 16px">
+    <n-card :bordered="false" title="我的红包批次" class="gp-section-gap">
       <n-data-table
         remote
         :columns="columns"
